@@ -1,0 +1,26 @@
+[package]
+name = "efm32pg1b-hal"
+version = "0.1.0"
+authors = ["Bogdan Olar <olar.bogdan.dev@gmail.com>"]
+edition = "2018"
+description = "Hardware abstraction layer (HAL) for Silicon Labs EFM32PG1B microcontrollers"
+keywords = ["embedded-hal", "efm32", "efm32pg1b", "hal", "silabs"]
+categories = ["embedded", "hardware-support", "no-std"]
+readme = "README.md"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/BogdanOlar/efm32pg1b-hal"
+
+[dependencies]
+efm32pg1b-pac = { git = "https://github.com/BogdanOlar/efm32pg1b-pac" }
+embedded-hal = { version = "0.2.3", features = ["unproven"] }
+nb = "0.1.2"
+
+[dev-dependencies]
+cortex-m = "0.6.0"
+cortex-m-rt = "0.6.10"
+heapless = "0.5.1"
+panic-abort = "0.3.2"
+
+[features]
+rt = ["efm32pg1b-pac/rt"]
+default = ["rt"]
