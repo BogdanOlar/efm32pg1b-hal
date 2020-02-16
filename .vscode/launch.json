@@ -5,55 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "lldb",
+            "name": "gpio debug",
+            "cwd": "${workspaceRoot}",
+            "executable": "./target/thumbv7em-none-eabihf/debug/examples/gpio",
             "request": "launch",
-            "name": "Debug executable 'efm32pg1b-hal'",
-            "cargo": {
-                "args": [
-                    "run",
-                    "--target=thumbv7em-none-eabihf"
-                ]
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
+            "type": "cortex-debug",
+            "servertype": "openocd",
+            "configFiles": ["openocd.cfg"],
+            "svdFile": "EFM32PG1B.svd"
         },
-
-        // {
-        //     "type": "lldb",
-        //     "request": "launch",
-        //     "name": "Debug executable 'efm32pg1b-hal'",
-        //     "cargo": {
-        //         "args": [
-        //             "build",
-        //             "--bin=efm32pg1b-hal",
-        //             "--package=efm32pg1b-hal"
-        //         ],
-        //         "filter": {
-        //             "name": "efm32pg1b-hal",
-        //             "kind": "bin"
-        //         }
-        //     },
-        //     "args": [],
-        //     "cwd": "${workspaceFolder}"
-        // },
-        // {
-        //     "type": "lldb",
-        //     "request": "launch",
-        //     "name": "Debug unit tests in executable 'efm32pg1b-hal'",
-        //     "cargo": {
-        //         "args": [
-        //             "test",
-        //             "--no-run",
-        //             "--bin=efm32pg1b-hal",
-        //             "--package=efm32pg1b-hal"
-        //         ],
-        //         "filter": {
-        //             "name": "efm32pg1b-hal",
-        //             "kind": "bin"
-        //         }
-        //     },
-        //     "args": [],
-        //     "cwd": "${workspaceFolder}"
-        // }
     ]
 }
