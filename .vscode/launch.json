@@ -10,36 +10,50 @@
             "name": "Debug executable 'efm32pg1b-hal'",
             "cargo": {
                 "args": [
-                    "build",
-                    "--bin=efm32pg1b-hal",
-                    "--package=efm32pg1b-hal"
-                ],
-                "filter": {
-                    "name": "efm32pg1b-hal",
-                    "kind": "bin"
-                }
+                    "run",
+                    "--target=thumbv7em-none-eabihf"
+                ]
             },
             "args": [],
             "cwd": "${workspaceFolder}"
         },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'efm32pg1b-hal'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=efm32pg1b-hal",
-                    "--package=efm32pg1b-hal"
-                ],
-                "filter": {
-                    "name": "efm32pg1b-hal",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        }
+
+        // {
+        //     "type": "lldb",
+        //     "request": "launch",
+        //     "name": "Debug executable 'efm32pg1b-hal'",
+        //     "cargo": {
+        //         "args": [
+        //             "build",
+        //             "--bin=efm32pg1b-hal",
+        //             "--package=efm32pg1b-hal"
+        //         ],
+        //         "filter": {
+        //             "name": "efm32pg1b-hal",
+        //             "kind": "bin"
+        //         }
+        //     },
+        //     "args": [],
+        //     "cwd": "${workspaceFolder}"
+        // },
+        // {
+        //     "type": "lldb",
+        //     "request": "launch",
+        //     "name": "Debug unit tests in executable 'efm32pg1b-hal'",
+        //     "cargo": {
+        //         "args": [
+        //             "test",
+        //             "--no-run",
+        //             "--bin=efm32pg1b-hal",
+        //             "--package=efm32pg1b-hal"
+        //         ],
+        //         "filter": {
+        //             "name": "efm32pg1b-hal",
+        //             "kind": "bin"
+        //         }
+        //     },
+        //     "args": [],
+        //     "cwd": "${workspaceFolder}"
+        // }
     ]
 }
