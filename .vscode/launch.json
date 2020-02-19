@@ -6,6 +6,7 @@
     "configurations": [
         {
             "name": "gpio debug",
+            "preLaunchTask": "${defaultBuildTask}",
             "cwd": "${workspaceRoot}",
             "executable": "./target/thumbv7em-none-eabihf/debug/examples/gpio",
             "request": "launch",
