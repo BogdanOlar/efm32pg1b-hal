@@ -4,10 +4,12 @@
 #![no_std]
 
 use cortex_m_rt::entry;
+use efm32pg1b_pac::Peripherals;
 use panic_halt as _;
 
 #[entry]
 fn main() -> ! {
+    let petipherals = Peripherals::take();
     let mut count = 0;
 
     loop {
