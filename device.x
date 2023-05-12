@@ -1,0 +1,25 @@
+PROVIDE(EMU = DefaultHandler);
+PROVIDE(WDOG0 = DefaultHandler);
+PROVIDE(LDMA = DefaultHandler);
+PROVIDE(GPIO_EVEN = DefaultHandler);
+PROVIDE(TIMER0 = DefaultHandler);
+PROVIDE(USART0_RX = DefaultHandler);
+PROVIDE(USART0_TX = DefaultHandler);
+PROVIDE(ACMP0 = DefaultHandler);
+PROVIDE(ADC0 = DefaultHandler);
+PROVIDE(IDAC0 = DefaultHandler);
+PROVIDE(I2C0 = DefaultHandler);
+PROVIDE(GPIO_ODD = DefaultHandler);
+PROVIDE(TIMER1 = DefaultHandler);
+PROVIDE(USART1_RX = DefaultHandler);
+PROVIDE(USART1_TX = DefaultHandler);
+PROVIDE(LEUART0 = DefaultHandler);
+PROVIDE(PCNT0 = DefaultHandler);
+PROVIDE(CMU = DefaultHandler);
+PROVIDE(MSC = DefaultHandler);
+PROVIDE(CRYPTO = DefaultHandler);
+PROVIDE(LETIMER0 = DefaultHandler);
+PROVIDE(RTCC = DefaultHandler);
+PROVIDE(CRYOTIMER = DefaultHandler);
+PROVIDE(FPUEH = DefaultHandler);
+

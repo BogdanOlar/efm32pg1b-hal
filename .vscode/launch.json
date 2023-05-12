@@ -1,19 +1,32 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    /* 
+     * Requires the Rust Language Server (rust-analyzer) and Cortex-Debug extensions
+     * https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer
+     * https://marketplace.visualstudio.com/items?itemName=marus25.cortex-debug
+     */
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "gpio debug",
-            "preLaunchTask": "${defaultBuildTask}",
-            "cwd": "${workspaceRoot}",
-            "executable": "./target/thumbv7em-none-eabihf/debug/examples/gpio",
-            "request": "launch",
+            /* Configuration for the STM32F303 Discovery board */
             "type": "cortex-debug",
-            "servertype": "openocd",
-            "configFiles": ["openocd.cfg"],
-            "svdFile": "EFM32PG1B.svd"
-        },
+            "request": "launch",
+            "name": "Debug (JLink)",
+            "servertype": "jlink",
+            "cwd": "${workspaceRoot}",
+            // "preLaunchTask": "Cargo Build (debug)",
+            "runToEntryPoint": "main",
+            "executable": "./target/thumbv7em-none-eabihf/debug/examples/gpio",
+            "device": "EFM32PG1B200F256GM48",
+            "svdFile": "${workspaceRoot}/EFM32PG1B.svd",
+            "swoConfig": {
+                "enabled": true,
+                "cpuFrequency": 8000000,
+                "swoFrequency": 2000000,
+                "source": "probe",
+                "decoders": [
+                    { "type": "console", "label": "ITM", "port": 0 }
+                ]
+            }
+        }
     ]
 }
