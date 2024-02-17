@@ -10,6 +10,7 @@ Additional vendor supplied documents:
 - [Datasheet](https://www.silabs.com/documents/public/data-sheets/efm32pg1-datasheet.pdf)
 - [Reference Manual](https://www.silabs.com/documents/public/reference-manuals/EFM32PG1-ReferenceManual.pdf)
 - [Errata](https://www.silabs.com/documents/public/errata/efm32pg1-errata.pdf)
+- [CMSIS Pack](https://www.keil.arm.com/devices/silicon-labs-efm32pg1b200f256gm48/processors/)
 
 ## License
 
