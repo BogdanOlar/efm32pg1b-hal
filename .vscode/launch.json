@@ -24,9 +24,68 @@
                 "swoFrequency": 2000000,
                 "source": "probe",
                 "decoders": [
-                    { "type": "console", "label": "ITM", "port": 0 }
+                    {
+                        "type": "console",
+                        "label": "ITM",
+                        "port": 0
+                    }
                 ]
             }
+        },
+        {
+            "preLaunchTask": "${defaultBuildTask}",
+            "type": "probe-rs-debug",
+            "request": "launch",
+            "name": "probe_rs Executable Test",
+            "flashingConfig": {
+                "flashingEnabled": true,
+            },
+            "chip": "EFM32PG1B200F256GM48",
+            "coreConfigs": [
+                {
+                    //!MODIFY
+                    "programBinary": "target/thumbv7em-none-eabihf/debug/examples/gpio"
+                }
+            ]
+        },
+        {
+            "type": "probe-rs-debug",
+            "request": "launch",
+            "name": "probe_rs Executable launch example",
+            "cwd": "${workspaceFolder}",
+            //!MODIFY (or remove)
+            "speed": 24000,
+            //!MODIFY (or remove)
+            "probe": "VID:PID:<Serial>",
+            "runtimeExecutable": "probe-rs",
+            "runtimeArgs": [
+                "dap-server"
+            ],
+            "chip": "EFM32PG1B200F256GM48",
+            "flashingConfig": {
+                "flashingEnabled": true,
+                "haltAfterReset": false,
+                "formatOptions": {
+                    //!MODIFY (or remove). Valid values are: 'bin', 'hex', 'elf'(default), 'idf'
+                    "format": "elf"
+                }
+            },
+            "coreConfigs": [
+                {
+                    "coreIndex": 0,
+                    //!MODIFY
+                    "programBinary": "Relative or fully qualified path to your programBinary",
+                    //!MODIFY
+                    "svdFile": "Relative or fully qualified path to your programBinary"
+                }
+            ],
+            "env": {
+                //!MODIFY (or remove)
+                // If you set this variable, check the VSCode console log window for the location of the log file.
+                "RUST_LOG": "info"
+            },
+            // Info, Debug
+            "consoleLogLevel": "Console"
         }
     ]
 }
