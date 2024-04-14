@@ -1,3 +1,4 @@
+use crate::pac;
 use core::{fmt, marker::PhantomData};
 
 /// Extension trait to split a GPIO peripheral in independent pins and registers
@@ -5,35 +6,9 @@ pub trait GpioExt {
     /// The parts to split the GPIO into
     type Parts;
 
-    /// Splits the GPIO block into independent pins and registers
+    /// Splits the GPIO block into independent pins and enables GPIO
     fn split(self) -> Self::Parts;
 }
-
-/// Id, port and mode for any pin
-pub trait PinExt {
-    /// Current pin mode
-    type Mode;
-    /// Pin number
-    fn pin_id(&self) -> u8;
-    /// Port number starting from 0
-    fn port_id(&self) -> u8;
-}
-
-impl<const P: char, const N: u8, MODE> PinExt for Pin<P, N, MODE> {
-    type Mode = MODE;
-
-    #[inline(always)]
-    fn pin_id(&self) -> u8 {
-        N
-    }
-    #[inline(always)]
-    fn port_id(&self) -> u8 {
-        P as u8 - b'A'
-    }
-}
-
-/// Disabled pin mode (type state)
-pub struct Disabled;
 
 /// Generic pin type
 ///
@@ -68,46 +43,98 @@ impl<const P: char, const N: u8, MODE> defmt::Format for Pin<P, N, MODE> {
     }
 }
 
+/// Id, port and mode for any pin
+pub trait PinExt {
+    /// Current pin mode
+    type Mode;
+    /// Pin number
+    fn pin_id(&self) -> u8;
+    /// Port number starting from 0
+    fn port_id(&self) -> u8;
+}
+
+impl<const P: char, const N: u8, MODE> PinExt for Pin<P, N, MODE> {
+    type Mode = MODE;
+
+    #[inline(always)]
+    fn pin_id(&self) -> u8 {
+        N
+    }
+    #[inline(always)]
+    fn port_id(&self) -> u8 {
+        P as u8 - b'A'
+    }
+}
+
+/// Disabled pin mode (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct Disabled;
+
 /// Input mode (type state)
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Input;
 
+/// Output mode (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct Output;
+
 #[doc = r" GPIO"]
 pub mod gpio {
-    use crate::pac::{self, GPIO};
+    use crate::pac::{self, Gpio};
+
+    use super::{Disabled, Input, Output, Pin};
 
     #[doc = r" GPIO parts"]
-    pub struct Parts {
+    pub struct GpioParts {
         #[doc = r" Pin F4"]
         pub pf4: PF4,
-        #[doc = r" Pin F4"]
-        pub pf5: PF5,
+        #[doc = r" Pin F7"]
+        pub pf7: PF7,
     }
 
-    impl super::GpioExt for GPIO {
-        type Parts = Parts;
-        fn split(self) -> Parts {
-            // enable GPIO
+    impl super::GpioExt for Gpio {
+        type Parts = GpioParts;
+        fn split(self) -> GpioParts {
+            // Make sure to enable GPIO
             unsafe {
-                pac::CMU::steal()
+                pac::Cmu::steal()
                     .hfbusclken0()
                     .write(|w| w.gpio().set_bit());
             }
 
-            Parts {
+            GpioParts {
                 pf4: PF4::new(),
-                pf5: PF5::new(),
+                pf7: PF7::new(),
             }
         }
     }
 
     #[doc = stringify!(PF4)]
     #[doc = " pin"]
-    pub type PF4<MODE = super::Disabled> = super::Pin<'F', 4, MODE>;
+    pub type PF4<MODE = Disabled> = Pin<'F', 4, MODE>;
 
-    #[doc = stringify!(PF5)]
+    #[doc = stringify!(PF7)]
     #[doc = " pin"]
-    pub type PF5<MODE = super::Disabled> = super::Pin<'F', 5, MODE>;
+    pub type PF7<MODE = Disabled> = Pin<'F', 7, MODE>;
+
+    impl Pin<'F', 7, Disabled> {
+        pub fn into_input(self) -> Pin<'F', 7, Input> {
+            let p = unsafe { Gpio::steal() };
+
+            p.port_f().model().modify(|_, w| w.mode7().input());
+
+            Pin::new()
+        }
+    }
+
+    impl Pin<'F', 7, Input> {
+        pub fn is_high(&self) -> bool {
+            let p = unsafe { Gpio::steal() };
+            p.port_f().din().read().din7().bit_is_set()
+        }
+    }
 }
-pub use gpio::PF4;
+pub use gpio::{PF4, PF7};

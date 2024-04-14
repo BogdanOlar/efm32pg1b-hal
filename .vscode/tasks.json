@@ -10,7 +10,8 @@
             "args": [
                 "build",
                 "--example",
-                "gpio"
+                "gpio",
+                "--features='defmt'"
             ],
             "problemMatcher": [
                 "$rustc"

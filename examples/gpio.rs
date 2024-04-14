@@ -30,9 +30,11 @@ fn main() -> ! {
     let core_p = cortex_m::Peripherals::take().unwrap();
     let mut p = pac::Peripherals::take().unwrap();
 
-    let gpio = p.GPIO.split();
+    let gpio = unsafe { pac::Gpio::steal().split() };
 
-    defmt::println!("pin: {}", gpio.pf4);
+    let button1 = gpio.pf7.into_input();
+
+    defmt::println!("pin: {}", &button1);
 
     // // Enable GPIO
     // p.CMU.hfbusclken0().write(|w| w.gpio().set_bit());
@@ -42,7 +44,7 @@ fn main() -> ! {
     //
 
     // // Set pins direction
-    // p.GPIO.pf_model().modify(|_, w| {
+    // p.gpio.pf_model().modify(|_, w| {
     //     w.mode4().variant(pac::gpio::pf_model::MODE4::Pushpull);
     //     w
     // });
@@ -51,23 +53,20 @@ fn main() -> ! {
     // // Led1 -> PF5
     // //
 
-    // // Set pins direction
-    // p.GPIO.pf_model().modify(|_, w| {
-    //     w.mode5().variant(pac::gpio::pf_model::MODE5::Pushpull);
-    //     w
-    // });
+    // Set pins direction
+    p.gpio.port_f().model().modify(|_, w| w.mode5().pushpull());
 
     // //
     // // Button0 -> PF6
     // //
 
     // // Set as input with pull resistor
-    // p.GPIO.pf_model().modify(|_, w| {
+    // p.gpio.pf_model().modify(|_, w| {
     //     w.mode6().variant(pac::gpio::pf_model::MODE6::Inputpull);
     //     w
     // });
     // // set direction of pull to Up
-    // p.GPIO.pf_dout().modify(|r, w| unsafe {
+    // p.gpio.pf_dout().modify(|r, w| unsafe {
     //     let x = r.bits() | PF6_PIN_MASK;
     //     w.dout().bits(x.try_into().unwrap())
     // });
@@ -80,30 +79,32 @@ fn main() -> ! {
     //     w.mode7().variant(pac::gpio::pf_model::MODE7::Input);
     //     w
     // });
+    let mut btn1_prev = true;
+    loop {
+        // let din_reg_value = p.gpio.pf_din().read().bits();
 
-    // loop {
-    //     let din_reg_value = p.GPIO.pf_din().read().bits();
+        // if (din_reg_value & PF6_PIN_MASK) == 0 {
+        //     p.gpio
+        //         .pf_dout()
+        //         .modify(|r, w| unsafe { w.bits(r.bits() | PF4_PIN_MASK) });
+        // } else {
+        //     p.gpio
+        //         .pf_dout()
+        //         .modify(|r, w| unsafe { w.bits(r.bits() & !PF4_PIN_MASK) });
+        // }
 
-    //     if (din_reg_value & PF6_PIN_MASK) == 0 {
-    //         p.GPIO
-    //             .pf_dout()
-    //             .modify(|r, w| unsafe { w.bits(r.bits() | PF4_PIN_MASK) });
-    //     } else {
-    //         p.GPIO
-    //             .pf_dout()
-    //             .modify(|r, w| unsafe { w.bits(r.bits() & !PF4_PIN_MASK) });
-    //     }
+        let btn1_cur = button1.is_high();
 
-    //     if (din_reg_value & PF7_PIN_MASK) == 0 {
-    //         p.GPIO
-    //             .pf_dout()
-    //             .modify(|r, w| unsafe { w.bits(r.bits() | PF5_PIN_MASK) });
-    //     } else {
-    //         p.GPIO
-    //             .pf_dout()
-    //             .modify(|r, w| unsafe { w.bits(r.bits() & !PF5_PIN_MASK) });
-    //     }
-    // }
+        if btn1_prev != btn1_cur {
+            defmt::println!("btn1: {}", &btn1_cur);
 
-    loop {}
+            if btn1_cur {
+                p.gpio.port_f().dout().modify(|_, w| w.dout5().set_bit());
+            } else {
+                p.gpio.port_f().dout().modify(|_, w| w.dout5().clear_bit());
+            }
+
+            btn1_prev = btn1_cur;
+        }
+    }
 }
