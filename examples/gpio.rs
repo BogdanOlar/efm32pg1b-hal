@@ -22,22 +22,28 @@ fn main() -> ! {
 
     let gpio = p.gpio.split();
 
-    let button1 = gpio.pf7.into_input();
+    let mut led0 = gpio.pf4.into_output();
     let mut led1 = gpio.pf5.into_output();
+    let button0 = gpio.pf6.into_input();
+    let button1 = gpio.pf7.into_input();
 
+    let mut btn0_prev = true;
     let mut btn1_prev = true;
-    loop {
-        // let din_reg_value = p.gpio.pf_din().read().bits();
 
-        // if (din_reg_value & PF6_PIN_MASK) == 0 {
-        //     p.gpio
-        //         .pf_dout()
-        //         .modify(|r, w| unsafe { w.bits(r.bits() | PF4_PIN_MASK) });
-        // } else {
-        //     p.gpio
-        //         .pf_dout()
-        //         .modify(|r, w| unsafe { w.bits(r.bits() & !PF4_PIN_MASK) });
-        // }
+    loop {
+        let btn0_cur = button0.is_high();
+
+        if btn0_prev != btn0_cur {
+            defmt::println!("btn0: {}", &btn0_cur);
+
+            if btn0_cur {
+                led0.set_low();
+            } else {
+                led0.set_high();
+            }
+
+            btn0_prev = btn0_cur;
+        }
 
         let btn1_cur = button1.is_high();
 

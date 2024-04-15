@@ -83,14 +83,19 @@ pub struct Output;
 
 #[doc = r" GPIO"]
 pub mod gpio {
-    use crate::pac::{self, Gpio};
+    use pac::gpio::port_a::model::MODE0;
 
     use super::{Disabled, Input, Output, Pin};
+    use crate::pac::{self, Gpio};
 
     #[doc = r" GPIO parts"]
     pub struct GpioParts {
         #[doc = r" Pin F5"]
+        pub pf4: PF4,
+        #[doc = r" Pin F5"]
         pub pf5: PF5,
+        #[doc = r" Pin F6"]
+        pub pf6: PF6,
         #[doc = r" Pin F7"]
         pub pf7: PF7,
     }
@@ -106,58 +111,162 @@ pub mod gpio {
             }
 
             GpioParts {
+                pf4: PF4::new(),
                 pf5: PF5::new(),
+                pf6: PF6::new(),
                 pf7: PF7::new(),
             }
         }
     }
 
+    #[doc = stringify!(PF4)]
+    #[doc = " pin"]
+    pub type PF4<MODE = Disabled> = Pin<'F', 4, MODE>;
+
     #[doc = stringify!(PF5)]
     #[doc = " pin"]
     pub type PF5<MODE = Disabled> = Pin<'F', 5, MODE>;
+
+    #[doc = stringify!(PF6)]
+    #[doc = " pin"]
+    pub type PF6<MODE = Disabled> = Pin<'F', 6, MODE>;
 
     #[doc = stringify!(PF7)]
     #[doc = " pin"]
     pub type PF7<MODE = Disabled> = Pin<'F', 7, MODE>;
 
-    impl Pin<'F', 5, Disabled> {
-        pub fn into_output(self) -> Pin<'F', 5, Output> {
-            let p = unsafe { Gpio::steal() };
+    impl<const P: char, const N: u8> Pin<P, N, Disabled> {
+        pub fn into_input(self) -> Pin<P, N, Input> {
+            Self::set_mode(MODE0::Input);
+            Self::dout(false);
+            Pin::new()
+        }
 
-            p.port_f().model().modify(|_, w| w.mode5().pushpull());
-
+        pub fn into_output(self) -> Pin<P, N, Output> {
+            Self::set_mode(MODE0::Pushpull);
             Pin::new()
         }
     }
 
-    impl Pin<'F', 5, Output> {
+    impl<const P: char, const N: u8> Pin<P, N, Input> {
+        pub fn is_high(&self) -> bool {
+            Self::din()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, Output> {
         pub fn set_high(&mut self) {
-            let p = unsafe { Gpio::steal() };
-            p.port_f().dout().modify(|_, w| w.dout5().set_bit());
+            Self::dout(true);
         }
 
         pub fn set_low(&mut self) {
-            let p = unsafe { Gpio::steal() };
-            p.port_f().dout().modify(|_, w| w.dout5().clear_bit());
+            Self::dout(false);
         }
     }
 
-    impl Pin<'F', 7, Disabled> {
-        pub fn into_input(self) -> Pin<'F', 7, Input> {
-            let p = unsafe { Gpio::steal() };
-            // Set port pin mode to input
-            p.port_f().model().modify(|_, w| w.mode7().input());
-            // Disable port pin filter
-            p.port_f().dout().modify(|_, w| w.dout7().clear_bit());
+    impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
+        fn set_mode(iomode: MODE0) {
+            let port = match P {
+                'A' => unsafe { (*Gpio::ptr()).port_a() },
+                'B' => unsafe { (*Gpio::ptr()).port_b() },
+                'C' => unsafe { (*Gpio::ptr()).port_c() },
+                'D' => unsafe { (*Gpio::ptr()).port_d() },
+                'E' => unsafe { (*Gpio::ptr()).port_e() },
+                'F' => unsafe { (*Gpio::ptr()).port_f() },
+                _ => unreachable!(),
+            };
 
-            Pin::new()
+            match N {
+                0..=7 => {
+                    // Set port pin mode to input
+                    port.model().modify(|_, w| {
+                        match N {
+                            0 => w.mode0(),
+                            1 => w.mode1(),
+                            2 => w.mode2(),
+                            3 => w.mode3(),
+                            4 => w.mode4(),
+                            5 => w.mode5(),
+                            6 => w.mode6(),
+                            7 => w.mode7(),
+                            _ => unreachable!(),
+                        }
+                        .variant(iomode)
+                    });
+                }
+                8..=15 => {
+                    // Set port pin mode to input
+                    port.modeh().modify(|_, w| {
+                        match N {
+                            8 => w.mode8(),
+                            9 => w.mode9(),
+                            10 => w.mode10(),
+                            11 => w.mode11(),
+                            12 => w.mode12(),
+                            13 => w.mode13(),
+                            14 => w.mode14(),
+                            15 => w.mode15(),
+                            _ => unreachable!(),
+                        }
+                        .variant(iomode)
+                    });
+                }
+                _ => unreachable!(),
+            }
         }
-    }
 
-    impl Pin<'F', 7, Input> {
-        pub fn is_high(&self) -> bool {
-            let p = unsafe { Gpio::steal() };
-            p.port_f().din().read().din7().bit_is_set()
+        fn dout(state: bool) {
+            let port = match P {
+                'A' => unsafe { (*Gpio::ptr()).port_a() },
+                'B' => unsafe { (*Gpio::ptr()).port_b() },
+                'C' => unsafe { (*Gpio::ptr()).port_c() },
+                'D' => unsafe { (*Gpio::ptr()).port_d() },
+                'E' => unsafe { (*Gpio::ptr()).port_e() },
+                'F' => unsafe { (*Gpio::ptr()).port_f() },
+                _ => unreachable!(),
+            };
+
+            // Set/clear filter
+            port.dout().modify(|_, w| {
+                let dout = match N {
+                    0 => w.dout0(),
+                    1 => w.dout1(),
+                    2 => w.dout2(),
+                    3 => w.dout3(),
+                    4 => w.dout4(),
+                    5 => w.dout5(),
+                    6 => w.dout6(),
+                    7 => w.dout7(),
+                    8 => w.dout8(),
+                    9 => w.dout9(),
+                    10 => w.dout10(),
+                    11 => w.dout11(),
+                    12 => w.dout12(),
+                    13 => w.dout13(),
+                    14 => w.dout14(),
+                    15 => w.dout15(),
+                    _ => unreachable!(),
+                };
+
+                match state {
+                    true => dout.set_bit(),
+                    false => dout.clear_bit(),
+                }
+            });
+        }
+
+        fn din() -> bool {
+            let port = match P {
+                'A' => unsafe { (*Gpio::ptr()).port_a() },
+                'B' => unsafe { (*Gpio::ptr()).port_b() },
+                'C' => unsafe { (*Gpio::ptr()).port_c() },
+                'D' => unsafe { (*Gpio::ptr()).port_d() },
+                'E' => unsafe { (*Gpio::ptr()).port_e() },
+                'F' => unsafe { (*Gpio::ptr()).port_f() },
+                _ => unreachable!(),
+            };
+
+            (port.din().read().bits() & (1 << N)) != 0
         }
     }
 }
