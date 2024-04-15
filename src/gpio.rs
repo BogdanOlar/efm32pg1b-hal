@@ -89,8 +89,8 @@ pub mod gpio {
 
     #[doc = r" GPIO parts"]
     pub struct GpioParts {
-        #[doc = r" Pin F4"]
-        pub pf4: PF4,
+        #[doc = r" Pin F5"]
+        pub pf5: PF5,
         #[doc = r" Pin F7"]
         pub pf7: PF7,
     }
@@ -106,25 +106,49 @@ pub mod gpio {
             }
 
             GpioParts {
-                pf4: PF4::new(),
+                pf5: PF5::new(),
                 pf7: PF7::new(),
             }
         }
     }
 
-    #[doc = stringify!(PF4)]
+    #[doc = stringify!(PF5)]
     #[doc = " pin"]
-    pub type PF4<MODE = Disabled> = Pin<'F', 4, MODE>;
+    pub type PF5<MODE = Disabled> = Pin<'F', 5, MODE>;
 
     #[doc = stringify!(PF7)]
     #[doc = " pin"]
     pub type PF7<MODE = Disabled> = Pin<'F', 7, MODE>;
 
+    impl Pin<'F', 5, Disabled> {
+        pub fn into_output(self) -> Pin<'F', 5, Output> {
+            let p = unsafe { Gpio::steal() };
+
+            p.port_f().model().modify(|_, w| w.mode5().pushpull());
+
+            Pin::new()
+        }
+    }
+
+    impl Pin<'F', 5, Output> {
+        pub fn set_high(&mut self) {
+            let p = unsafe { Gpio::steal() };
+            p.port_f().dout().modify(|_, w| w.dout5().set_bit());
+        }
+
+        pub fn set_low(&mut self) {
+            let p = unsafe { Gpio::steal() };
+            p.port_f().dout().modify(|_, w| w.dout5().clear_bit());
+        }
+    }
+
     impl Pin<'F', 7, Disabled> {
         pub fn into_input(self) -> Pin<'F', 7, Input> {
             let p = unsafe { Gpio::steal() };
-
+            // Set port pin mode to input
             p.port_f().model().modify(|_, w| w.mode7().input());
+            // Disable port pin filter
+            p.port_f().dout().modify(|_, w| w.dout7().clear_bit());
 
             Pin::new()
         }
@@ -137,4 +161,4 @@ pub mod gpio {
         }
     }
 }
-pub use gpio::{PF4, PF7};
+pub use gpio::{PF5, PF7};
