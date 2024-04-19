@@ -12,8 +12,8 @@ pub trait GpioExt {
 /// Generic port type
 ///
 /// - `P` is port name: `A` for GPIOA, `B` for GPIOB, etc.
-pub struct Port<const P: char, MODE> {
-    _mode: PhantomData<MODE>,
+pub struct Port<const P: char> {
+    // _mode: PhantomData<MODE>,
 }
 
 /// Generic pin type
@@ -169,11 +169,12 @@ pub struct OutputAltSelect;
 pub mod gpio {
     use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin};
     use pac::gpio::port_a::model::MODE0;
+    use pac::gpio::PortA as Portx;
 
     use super::{
         Disabled, Filter, Floating, Input, InputBuilder, NoFilter, OpenDrain, OpenSource, Output,
-        OutputAltBuilder, OutputAltSelect, OutputBuilder, OutputSelect, Pin, PullDown, PullUp,
-        PushPull,
+        OutputAltBuilder, OutputAltSelect, OutputBuilder, OutputSelect, Pin, Port, PullDown,
+        PullUp, PushPull,
     };
     use crate::pac::{self, Gpio};
 
@@ -515,9 +516,27 @@ pub mod gpio {
         }
     }
 
+    // impl Port<'A'> {
+    //     const fn ppp() -> &'static PortA {
+    //         unsafe { (*Gpio::ptr()).port_a() }
+    //     }
+    // }
+
+    // impl Port<'B'> {
+    //     const fn ppp() -> &'static PortA {
+    //         unsafe { (*Gpio::ptr()).port_b() }
+    //     }
+    // }
+
+    // impl<const P: char> Port<P> {
+    //     pub fn din() -> bool {
+    //         Self::ppp()
+    //     }
+    // }
+
     impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
-        fn set_mode(iomode: MODE0) {
-            let port = match P {
+        const fn port() -> &'static Portx {
+            match P {
                 'A' => unsafe { (*Gpio::ptr()).port_a() },
                 'B' => unsafe { (*Gpio::ptr()).port_b() },
                 'C' => unsafe { (*Gpio::ptr()).port_c() },
@@ -525,12 +544,14 @@ pub mod gpio {
                 'E' => unsafe { (*Gpio::ptr()).port_e() },
                 'F' => unsafe { (*Gpio::ptr()).port_f() },
                 _ => unreachable!(),
-            };
+            }
+        }
 
+        fn set_mode(iomode: MODE0) {
             match N {
                 0..=7 => {
                     // Set port pin mode to input
-                    port.model().modify(|_, w| {
+                    Self::port().model().modify(|_, w| {
                         match N {
                             0 => w.mode0(),
                             1 => w.mode1(),
@@ -547,7 +568,7 @@ pub mod gpio {
                 }
                 8..=15 => {
                     // Set port pin mode to input
-                    port.modeh().modify(|_, w| {
+                    Self::port().modeh().modify(|_, w| {
                         match N {
                             8 => w.mode8(),
                             9 => w.mode9(),
@@ -567,49 +588,19 @@ pub mod gpio {
         }
 
         fn set_dout(state: bool) {
-            let port = match P {
-                'A' => unsafe { (*Gpio::ptr()).port_a() },
-                'B' => unsafe { (*Gpio::ptr()).port_b() },
-                'C' => unsafe { (*Gpio::ptr()).port_c() },
-                'D' => unsafe { (*Gpio::ptr()).port_d() },
-                'E' => unsafe { (*Gpio::ptr()).port_e() },
-                'F' => unsafe { (*Gpio::ptr()).port_f() },
-                _ => unreachable!(),
-            };
-
             // Set/clear filter
-            port.dout().modify(|r, w| match state {
+            Self::port().dout().modify(|r, w| match state {
                 true => unsafe { w.pins_dout().bits(r.bits() as u16 | (1 << N)) },
                 false => unsafe { w.pins_dout().bits(r.bits() as u16 & !(1u16 << N)) },
             });
         }
 
         fn din() -> bool {
-            let port = match P {
-                'A' => unsafe { (*Gpio::ptr()).port_a() },
-                'B' => unsafe { (*Gpio::ptr()).port_b() },
-                'C' => unsafe { (*Gpio::ptr()).port_c() },
-                'D' => unsafe { (*Gpio::ptr()).port_d() },
-                'E' => unsafe { (*Gpio::ptr()).port_e() },
-                'F' => unsafe { (*Gpio::ptr()).port_f() },
-                _ => unreachable!(),
-            };
-
-            (port.din().read().bits() & (1u32 << N)) != 0
+            (Self::port().din().read().bits() & (1u32 << N)) != 0
         }
 
         fn din_dis() -> bool {
-            let port = match P {
-                'A' => unsafe { (*Gpio::ptr()).port_a() },
-                'B' => unsafe { (*Gpio::ptr()).port_b() },
-                'C' => unsafe { (*Gpio::ptr()).port_c() },
-                'D' => unsafe { (*Gpio::ptr()).port_d() },
-                'E' => unsafe { (*Gpio::ptr()).port_e() },
-                'F' => unsafe { (*Gpio::ptr()).port_f() },
-                _ => unreachable!(),
-            };
-
-            port.ctrl().read().din_dis().bit_is_set()
+            Self::port().ctrl().read().din_dis().bit_is_set()
         }
     }
 }
