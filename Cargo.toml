@@ -11,7 +11,12 @@ license = "MIT/Apache-2.0"
 repository = "https://github.com/BogdanOlar/efm32pg1b-hal"
 
 [dependencies]
-efm32pg1b-pac = { version = "0.2.4", features = ["critical-section", "rt"] }
+efm32pg1b-pac = { version = "0.2.5", features = [
+    "critical-section",
+    "rt",
+    "defmt",
+] }
+# efm32pg1b-pac = { path = "../efm32pg1b-pac" }
 embedded-hal = { version = "1" }
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.3"

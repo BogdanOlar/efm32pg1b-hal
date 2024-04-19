@@ -1,5 +1,4 @@
-use crate::pac;
-use core::{fmt, marker::PhantomData};
+use core::{convert::Infallible, fmt, marker::PhantomData};
 
 /// Extension trait to split a GPIO peripheral in independent pins and registers
 pub trait GpioExt {
@@ -8,6 +7,13 @@ pub trait GpioExt {
 
     /// Splits the GPIO block into independent pins and enables GPIO
     fn split(self) -> Self::Parts;
+}
+
+/// Generic port type
+///
+/// - `P` is port name: `A` for GPIOA, `B` for GPIOB, etc.
+pub struct Port<const P: char, MODE> {
+    _mode: PhantomData<MODE>,
 }
 
 /// Generic pin type
@@ -23,6 +29,11 @@ impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
     const fn new() -> Self {
         Self { _mode: PhantomData }
     }
+}
+
+// Implementations for `Pin` to be used for `embedded-hal` traits
+impl<const P: char, const N: u8, MODE> ErrorType for Pin<P, N, MODE> {
+    type Error = Infallible;
 }
 
 impl<const P: char, const N: u8, MODE> fmt::Debug for Pin<P, N, MODE> {
@@ -71,21 +82,99 @@ impl<const P: char, const N: u8, MODE> PinExt for Pin<P, N, MODE> {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Disabled;
 
-/// Input mode (type state)
+/// Input pin mode (type state)
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Input;
 
-/// Output mode (type state)
+/// Output pin mode (type state)
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Output;
 
+/// Input mode (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct InputBuilder<InputMode, FilterMode> {
+    _mode_input: PhantomData<InputMode>,
+    _mode_filter: PhantomData<FilterMode>,
+}
+
+/// Output mode (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct OutputBuilder<OutputKind, OutputMode, FilterMode> {
+    _mode_kind: PhantomData<OutputKind>,
+    _mode_output: PhantomData<OutputMode>,
+    _mode_filter: PhantomData<FilterMode>,
+}
+
+/// Output Alt mode (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct OutputAltBuilder<OutputKind, OutputMode, FilterMode> {
+    _mode_kind: PhantomData<OutputKind>,
+    _mode_output: PhantomData<OutputMode>,
+    _mode_filter: PhantomData<FilterMode>,
+}
+
+/// InputMode variant (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct Floating;
+
+/// InputMode variant (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct PullUp;
+
+/// InputMode variant (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct PullDown;
+
+/// FilterMode variant (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct NoFilter;
+
+/// FilterMode variant (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct Filter;
+
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct PushPull;
+
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct OpenSource;
+
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct OpenDrain;
+
+/// Initial Output mode (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct OutputSelect;
+
+/// Initial Output mode (type state)
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct OutputAltSelect;
+
 #[doc = r" GPIO"]
 pub mod gpio {
+    use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin};
     use pac::gpio::port_a::model::MODE0;
 
-    use super::{Disabled, Input, Output, Pin};
+    use super::{
+        Disabled, Filter, Floating, Input, InputBuilder, NoFilter, OpenDrain, OpenSource, Output,
+        OutputAltBuilder, OutputAltSelect, OutputBuilder, OutputSelect, Pin, PullDown, PullUp,
+        PushPull,
+    };
     use crate::pac::{self, Gpio};
 
     #[doc = r" GPIO parts"]
@@ -135,32 +224,294 @@ pub mod gpio {
     #[doc = " pin"]
     pub type PF7<MODE = Disabled> = Pin<'F', 7, MODE>;
 
+    impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
+        /// Blanket implementation for `Pin` typestates: all `Pin`s can be set to `disabled`
+        pub fn into_disabled(self) -> Pin<P, N, Disabled> {
+            Self::set_mode(MODE0::Disabled);
+            Self::set_dout(false);
+            Pin::new()
+        }
+    }
+
     impl<const P: char, const N: u8> Pin<P, N, Disabled> {
-        pub fn into_input(self) -> Pin<P, N, Input> {
+        pub fn with_pullup(self) -> Self {
+            Self::set_mode(MODE0::Disabled);
+            Self::set_dout(true);
+            self
+        }
+
+        pub fn into_input(self) -> Pin<P, N, InputBuilder<Floating, NoFilter>> {
             Self::set_mode(MODE0::Input);
-            Self::dout(false);
+            Self::set_dout(false);
             Pin::new()
         }
 
-        pub fn into_output(self) -> Pin<P, N, Output> {
+        pub fn into_output(self) -> Pin<P, N, OutputSelect> {
+            Pin::new()
+        }
+
+        pub fn into_output_alt(self) -> Pin<P, N, OutputAltSelect> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, InputBuilder<Floating, NoFilter>> {
+        pub fn with_filter(self) -> Pin<P, N, InputBuilder<Floating, Filter>> {
+            Self::set_mode(MODE0::Input);
+            Self::set_dout(true);
+            Pin::new()
+        }
+
+        pub fn with_pullup(self) -> Pin<P, N, InputBuilder<PullUp, NoFilter>> {
+            Self::set_mode(MODE0::Inputpull);
+            Self::set_dout(true);
+            Pin::new()
+        }
+
+        pub fn with_pulldown(self) -> Pin<P, N, InputBuilder<PullDown, NoFilter>> {
+            Self::set_mode(MODE0::Inputpull);
+            Self::set_dout(false);
+            Pin::new()
+        }
+
+        pub fn build(self) -> Pin<P, N, Input> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, InputBuilder<Floating, Filter>> {
+        pub fn build(self) -> Pin<P, N, Input> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullUp, NoFilter>> {
+        pub fn with_filter(self) -> Pin<P, N, InputBuilder<PullUp, Filter>> {
+            Self::set_mode(MODE0::Inputpullfilter);
+            Self::set_dout(true);
+            Pin::new()
+        }
+
+        pub fn build(self) -> Pin<P, N, Input> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullUp, Filter>> {
+        pub fn build(self) -> Pin<P, N, Input> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullDown, NoFilter>> {
+        pub fn with_filter(self) -> Pin<P, N, InputBuilder<PullDown, Filter>> {
+            Self::set_mode(MODE0::Inputpullfilter);
+            Self::set_dout(false);
+            Pin::new()
+        }
+
+        pub fn build(self) -> Pin<P, N, Input> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullDown, Filter>> {
+        pub fn build(self) -> Pin<P, N, Input> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputSelect> {
+        pub fn with_push_pull(self) -> Pin<P, N, OutputBuilder<PushPull, Floating, NoFilter>> {
             Self::set_mode(MODE0::Pushpull);
             Pin::new()
         }
-    }
 
-    impl<const P: char, const N: u8> Pin<P, N, Input> {
-        pub fn is_high(&self) -> bool {
-            Self::din()
+        pub fn with_open_source(self) -> Pin<P, N, OutputBuilder<OpenSource, Floating, NoFilter>> {
+            Self::set_mode(MODE0::Wiredor);
+            Pin::new()
+        }
+
+        pub fn with_open_drain(self) -> Pin<P, N, OutputBuilder<OpenDrain, Floating, NoFilter>> {
+            Self::set_mode(MODE0::Wiredand);
+            Pin::new()
         }
     }
 
-    impl<const P: char, const N: u8> Pin<P, N, Output> {
-        pub fn set_high(&mut self) {
-            Self::dout(true);
+    impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<PushPull, Floating, NoFilter>> {
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, Floating, NoFilter>> {
+        pub fn with_pulldown(self) -> Pin<P, N, OutputBuilder<OpenSource, PullDown, NoFilter>> {
+            Self::set_mode(MODE0::Wiredorpulldown);
+            Pin::new()
         }
 
-        pub fn set_low(&mut self) {
-            Self::dout(false);
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, PullDown, NoFilter>> {
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, NoFilter>> {
+        pub fn with_filter(self) -> Pin<P, N, OutputBuilder<OpenDrain, Floating, Filter>> {
+            Self::set_mode(MODE0::Wiredandfilter);
+            Pin::new()
+        }
+
+        pub fn with_pullup(self) -> Pin<P, N, OutputBuilder<OpenDrain, PullUp, NoFilter>> {
+            Self::set_mode(MODE0::Wiredandpullup);
+            Pin::new()
+        }
+
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, Filter>> {
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, Floating, Filter>> {
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, PullUp, NoFilter>> {
+        pub fn with_filter(self) -> Pin<P, N, OutputBuilder<OpenDrain, PullUp, Filter>> {
+            Self::set_mode(MODE0::Wiredandpullupfilter);
+            Pin::new()
+        }
+
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, PullUp, Filter>> {
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputAltSelect> {
+        pub fn with_push_pull(self) -> Pin<P, N, OutputAltBuilder<PushPull, Floating, NoFilter>> {
+            Self::set_mode(MODE0::Pushpullalt);
+            Pin::new()
+        }
+
+        pub fn with_open_drain(self) -> Pin<P, N, OutputAltBuilder<OpenDrain, Floating, NoFilter>> {
+            Self::set_mode(MODE0::Wiredandalt);
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<PushPull, Floating, NoFilter>> {
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, Floating, NoFilter>> {
+        pub fn with_filter(self) -> Pin<P, N, OutputAltBuilder<OpenDrain, Floating, Filter>> {
+            Self::set_mode(MODE0::Wiredandaltfilter);
+            Pin::new()
+        }
+
+        pub fn with_pullup(self) -> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, NoFilter>> {
+            Self::set_mode(MODE0::Wiredandaltpullup);
+            Pin::new()
+        }
+
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, Floating, Filter>> {
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, NoFilter>> {
+        pub fn with_filter(self) -> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, Filter>> {
+            Self::set_mode(MODE0::Wiredandaltpullupfilter);
+            Pin::new()
+        }
+
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, Filter>> {
+        pub fn build(self) -> Pin<P, N, Output> {
+            Pin::new()
+        }
+    }
+
+    impl<const P: char, const N: u8> InputPin for Pin<P, N, Input> {
+        fn is_high(&mut self) -> Result<bool, Self::Error> {
+            if Self::din_dis() {
+                // TODO: Data in is disabled for port, so we should return an error here
+                todo!()
+            } else {
+                Ok(Self::din())
+            }
+        }
+
+        fn is_low(&mut self) -> Result<bool, Self::Error> {
+            if Self::din_dis() {
+                // TODO: Data in is disabled for port, so we should return an error here
+                todo!()
+            } else {
+                Ok(!Self::din())
+            }
+        }
+    }
+
+    impl<const P: char, const N: u8> OutputPin for Pin<P, N, Output> {
+        fn set_low(&mut self) -> Result<(), Self::Error> {
+            Self::set_dout(false);
+            Ok(())
+        }
+
+        fn set_high(&mut self) -> Result<(), Self::Error> {
+            Self::set_dout(true);
+            Ok(())
+        }
+    }
+
+    impl<const P: char, const N: u8> StatefulOutputPin for Pin<P, N, Output> {
+        fn is_set_high(&mut self) -> Result<bool, Self::Error> {
+            if Self::din_dis() {
+                // TODO: Data in is disabled for port, so we should return an error here
+                todo!()
+            } else {
+                Ok(Self::din())
+            }
+        }
+
+        fn is_set_low(&mut self) -> Result<bool, Self::Error> {
+            if Self::din_dis() {
+                // TODO: Data in is disabled for port, so we should return an error here
+                todo!()
+            } else {
+                Ok(!Self::din())
+            }
         }
     }
 
@@ -215,7 +566,7 @@ pub mod gpio {
             }
         }
 
-        fn dout(state: bool) {
+        fn set_dout(state: bool) {
             let port = match P {
                 'A' => unsafe { (*Gpio::ptr()).port_a() },
                 'B' => unsafe { (*Gpio::ptr()).port_b() },
@@ -227,31 +578,9 @@ pub mod gpio {
             };
 
             // Set/clear filter
-            port.dout().modify(|_, w| {
-                let dout = match N {
-                    0 => w.dout0(),
-                    1 => w.dout1(),
-                    2 => w.dout2(),
-                    3 => w.dout3(),
-                    4 => w.dout4(),
-                    5 => w.dout5(),
-                    6 => w.dout6(),
-                    7 => w.dout7(),
-                    8 => w.dout8(),
-                    9 => w.dout9(),
-                    10 => w.dout10(),
-                    11 => w.dout11(),
-                    12 => w.dout12(),
-                    13 => w.dout13(),
-                    14 => w.dout14(),
-                    15 => w.dout15(),
-                    _ => unreachable!(),
-                };
-
-                match state {
-                    true => dout.set_bit(),
-                    false => dout.clear_bit(),
-                }
+            port.dout().modify(|r, w| match state {
+                true => unsafe { w.pins_dout().bits(r.bits() as u16 | (1 << N)) },
+                false => unsafe { w.pins_dout().bits(r.bits() as u16 & !(1u16 << N)) },
             });
         }
 
@@ -266,8 +595,23 @@ pub mod gpio {
                 _ => unreachable!(),
             };
 
-            (port.din().read().bits() & (1 << N)) != 0
+            (port.din().read().bits() & (1u32 << N)) != 0
+        }
+
+        fn din_dis() -> bool {
+            let port = match P {
+                'A' => unsafe { (*Gpio::ptr()).port_a() },
+                'B' => unsafe { (*Gpio::ptr()).port_b() },
+                'C' => unsafe { (*Gpio::ptr()).port_c() },
+                'D' => unsafe { (*Gpio::ptr()).port_d() },
+                'E' => unsafe { (*Gpio::ptr()).port_e() },
+                'F' => unsafe { (*Gpio::ptr()).port_f() },
+                _ => unreachable!(),
+            };
+
+            port.ctrl().read().din_dis().bit_is_set()
         }
     }
 }
+use embedded_hal::digital::ErrorType;
 pub use gpio::{PF5, PF7};
