@@ -4,7 +4,6 @@ use efm32pg1b_pac::{
     Gpio,
 };
 use embedded_hal::digital::{ErrorType, InputPin, OutputPin, StatefulOutputPin};
-pub use gpio::{PF5, PF7};
 
 /// Extension trait to split a GPIO peripheral in independent pins and registers
 pub trait GpioExt {
@@ -295,7 +294,7 @@ impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullDown, Filter>> {
 }
 
 impl<const P: char, const N: u8> Pin<P, N, OutputSelect> {
-    /// Builder for an output `Pin` with PullPull, Floating, and no Filter
+    /// Builder for an output `Pin` with PushPull, Floating, and no Filter
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_push_pull(self) -> Pin<P, N, OutputBuilder<PushPull, Floating, NoFilter>> {
@@ -540,7 +539,9 @@ impl<const P: char, const N: u8> StatefulOutputPin for Pin<P, N, Output> {
     }
 }
 
-/// Get the memory mapped `Portx` reference corresponding to the port specified by the generic parameter `P`
+/// Get the memory mapped `PortA` reference corresponding to the port specified by the generic parameter `P`
+///
+/// Note: We're returning a `PortA` because all ports use the same struct (they have type aliases to this type)
 const fn portx<const P: char>() -> &'static PortA {
     match P {
         'A' => unsafe { (*Gpio::ptr()).port_a() },
@@ -554,6 +555,7 @@ const fn portx<const P: char>() -> &'static PortA {
 }
 
 impl<const P: char> Port<P> {
+    /// Construct a new `Port` with the given generic parameter `P` identifier (`A` for GPIOA, `B` for GPIOB, etc.)
     const fn new() -> Self {
         Self {}
     }
@@ -572,6 +574,7 @@ impl<const P: char> Port<P> {
     }
 
     /// Get the Drive Strength setting of this port
+    ///
     /// TODO: Define an enum for DriveStrength (Strong is `0`, `Weak` is `1`)
     pub fn set_drive_strength(&self, is_weak: bool) {
         portx::<P>().ctrl().modify(|_, w| match is_weak {
@@ -581,6 +584,8 @@ impl<const P: char> Port<P> {
     }
 
     /// Set the Drive Strength setting of this port
+    ///
+    /// TODO: Define an enum for DriveStrength (Strong is `0`, `Weak` is `1`)
     pub fn set_drive_strength_alt(&self, is_weak: bool) {
         portx::<P>().ctrl().modify(|_, w| match is_weak {
             true => w.drive_strength_alt().set_bit(),
@@ -700,3 +705,4 @@ pub mod gpio {
     #[doc = " pin"]
     pub type PF7<MODE = Disabled> = Pin<'F', 7, MODE>;
 }
+pub use gpio::{PF5, PF7};
