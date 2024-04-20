@@ -6,7 +6,6 @@
 use cortex_m_rt::entry;
 use efm32pg1b_hal::prelude::*;
 use efm32pg1b_pac as pac;
-use embedded_hal::digital::{InputPin, OutputPin};
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
@@ -21,8 +20,14 @@ fn main() -> ! {
 
     let gpio = p.gpio.split();
 
+    gpio.port_f.set_drive_strength(false);
+    gpio.port_f.set_drive_strength_alt(true);
+
+    // Ups, don't do this until errors are implemented!
+    // gpio.port_f.set_din_dis(true);
+
     let mut led0 = gpio.pf4.into_output().with_push_pull().build();
-    let mut led1 = gpio.pf5.into_output().with_push_pull().build();
+    let mut led1 = gpio.pf5.into_output_alt().with_push_pull().build();
     let mut button0 = gpio.pf6.into_input().build();
     let mut button1 = gpio.pf7.into_input().build();
 
@@ -34,12 +39,7 @@ fn main() -> ! {
         if btn0_prev != btn0_cur {
             defmt::println!("btn0: {}", &btn0_cur);
 
-            if btn0_cur {
-                let _ = led0.set_low();
-            } else {
-                let _ = led0.set_high();
-            }
-
+            led0.toggle().unwrap();
             btn0_prev = btn0_cur;
         }
 
@@ -48,12 +48,7 @@ fn main() -> ! {
         if btn1_prev != btn1_cur {
             defmt::println!("btn1: {}", &btn1_cur);
 
-            if btn1_cur {
-                let _ = led1.set_low();
-            } else {
-                let _ = led1.set_high();
-            }
-
+            led1.toggle().unwrap();
             btn1_prev = btn1_cur;
         }
     }

@@ -7,6 +7,7 @@ pub mod gpio;
 
 pub mod prelude {
     pub use crate::gpio::GpioExt;
+    pub use embedded_hal::digital::{InputPin, OutputPin, PinState, StatefulOutputPin};
 }
 
 fn stripped_type_name<T>() -> &'static str {
