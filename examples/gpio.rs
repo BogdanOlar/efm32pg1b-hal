@@ -1,4 +1,4 @@
-//! Build with `cargo build --example gpio`
+//! Build with `cargo build --example gpio --features="defmt"`
 
 #![no_main]
 #![no_std]
