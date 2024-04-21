@@ -105,6 +105,33 @@ impl<const P: char, const N: u8, MODE> PinExt for Pin<P, N, MODE> {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Disabled;
 
+/// SWD Debug pin
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct Swd<SwdMode> {
+    _swd_mode: PhantomData<SwdMode>,
+}
+
+/// SwdMode (type state): SWD Clock
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct SwdClk;
+
+/// SwdMode (type state): SWD I/O
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct SwdDio;
+
+/// SwdMode (type state): TDO/SWO
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct SwdTdo;
+
+/// SwdMode (type state): TDI
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct SwdTdi;
+
 /// Input pin
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -787,7 +814,7 @@ impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
 
 #[doc = r" GPIO"]
 pub mod gpio {
-    use super::{Disabled, Pin, Port};
+    use super::{Disabled, Pin, Port, Swd, SwdClk, SwdDio, SwdTdi, SwdTdo};
     use crate::pac::{self, Gpio};
 
     #[doc = r" GPIO parts"]
@@ -796,6 +823,15 @@ pub mod gpio {
         pub port_e: Port<'E'>,
         #[doc = r" Port F configs for the entire port"]
         pub port_f: Port<'F'>,
+
+        #[doc = r" DEBUG Pin F0"]
+        pub pf0: PF0,
+        #[doc = r" DEBUG Pin F1"]
+        pub pf1: PF1,
+        #[doc = r" DEBUG Pin F2"]
+        pub pf2: PF2,
+        #[doc = r" DEBUG Pin F3"]
+        pub pf3: PF3,
 
         #[doc = r" Pin F5"]
         pub pf4: PF4,
@@ -820,6 +856,10 @@ pub mod gpio {
             GpioParts {
                 port_e: Port::new(),
                 port_f: Port::new(),
+                pf0: PF0::new(),
+                pf1: PF1::new(),
+                pf2: PF2::new(),
+                pf3: PF3::new(),
                 pf4: PF4::new(),
                 pf5: PF5::new(),
                 pf6: PF6::new(),
@@ -827,6 +867,22 @@ pub mod gpio {
             }
         }
     }
+
+    #[doc = stringify!(PF0)]
+    #[doc = " DEBUG pin"]
+    pub type PF0<MODE = Swd<SwdClk>> = Pin<'F', 0, MODE>;
+
+    #[doc = stringify!(PF1)]
+    #[doc = " DEBUG pin"]
+    pub type PF1<MODE = Swd<SwdDio>> = Pin<'F', 1, MODE>;
+
+    #[doc = stringify!(PF2)]
+    #[doc = " DEBUG pin"]
+    pub type PF2<MODE = Swd<SwdTdo>> = Pin<'F', 2, MODE>;
+
+    #[doc = stringify!(PF3)]
+    #[doc = " DEBUG pin"]
+    pub type PF3<MODE = Swd<SwdTdi>> = Pin<'F', 3, MODE>;
 
     #[doc = stringify!(PF4)]
     #[doc = " pin"]

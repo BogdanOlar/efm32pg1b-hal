@@ -6,7 +6,8 @@ pub use embedded_hal as hal;
 pub mod gpio;
 
 pub mod prelude {
-    pub use crate::gpio::GpioExt;
+    pub use crate::gpio::{DataInCtrl, DriveStrengthCtrl, GpioExt};
+    pub use efm32pg1b_pac as pac;
     pub use embedded_hal::digital::{InputPin, OutputPin, PinState, StatefulOutputPin};
 }
 

@@ -4,11 +4,8 @@
 #![no_std]
 
 use cortex_m_rt::entry;
-use efm32pg1b_hal::{
-    gpio::{DataInCtrl, DriveStrengthCtrl},
-    prelude::*,
-};
-use efm32pg1b_pac as pac;
+use efm32pg1b_hal::prelude::*;
+
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
@@ -27,10 +24,14 @@ fn main() -> ! {
     gpio.port_f
         .set_drive_strength_alt(DriveStrengthCtrl::Strong);
 
-    // Don't call `gpio.port_f.set_din_dis(DataInCtrl::Disabled)` because the debug pins are in port `F`
-    // But calling `gpio.port_f.set_din_dis_alt(DataInCtrl::Disabled)` is fine since the debug pins use the `Necessary`
-    // port `F` ctrl configs
-    // TODO: encode this constraint into the type states for the port(s) which contain pins used for SWD/JTAG
+    // This should not be called because the debug pins are `PF0`, `PF1`, `PF2`, `PF3`
+    // FIXME: encode this constraint into the type states for the port(s) which contain pins used for SWD/JTAG
+    // gpio.port_f.set_din_dis(DataInCtrl::Disabled);
+
+    // FIXME: this should not be permitted because `PF0` is a debug pin
+    // let mut dbg_swclk = gpio.pf0.into_disabled();
+
+    // Calling this is fine since the debug pins use the `Necessary` not the `Alternate` port `F` ctrl configs
     gpio.port_f.set_din_dis_alt(DataInCtrl::Disabled);
 
     let mut led0 = gpio.pf4.into_output().with_push_pull().build();
@@ -64,9 +65,9 @@ fn main() -> ! {
         match btn1.is_high() {
             Ok(btn1_cur) => {
                 if btn1_prev != btn1_cur {
-                    // This will fail because `led1` was constructed to use alt port config and Alt Data In is disabled.
-                    // `toggle()` will therefore fail because it is part of the `StatefulOutputPin` trait which needs
-                    // Data In (Alt, in this case) to function correctly.
+                    // NOTE: Toggle will fail because `led1` was constructed to use ALT port config and Alt Data In is
+                    // disabled. `toggle()` will therefore fail because it is part of the `StatefulOutputPin` trait
+                    // which needs Data In (Alt, in this case) to function correctly.
                     match led1.toggle() {
                         Ok(_) => {
                             defmt::println!("btn1: {}", &btn1_cur);
