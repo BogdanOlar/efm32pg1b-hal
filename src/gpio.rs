@@ -1,9 +1,9 @@
-use core::{convert::Infallible, fmt, marker::PhantomData};
+use core::{fmt, marker::PhantomData};
 use efm32pg1b_pac::{
     gpio::{port_a::model::MODE0, PortA},
     Gpio,
 };
-use embedded_hal::digital::{ErrorType, InputPin, OutputPin, StatefulOutputPin};
+use embedded_hal::digital::{self, ErrorKind, ErrorType, InputPin, OutputPin, StatefulOutputPin};
 
 /// Extension trait to split a GPIO peripheral in independent pins and registers
 pub trait GpioExt {
@@ -34,9 +34,25 @@ impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
     }
 }
 
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum GpioError {
+    /// Returned when an operation which reads the Data In value for a Pin cannot be completed because the
+    /// Data In Disabled port configuration is set
+    DataInDisabled,
+}
+
+impl embedded_hal::digital::Error for GpioError {
+    fn kind(&self) -> digital::ErrorKind {
+        match self {
+            GpioError::DataInDisabled => ErrorKind::Other,
+        }
+    }
+}
+
 // Implementations for `Pin` to be used for `embedded-hal` traits
 impl<const P: char, const N: u8, MODE> ErrorType for Pin<P, N, MODE> {
-    type Error = Infallible;
+    type Error = GpioError;
 }
 
 impl<const P: char, const N: u8, MODE> fmt::Debug for Pin<P, N, MODE> {
@@ -80,20 +96,32 @@ impl<const P: char, const N: u8, MODE> PinExt for Pin<P, N, MODE> {
     }
 }
 
-/// Disabled pin mode (type state)
+/// Disabled pin
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Disabled;
 
-/// Input pin mode (type state)
+/// Input pin
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Input;
 
-/// Output pin mode (type state)
+/// Output pin which uses either the `Necessary` or the `Alternate` output port control configs
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct Output<OutMode> {
+    _out_mode: PhantomData<OutMode>,
+}
+
+/// OutMode (type state): "Necessary" (as opposed to "Alternate")
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct Output;
+pub struct Necessary;
+
+/// OutMode (type state): "Alternate" (as opposed to "Necessary")
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct Alternate;
 
 /// Input mode (type state)
 #[derive(Debug, Default)]
@@ -321,7 +349,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputSelect> {
 
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<PushPull, Floating, NoFilter>> {
     /// Build an output `Pin` with PushPull
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
         Pin::new()
     }
 }
@@ -336,14 +364,14 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, Floating, N
     }
 
     /// Build an output `Pin` with OpenSource
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
         Pin::new()
     }
 }
 
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, PullDown, NoFilter>> {
     /// Build an output `Pin` with OpenSource and PullDown
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
         Pin::new()
     }
 }
@@ -366,21 +394,21 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, No
     }
 
     /// Build an output `Pin` with OpenDrain
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
         Pin::new()
     }
 }
 
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, Filter>> {
     /// Build an output `Pin` with OpenDrain and a Filter enabled
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
         Pin::new()
     }
 }
 
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, Floating, Filter>> {
     /// Build an output `Pin` with OpenSource and a Filter enabled
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
         Pin::new()
     }
 }
@@ -395,14 +423,14 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, PullUp, NoFi
     }
 
     /// Build an output `Pin` with OpenDrain and PullUp
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
         Pin::new()
     }
 }
 
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, PullUp, Filter>> {
     /// Build an output `Pin` with OpenDrain, a PullUp, and a Filter enabled
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
         Pin::new()
     }
 }
@@ -427,7 +455,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltSelect> {
 
 impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<PushPull, Floating, NoFilter>> {
     // Build an alternate output `Pin` with PushPull, and no Filter
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Alternate>> {
         Pin::new()
     }
 }
@@ -450,14 +478,14 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, Floating,
     }
 
     /// Build an alternate output `Pin` with OpenDrain and no Filter
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Alternate>> {
         Pin::new()
     }
 }
 
 impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, Floating, Filter>> {
     /// Build an alternate output `Pin` with OpenDrain and a Filter active
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Alternate>> {
         Pin::new()
     }
 }
@@ -472,14 +500,14 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, N
     }
 
     /// Build an alternate output `Pin` with OpenDrain, PullUp and no Filter
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Alternate>> {
         Pin::new()
     }
 }
 
 impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, Filter>> {
     /// Build an alternate output `Pin` with OpenDrain, PullUp and a Filter active
-    pub fn build(self) -> Pin<P, N, Output> {
+    pub fn build(self) -> Pin<P, N, Output<Alternate>> {
         Pin::new()
     }
 }
@@ -488,8 +516,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, F
 impl<const P: char, const N: u8> InputPin for Pin<P, N, Input> {
     fn is_high(&mut self) -> Result<bool, Self::Error> {
         if Port::<P>::new().din_dis() {
-            // TODO: Data in is disabled for port, so we should return an error here
-            todo!()
+            Err(GpioError::DataInDisabled)
         } else {
             Ok(Self::din())
         }
@@ -497,8 +524,7 @@ impl<const P: char, const N: u8> InputPin for Pin<P, N, Input> {
 
     fn is_low(&mut self) -> Result<bool, Self::Error> {
         if Port::<P>::new().din_dis() {
-            // TODO: Data in is disabled for port, so we should return an error here
-            todo!()
+            Err(GpioError::DataInDisabled)
         } else {
             Ok(!Self::din())
         }
@@ -506,7 +532,7 @@ impl<const P: char, const N: u8> InputPin for Pin<P, N, Input> {
 }
 
 /// `OutputPin` implementation for trait from `embedded-hal`
-impl<const P: char, const N: u8> OutputPin for Pin<P, N, Output> {
+impl<const P: char, const N: u8, OUTMODE> OutputPin for Pin<P, N, Output<OUTMODE>> {
     fn set_low(&mut self) -> Result<(), Self::Error> {
         Self::set_dout(false);
         Ok(())
@@ -519,11 +545,10 @@ impl<const P: char, const N: u8> OutputPin for Pin<P, N, Output> {
 }
 
 /// `StatefulOutputPin` implementation for trait from `embedded-hal`
-impl<const P: char, const N: u8> StatefulOutputPin for Pin<P, N, Output> {
+impl<const P: char, const N: u8> StatefulOutputPin for Pin<P, N, Output<Necessary>> {
     fn is_set_high(&mut self) -> Result<bool, Self::Error> {
         if Port::<P>::new().din_dis() {
-            // TODO: Data in is disabled for port, so we should return an error here
-            todo!()
+            Err(GpioError::DataInDisabled)
         } else {
             Ok(Self::din())
         }
@@ -531,8 +556,26 @@ impl<const P: char, const N: u8> StatefulOutputPin for Pin<P, N, Output> {
 
     fn is_set_low(&mut self) -> Result<bool, Self::Error> {
         if Port::<P>::new().din_dis() {
-            // TODO: Data in is disabled for port, so we should return an error here
-            todo!()
+            Err(GpioError::DataInDisabled)
+        } else {
+            Ok(!Self::din())
+        }
+    }
+}
+
+/// `StatefulOutputPin` (`Alternate` output mode) implementation for trait from `embedded-hal`
+impl<const P: char, const N: u8> StatefulOutputPin for Pin<P, N, Output<Alternate>> {
+    fn is_set_high(&mut self) -> Result<bool, Self::Error> {
+        if Port::<P>::new().din_dis_alt() {
+            Err(GpioError::DataInDisabled)
+        } else {
+            Ok(Self::din())
+        }
+    }
+
+    fn is_set_low(&mut self) -> Result<bool, Self::Error> {
+        if Port::<P>::new().din_dis_alt() {
+            Err(GpioError::DataInDisabled)
         } else {
             Ok(!Self::din())
         }
@@ -554,6 +597,26 @@ const fn portx<const P: char>() -> &'static PortA {
     }
 }
 
+/// Data In Control variants for `DIN_DIS` (and ALT) field in `GPIO_Px_CTRL` Port Control Register
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum DataInCtrl {
+    /// Data In is NOT disabled
+    Enabled,
+    /// Data In is disabled
+    Disabled,
+}
+
+/// Drive current variants for `DRIVESTRENGTH` (and ALT) field in `GPIO_Px_CTRL` Port Control Register
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum DriveStrengthCtrl {
+    /// Drive strength 10 mA drive current
+    Strong,
+    /// Drive strength 10 mA drive current
+    Weak,
+}
+
 impl<const P: char> Port<P> {
     /// Construct a new `Port` with the given generic parameter `P` identifier (`A` for GPIOA, `B` for GPIOB, etc.)
     const fn new() -> Self {
@@ -565,31 +628,40 @@ impl<const P: char> Port<P> {
         portx::<P>().ctrl().read().din_dis().bit_is_set()
     }
 
+    /// Get the Alternate Data In Disable setting of this port
+    pub fn din_dis_alt(&self) -> bool {
+        portx::<P>().ctrl().read().din_dis_alt().bit_is_set()
+    }
+
     /// Set the Data In Disable setting of this port
-    pub fn set_din_dis(&self, is_disabled: bool) {
-        portx::<P>().ctrl().modify(|_, w| match is_disabled {
-            true => w.din_dis().set_bit(),
-            false => w.din_dis().clear_bit(),
+    pub fn set_din_dis(&self, din_dis: DataInCtrl) {
+        portx::<P>().ctrl().modify(|_, w| match din_dis {
+            DataInCtrl::Enabled => w.din_dis().clear_bit(),
+            DataInCtrl::Disabled => w.din_dis().set_bit(),
+        })
+    }
+
+    /// Set the Alternate Data In Disable setting of this port
+    pub fn set_din_dis_alt(&self, din_dis: DataInCtrl) {
+        portx::<P>().ctrl().modify(|_, w| match din_dis {
+            DataInCtrl::Enabled => w.din_dis_alt().clear_bit(),
+            DataInCtrl::Disabled => w.din_dis_alt().set_bit(),
         })
     }
 
     /// Get the Drive Strength setting of this port
-    ///
-    /// TODO: Define an enum for DriveStrength (Strong is `0`, `Weak` is `1`)
-    pub fn set_drive_strength(&self, is_weak: bool) {
-        portx::<P>().ctrl().modify(|_, w| match is_weak {
-            true => w.drive_strength().set_bit(),
-            false => w.drive_strength().clear_bit(),
+    pub fn set_drive_strength(&self, drive_strength: DriveStrengthCtrl) {
+        portx::<P>().ctrl().modify(|_, w| match drive_strength {
+            DriveStrengthCtrl::Strong => w.drive_strength().clear_bit(),
+            DriveStrengthCtrl::Weak => w.drive_strength().set_bit(),
         })
     }
 
-    /// Set the Drive Strength setting of this port
-    ///
-    /// TODO: Define an enum for DriveStrength (Strong is `0`, `Weak` is `1`)
-    pub fn set_drive_strength_alt(&self, is_weak: bool) {
-        portx::<P>().ctrl().modify(|_, w| match is_weak {
-            true => w.drive_strength_alt().set_bit(),
-            false => w.drive_strength_alt().clear_bit(),
+    /// Set the Alternate Drive Strength setting of this port
+    pub fn set_drive_strength_alt(&self, drive_strength: DriveStrengthCtrl) {
+        portx::<P>().ctrl().modify(|_, w| match drive_strength {
+            DriveStrengthCtrl::Strong => w.drive_strength().clear_bit(),
+            DriveStrengthCtrl::Weak => w.drive_strength().set_bit(),
         })
     }
 }
@@ -657,6 +729,8 @@ pub mod gpio {
     #[doc = r" GPIO parts"]
     pub struct GpioParts {
         #[doc = r" Port F configs for the entire port"]
+        pub port_e: Port<'E'>,
+        #[doc = r" Port F configs for the entire port"]
         pub port_f: Port<'F'>,
 
         #[doc = r" Pin F5"]
@@ -680,6 +754,7 @@ pub mod gpio {
             }
 
             GpioParts {
+                port_e: Port::new(),
                 port_f: Port::new(),
                 pf4: PF4::new(),
                 pf5: PF5::new(),

@@ -4,7 +4,10 @@
 #![no_std]
 
 use cortex_m_rt::entry;
-use efm32pg1b_hal::prelude::*;
+use efm32pg1b_hal::{
+    gpio::{DataInCtrl, DriveStrengthCtrl},
+    prelude::*,
+};
 use efm32pg1b_pac as pac;
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
@@ -20,36 +23,61 @@ fn main() -> ! {
 
     let gpio = p.gpio.split();
 
-    gpio.port_f.set_drive_strength(false);
-    gpio.port_f.set_drive_strength_alt(true);
+    gpio.port_f.set_drive_strength(DriveStrengthCtrl::Strong);
+    gpio.port_f
+        .set_drive_strength_alt(DriveStrengthCtrl::Strong);
 
-    // Ups, don't do this until errors are implemented!
-    // gpio.port_f.set_din_dis(true);
+    // Don't call `gpio.port_f.set_din_dis(DataInCtrl::Disabled)` because the debug pins are in port `F`
+    // But calling `gpio.port_f.set_din_dis_alt(DataInCtrl::Disabled)` is fine since the debug pins use the `Necessary`
+    // port `F` ctrl configs
+    // TODO: encode this constraint into the type states for the port(s) which contain pins used for SWD/JTAG
+    gpio.port_f.set_din_dis_alt(DataInCtrl::Disabled);
 
     let mut led0 = gpio.pf4.into_output().with_push_pull().build();
     let mut led1 = gpio.pf5.into_output_alt().with_push_pull().build();
-    let mut button0 = gpio.pf6.into_input().build();
-    let mut button1 = gpio.pf7.into_input().build();
+    let mut btn0 = gpio.pf6.into_input().build();
+    let mut btn1 = gpio.pf7.into_input().build();
 
     let mut btn0_prev = true;
     let mut btn1_prev = true;
 
     loop {
-        let btn0_cur = button0.is_high().unwrap();
-        if btn0_prev != btn0_cur {
-            defmt::println!("btn0: {}", &btn0_cur);
-
-            led0.toggle().unwrap();
-            btn0_prev = btn0_cur;
+        match btn0.is_high() {
+            Ok(btn0_cur) => {
+                if btn0_prev != btn0_cur {
+                    match led0.toggle() {
+                        Ok(_) => {
+                            defmt::println!("led0: {}", &btn0_cur);
+                        }
+                        Err(e) => {
+                            defmt::println!("led0: {}", e);
+                        }
+                    }
+                    btn0_prev = btn0_cur;
+                }
+            }
+            Err(e) => {
+                defmt::println!("btn0: {}", e);
+            }
         }
 
-        let btn1_cur = button1.is_high().unwrap();
-
-        if btn1_prev != btn1_cur {
-            defmt::println!("btn1: {}", &btn1_cur);
-
-            led1.toggle().unwrap();
-            btn1_prev = btn1_cur;
+        match btn1.is_high() {
+            Ok(btn1_cur) => {
+                if btn1_prev != btn1_cur {
+                    match led1.toggle() {
+                        Ok(_) => {
+                            defmt::println!("btn1: {}", &btn1_cur);
+                        }
+                        Err(e) => {
+                            defmt::println!("led1: {}", e);
+                        }
+                    }
+                    btn1_prev = btn1_cur;
+                }
+            }
+            Err(e) => {
+                defmt::println!("btn1: {}", e);
+            }
         }
     }
 }
