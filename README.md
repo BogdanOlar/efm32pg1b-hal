@@ -1,9 +1,9 @@
 # efm32pg1b-hal
-Hardware abstraction layer (HAL) for [Silicon Labs EFM32PG1B](https://www.silabs.com/mcu/32-bit/efm32-pearl-gecko/device.EFM32PG1B200F256GM48) microcontrollers 
+Hardware abstraction layer (HAL) for [Silicon Labs EFM32PG1B](https://www.silabs.com/mcu/32-bit/efm32-pearl-gecko/device.EFM32PG1B200F256GM48) microcontrollers
 
 ## Documentation
 
-The [efm32pg1b-pac](https://github.com/BogdanOlar/efm32pg1b-pac) crate provides the register definitions and is reexported as `pac` by this crate.
+The [efm32pg1b-pac](https://github.com/BogdanOlar/efm32pg1b-pac) crate provides the register definitions and is re-exported as `pac` by this crate.
 
 
 Additional vendor supplied documents:

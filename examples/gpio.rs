@@ -15,8 +15,8 @@ use defmt_rtt as _;
 
 #[entry]
 fn main() -> ! {
-    let core_p = cortex_m::Peripherals::take().unwrap();
-    let mut p = pac::Peripherals::take().unwrap();
+    let _core_p = cortex_m::Peripherals::take().unwrap();
+    let p = pac::Peripherals::take().unwrap();
 
     let gpio = p.gpio.split();
 
@@ -43,51 +43,48 @@ fn main() -> ! {
     let mut btn1_prev = true;
 
     loop {
-        match btn0.is_high() {
-            Ok(btn0_cur) => {
-                if btn0_prev != btn0_cur {
-                    match led0.toggle() {
-                        Ok(_) => {
-                            defmt::println!("led0: {}", &btn0_cur);
-                        }
-                        Err(e) => {
-                            defmt::println!("led0: {}", e);
-                        }
+        // Button 0 and LED 0
+        if let Ok(btn0_cur) = btn0.is_high() {
+            if btn0_cur != btn0_prev {
+                match led0.toggle() {
+                    Ok(_) => {
+                        defmt::println!("led0: {}", &btn0_cur);
                     }
-                    btn0_prev = btn0_cur;
+                    Err(e) => {
+                        defmt::println!("led0: {}", e);
+                    }
                 }
-            }
-            Err(e) => {
-                defmt::println!("btn0: {}", e);
+                btn0_prev = btn0_cur;
             }
         }
 
-        match btn1.is_high() {
-            Ok(btn1_cur) => {
-                if btn1_prev != btn1_cur {
-                    // NOTE: Toggle will fail because `led1` was constructed to use ALT port config and Alt Data In is
-                    // disabled. `toggle()` will therefore fail because it is part of the `StatefulOutputPin` trait
-                    // which needs Data In (Alt, in this case) to function correctly.
-                    match led1.toggle() {
-                        Ok(_) => {
-                            defmt::println!("btn1: {}", &btn1_cur);
-                        }
-                        Err(e) => {
-                            // will print out "led1: DataInDisabled"
-                            defmt::println!("led1: {}", e);
-
-                            // We can still use the `OutputPin` trait methods, since those don't depent on stateful output
-                            let res = led1.set_state(btn1_prev.into());
-
-                            // will print out "led1: Ok(())"
-                            defmt::println!("led1: {}", res);
-                        }
+        // Button 1 and LED 1
+        if let Ok(btn1_cur) = btn1.is_high() {
+            if btn1_cur != btn1_prev {
+                // NOTE: Toggle will fail because `led1` was constructed to use ALT port config and Alt Data In is
+                // disabled. `toggle()` will therefore fail because it's a method of the `StatefulOutputPin` trait,
+                // which needs Data In (Alt, in this case) to function correctly.
+                match led1.toggle() {
+                    Ok(_) => {
+                        defmt::println!("btn1: {}", &btn1_cur);
                     }
-                    btn1_prev = btn1_cur;
+                    Err(e) => {
+                        // will print out "led1: DataInDisabled"
+                        defmt::println!("led1 `toggle()`: {}", e);
+
+                        // NOTE: We can still use the `OutputPin` trait methods, since those don't depent on stateful
+                        // output
+                        let res = led1.set_state(btn1_prev.into());
+
+                        //led1 `set_state(Low)`: Ok(())
+                        // OR
+                        // led1 `set_state(High)`: Ok(())
+                        defmt::println!("led1 `set_state({})`: {}", PinState::from(btn1_prev), res);
+                        // will print out "led1: Ok(())"
+                        defmt::println!("btn1: {}", &btn1_cur);
+                    }
                 }
-            }
-            Err(e) => {
-                defmt::println!("btn1: {}", e);
+                btn1_prev = btn1_cur;
             }
         }
     }

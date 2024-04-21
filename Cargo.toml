@@ -39,3 +39,7 @@ lto = true        # better optimizations
 [[example]]
 name = "gpio"
 required-features = ["defmt"] # stm32f429
+
+[dev-dependencies]
+# Be able to print out types in `embedded-hal` when running the examples
+embedded-hal = { version = "1", features = ["defmt-03"] }
