@@ -40,12 +40,16 @@ pub enum GpioError {
     /// Returned when an operation which reads the Data In value for a Pin cannot be completed because the
     /// Data In Disabled port configuration is set
     DataInDisabled,
+
+    /// Invalid pin configuration
+    InvalidConfig,
 }
 
 impl embedded_hal::digital::Error for GpioError {
     fn kind(&self) -> digital::ErrorKind {
         match self {
             GpioError::DataInDisabled => ErrorKind::Other,
+            GpioError::InvalidConfig => ErrorKind::Other,
         }
     }
 }
@@ -597,7 +601,7 @@ const fn portx<const P: char>() -> &'static PortA {
     }
 }
 
-/// Data In Control variants for `DIN_DIS` (and ALT) field in `GPIO_Px_CTRL` Port Control Register
+/// Data In Control variants for `DIN_DIS` (and `ALT`) field in `GPIO_Px_CTRL` Port Control Register
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DataInCtrl {
@@ -607,7 +611,7 @@ pub enum DataInCtrl {
     Disabled,
 }
 
-/// Drive current variants for `DRIVESTRENGTH` (and ALT) field in `GPIO_Px_CTRL` Port Control Register
+/// Drive current variants for `DRIVESTRENGTH` (and `ALT`) field in `GPIO_Px_CTRL` Port Control Register
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DriveStrengthCtrl {
@@ -621,6 +625,82 @@ impl<const P: char> Port<P> {
     /// Construct a new `Port` with the given generic parameter `P` identifier (`A` for GPIOA, `B` for GPIOB, etc.)
     const fn new() -> Self {
         Self {}
+    }
+
+    /// Get the Drive Strength setting of this port
+    pub fn drive_strength(&self) -> DriveStrengthCtrl {
+        match portx::<P>().ctrl().read().drive_strength().bit() {
+            true => DriveStrengthCtrl::Weak,
+            false => DriveStrengthCtrl::Strong,
+        }
+    }
+
+    /// Get the Alternate Drive Strength setting of this port
+    pub fn drive_strength_alt(&self) -> DriveStrengthCtrl {
+        match portx::<P>().ctrl().read().drive_strength_alt().bit() {
+            true => DriveStrengthCtrl::Weak,
+            false => DriveStrengthCtrl::Strong,
+        }
+    }
+
+    /// Set the Drive Strength setting of this port
+    pub fn set_drive_strength(&self, drive_strength: DriveStrengthCtrl) {
+        portx::<P>().ctrl().modify(|_, w| match drive_strength {
+            DriveStrengthCtrl::Strong => w.drive_strength().clear_bit(),
+            DriveStrengthCtrl::Weak => w.drive_strength().set_bit(),
+        })
+    }
+
+    /// Set the Alternate Drive Strength setting of this port
+    pub fn set_drive_strength_alt(&self, drive_strength: DriveStrengthCtrl) {
+        portx::<P>().ctrl().modify(|_, w| match drive_strength {
+            DriveStrengthCtrl::Strong => w.drive_strength().clear_bit(),
+            DriveStrengthCtrl::Weak => w.drive_strength().set_bit(),
+        })
+    }
+
+    /// Get the Slew Rate setting of this port. Higher values represent faster slewrates.
+    ///
+    /// Max value is `5`.
+    pub fn slew_rate(&self) -> u8 {
+        portx::<P>().ctrl().read().slew_rate().bits()
+    }
+
+    /// Get the Slew Rate setting of this port. Higher values represent faster slewrates.
+    ///
+    /// Max value is `5`.
+    pub fn slew_rate_alt(&self) -> u8 {
+        portx::<P>().ctrl().read().slew_rate_alt().bits()
+    }
+
+    /// Set the Slew Rate setting of this port. Higher values represent faster slewrates
+    ///
+    /// Note: `0 <= slew_rate <= 5`
+    pub fn set_slew_rate(&self, slew_rate: u8) -> Result<(), GpioError> {
+        match slew_rate {
+            0..=5 => {
+                portx::<P>()
+                    .ctrl()
+                    .modify(|_, w| unsafe { w.slew_rate().bits(slew_rate) });
+                Ok(())
+            }
+            _ => Err(GpioError::InvalidConfig),
+        }
+    }
+
+    /// Set the Alternate Slew Rate setting of this port. Higher values represent faster slewrates.
+    ///
+    /// Note: `0 <= slew_rate <= 5`
+    pub fn set_slew_rate_alt(&self, slew_rate: u8) -> Result<(), GpioError> {
+        match slew_rate {
+            0..=5 => {
+                portx::<P>()
+                    .ctrl()
+                    .modify(|_, w| unsafe { w.slew_rate_alt().bits(slew_rate) });
+                Ok(())
+            }
+            _ => Err(GpioError::InvalidConfig),
+        }
     }
 
     /// Get the Data In Disable setting of this port
@@ -646,22 +726,6 @@ impl<const P: char> Port<P> {
         portx::<P>().ctrl().modify(|_, w| match din_dis {
             DataInCtrl::Enabled => w.din_dis_alt().clear_bit(),
             DataInCtrl::Disabled => w.din_dis_alt().set_bit(),
-        })
-    }
-
-    /// Get the Drive Strength setting of this port
-    pub fn set_drive_strength(&self, drive_strength: DriveStrengthCtrl) {
-        portx::<P>().ctrl().modify(|_, w| match drive_strength {
-            DriveStrengthCtrl::Strong => w.drive_strength().clear_bit(),
-            DriveStrengthCtrl::Weak => w.drive_strength().set_bit(),
-        })
-    }
-
-    /// Set the Alternate Drive Strength setting of this port
-    pub fn set_drive_strength_alt(&self, drive_strength: DriveStrengthCtrl) {
-        portx::<P>().ctrl().modify(|_, w| match drive_strength {
-            DriveStrengthCtrl::Strong => w.drive_strength().clear_bit(),
-            DriveStrengthCtrl::Weak => w.drive_strength().set_bit(),
         })
     }
 }

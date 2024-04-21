@@ -64,12 +64,22 @@ fn main() -> ! {
         match btn1.is_high() {
             Ok(btn1_cur) => {
                 if btn1_prev != btn1_cur {
+                    // This will fail because `led1` was constructed to use alt port config and Alt Data In is disabled.
+                    // `toggle()` will therefore fail because it is part of the `StatefulOutputPin` trait which needs
+                    // Data In (Alt, in this case) to function correctly.
                     match led1.toggle() {
                         Ok(_) => {
                             defmt::println!("btn1: {}", &btn1_cur);
                         }
                         Err(e) => {
+                            // will print out "led1: DataInDisabled"
                             defmt::println!("led1: {}", e);
+
+                            // We can still use the `OutputPin` trait methods, since those don't depent on stateful output
+                            let res = led1.set_state(btn1_prev.into());
+
+                            // will print out "led1: Ok(())"
+                            defmt::println!("led1: {}", res);
                         }
                     }
                     btn1_prev = btn1_cur;
