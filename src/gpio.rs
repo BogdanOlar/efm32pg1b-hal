@@ -249,8 +249,6 @@ impl<const P: char, const N: u8> Pin<P, N, Disabled> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn into_input(self) -> Pin<P, N, InputBuilder<Floating, NoFilter>> {
-        Self::set_mode(MODE0::Input);
-        Self::set_dout(false);
         Pin::new()
     }
 
@@ -270,8 +268,6 @@ impl<const P: char, const N: u8> Pin<P, N, InputBuilder<Floating, NoFilter>> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_filter(self) -> Pin<P, N, InputBuilder<Floating, Filter>> {
-        Self::set_mode(MODE0::Input);
-        Self::set_dout(true);
         Pin::new()
     }
 
@@ -279,8 +275,6 @@ impl<const P: char, const N: u8> Pin<P, N, InputBuilder<Floating, NoFilter>> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_pullup(self) -> Pin<P, N, InputBuilder<PullUp, NoFilter>> {
-        Self::set_mode(MODE0::Inputpull);
-        Self::set_dout(true);
         Pin::new()
     }
 
@@ -288,13 +282,13 @@ impl<const P: char, const N: u8> Pin<P, N, InputBuilder<Floating, NoFilter>> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_pulldown(self) -> Pin<P, N, InputBuilder<PullDown, NoFilter>> {
-        Self::set_mode(MODE0::Inputpull);
-        Self::set_dout(false);
         Pin::new()
     }
 
     /// Build an input `Pin` with no PullUp and no Filter
     pub fn build(self) -> Pin<P, N, Input> {
+        Self::set_mode(MODE0::Input);
+        Self::set_dout(false);
         Pin::new()
     }
 }
@@ -302,6 +296,8 @@ impl<const P: char, const N: u8> Pin<P, N, InputBuilder<Floating, NoFilter>> {
 impl<const P: char, const N: u8> Pin<P, N, InputBuilder<Floating, Filter>> {
     /// Build an input `Pin` with no PullUp and a Filter enabled
     pub fn build(self) -> Pin<P, N, Input> {
+        Self::set_mode(MODE0::Input);
+        Self::set_dout(true);
         Pin::new()
     }
 }
@@ -311,13 +307,13 @@ impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullUp, NoFilter>> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_filter(self) -> Pin<P, N, InputBuilder<PullUp, Filter>> {
-        Self::set_mode(MODE0::Inputpullfilter);
-        Self::set_dout(true);
         Pin::new()
     }
 
     /// Build an input `Pin` with PullUp and no Filter
     pub fn build(self) -> Pin<P, N, Input> {
+        Self::set_mode(MODE0::Inputpull);
+        Self::set_dout(true);
         Pin::new()
     }
 }
@@ -325,6 +321,8 @@ impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullUp, NoFilter>> {
 impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullUp, Filter>> {
     /// Build an input `Pin` with PullUp and a Filter enabled
     pub fn build(self) -> Pin<P, N, Input> {
+        Self::set_mode(MODE0::Inputpullfilter);
+        Self::set_dout(true);
         Pin::new()
     }
 }
@@ -334,13 +332,13 @@ impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullDown, NoFilter>> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_filter(self) -> Pin<P, N, InputBuilder<PullDown, Filter>> {
-        Self::set_mode(MODE0::Inputpullfilter);
-        Self::set_dout(false);
         Pin::new()
     }
 
     /// Build an input `Pin` with PullDown and no Filter
     pub fn build(self) -> Pin<P, N, Input> {
+        Self::set_mode(MODE0::Inputpull);
+        Self::set_dout(false);
         Pin::new()
     }
 }
@@ -348,6 +346,8 @@ impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullDown, NoFilter>> {
 impl<const P: char, const N: u8> Pin<P, N, InputBuilder<PullDown, Filter>> {
     /// Build an input `Pin` with PullDown and a Filter enabled
     pub fn build(self) -> Pin<P, N, Input> {
+        Self::set_mode(MODE0::Inputpullfilter);
+        Self::set_dout(false);
         Pin::new()
     }
 }
@@ -357,7 +357,6 @@ impl<const P: char, const N: u8> Pin<P, N, OutputSelect> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_push_pull(self) -> Pin<P, N, OutputBuilder<PushPull, Floating, NoFilter>> {
-        Self::set_mode(MODE0::Pushpull);
         Pin::new()
     }
 
@@ -365,7 +364,6 @@ impl<const P: char, const N: u8> Pin<P, N, OutputSelect> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_open_source(self) -> Pin<P, N, OutputBuilder<OpenSource, Floating, NoFilter>> {
-        Self::set_mode(MODE0::Wiredor);
         Pin::new()
     }
 
@@ -373,7 +371,6 @@ impl<const P: char, const N: u8> Pin<P, N, OutputSelect> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_open_drain(self) -> Pin<P, N, OutputBuilder<OpenDrain, Floating, NoFilter>> {
-        Self::set_mode(MODE0::Wiredand);
         Pin::new()
     }
 }
@@ -381,6 +378,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputSelect> {
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<PushPull, Floating, NoFilter>> {
     /// Build an output `Pin` with PushPull
     pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+        Self::set_mode(MODE0::Pushpull);
         Pin::new()
     }
 }
@@ -390,12 +388,12 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, Floating, N
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_pulldown(self) -> Pin<P, N, OutputBuilder<OpenSource, PullDown, NoFilter>> {
-        Self::set_mode(MODE0::Wiredorpulldown);
         Pin::new()
     }
 
     /// Build an output `Pin` with OpenSource
     pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+        Self::set_mode(MODE0::Wiredor);
         Pin::new()
     }
 }
@@ -403,6 +401,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, Floating, N
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, PullDown, NoFilter>> {
     /// Build an output `Pin` with OpenSource and PullDown
     pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+        Self::set_mode(MODE0::Wiredorpulldown);
         Pin::new()
     }
 }
@@ -412,7 +411,6 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, No
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_filter(self) -> Pin<P, N, OutputBuilder<OpenDrain, Floating, Filter>> {
-        Self::set_mode(MODE0::Wiredandfilter);
         Pin::new()
     }
 
@@ -420,12 +418,12 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, No
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_pullup(self) -> Pin<P, N, OutputBuilder<OpenDrain, PullUp, NoFilter>> {
-        Self::set_mode(MODE0::Wiredandpullup);
         Pin::new()
     }
 
     /// Build an output `Pin` with OpenDrain
     pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+        Self::set_mode(MODE0::Wiredand);
         Pin::new()
     }
 }
@@ -433,6 +431,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, No
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, Filter>> {
     /// Build an output `Pin` with OpenDrain and a Filter enabled
     pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+        Self::set_mode(MODE0::Wiredandfilter);
         Pin::new()
     }
 }
@@ -449,12 +448,12 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, PullUp, NoFi
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_filter(self) -> Pin<P, N, OutputBuilder<OpenDrain, PullUp, Filter>> {
-        Self::set_mode(MODE0::Wiredandpullupfilter);
         Pin::new()
     }
 
     /// Build an output `Pin` with OpenDrain and PullUp
     pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+        Self::set_mode(MODE0::Wiredandpullup);
         Pin::new()
     }
 }
@@ -462,6 +461,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, PullUp, NoFi
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, PullUp, Filter>> {
     /// Build an output `Pin` with OpenDrain, a PullUp, and a Filter enabled
     pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+        Self::set_mode(MODE0::Wiredandpullupfilter);
         Pin::new()
     }
 }
@@ -471,7 +471,6 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltSelect> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_push_pull(self) -> Pin<P, N, OutputAltBuilder<PushPull, Floating, NoFilter>> {
-        Self::set_mode(MODE0::Pushpullalt);
         Pin::new()
     }
 
@@ -479,7 +478,6 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltSelect> {
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_open_drain(self) -> Pin<P, N, OutputAltBuilder<OpenDrain, Floating, NoFilter>> {
-        Self::set_mode(MODE0::Wiredandalt);
         Pin::new()
     }
 }
@@ -487,6 +485,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltSelect> {
 impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<PushPull, Floating, NoFilter>> {
     // Build an alternate output `Pin` with PushPull, and no Filter
     pub fn build(self) -> Pin<P, N, Output<Alternate>> {
+        Self::set_mode(MODE0::Pushpullalt);
         Pin::new()
     }
 }
@@ -496,7 +495,6 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, Floating,
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_filter(self) -> Pin<P, N, OutputAltBuilder<OpenDrain, Floating, Filter>> {
-        Self::set_mode(MODE0::Wiredandaltfilter);
         Pin::new()
     }
 
@@ -504,12 +502,12 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, Floating,
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_pullup(self) -> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, NoFilter>> {
-        Self::set_mode(MODE0::Wiredandaltpullup);
         Pin::new()
     }
 
     /// Build an alternate output `Pin` with OpenDrain and no Filter
     pub fn build(self) -> Pin<P, N, Output<Alternate>> {
+        Self::set_mode(MODE0::Wiredandalt);
         Pin::new()
     }
 }
@@ -517,6 +515,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, Floating,
 impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, Floating, Filter>> {
     /// Build an alternate output `Pin` with OpenDrain and a Filter active
     pub fn build(self) -> Pin<P, N, Output<Alternate>> {
+        Self::set_mode(MODE0::Wiredandaltfilter);
         Pin::new()
     }
 }
@@ -526,12 +525,12 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, N
     ///
     /// Note you need to call `build()` in order to finalize the pin builder and get a usable pin
     pub fn with_filter(self) -> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, Filter>> {
-        Self::set_mode(MODE0::Wiredandaltpullupfilter);
         Pin::new()
     }
 
     /// Build an alternate output `Pin` with OpenDrain, PullUp and no Filter
     pub fn build(self) -> Pin<P, N, Output<Alternate>> {
+        Self::set_mode(MODE0::Wiredandaltpullup);
         Pin::new()
     }
 }
@@ -539,6 +538,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, N
 impl<const P: char, const N: u8> Pin<P, N, OutputAltBuilder<OpenDrain, PullUp, Filter>> {
     /// Build an alternate output `Pin` with OpenDrain, PullUp and a Filter active
     pub fn build(self) -> Pin<P, N, Output<Alternate>> {
+        Self::set_mode(MODE0::Wiredandaltpullupfilter);
         Pin::new()
     }
 }
@@ -819,10 +819,25 @@ pub mod gpio {
 
     #[doc = r" GPIO parts"]
     pub struct GpioParts {
-        #[doc = r" Port F configs for the entire port"]
+        #[doc = r" Port A configs for the entire port"]
+        pub port_a: Port<'A'>,
+        #[doc = r" Port B configs for the entire port"]
+        pub port_b: Port<'B'>,
+        #[doc = r" Port C configs for the entire port"]
+        pub port_c: Port<'C'>,
+        #[doc = r" Port D configs for the entire port"]
+        pub port_d: Port<'D'>,
+        #[doc = r" Port E configs for the entire port"]
         pub port_e: Port<'E'>,
         #[doc = r" Port F configs for the entire port"]
         pub port_f: Port<'F'>,
+
+        pub pc6: PC6,
+        pub pc7: PC7,
+        pub pc8: PC8,
+        pub pd13: PD13,
+        pub pd14: PD14,
+        pub pd15: PD15,
 
         #[doc = r" DEBUG Pin F0"]
         pub pf0: PF0,
@@ -854,8 +869,20 @@ pub mod gpio {
             }
 
             GpioParts {
+                port_a: Port::new(),
+                port_b: Port::new(),
+                port_c: Port::new(),
+                port_d: Port::new(),
                 port_e: Port::new(),
                 port_f: Port::new(),
+
+                pc6: PC6::new(),
+                pc7: PC7::new(),
+                pc8: PC8::new(),
+                pd13: PD13::new(),
+                pd14: PD14::new(),
+                pd15: PD15::new(),
+
                 pf0: PF0::new(),
                 pf1: PF1::new(),
                 pf2: PF2::new(),
@@ -867,6 +894,13 @@ pub mod gpio {
             }
         }
     }
+
+    pub type PC6<MODE = Disabled> = Pin<'C', 6, MODE>;
+    pub type PC7<MODE = Disabled> = Pin<'C', 7, MODE>;
+    pub type PC8<MODE = Disabled> = Pin<'C', 8, MODE>;
+    pub type PD13<MODE = Disabled> = Pin<'D', 13, MODE>;
+    pub type PD14<MODE = Disabled> = Pin<'D', 14, MODE>;
+    pub type PD15<MODE = Disabled> = Pin<'D', 15, MODE>;
 
     #[doc = stringify!(PF0)]
     #[doc = " DEBUG pin"]
