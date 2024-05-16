@@ -20,6 +20,27 @@
                 "kind": "build",
                 "isDefault": true
             }
+        },
+        {
+            "label": "cargo build example spi",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "spi",
+                "--features='defmt'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "presentation": {
+                "clear": true
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }

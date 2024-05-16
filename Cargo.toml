@@ -16,7 +16,6 @@ efm32pg1b-pac = { version = "0.2.5", features = [
     "rt",
     "defmt",
 ] }
-# efm32pg1b-pac = { path = "../efm32pg1b-pac" }
 embedded-hal = { version = "1" }
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.3"
@@ -38,7 +37,11 @@ lto = true        # better optimizations
 
 [[example]]
 name = "gpio"
-required-features = ["defmt"] # stm32f429
+required-features = ["defmt"]
+
+[[example]]
+name = "spi"
+required-features = ["defmt"]
 
 [dev-dependencies]
 # Be able to print out types in `embedded-hal` when running the examples
