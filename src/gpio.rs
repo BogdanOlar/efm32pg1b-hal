@@ -137,19 +137,19 @@ pub struct SwdTdi;
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Input;
 
-/// Output pin which uses either the `Necessary` or the `Alternate` output port control configs
+/// Output pin which uses either the `Primary` or the `Alternate` output port control configs
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Output<OutMode> {
     _out_mode: PhantomData<OutMode>,
 }
 
-/// OutMode (type state): "Necessary" (as opposed to "Alternate")
+/// OutMode (type state): "Primary" (as opposed to "Alternate")
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct Necessary;
+pub struct Primary;
 
-/// OutMode (type state): "Alternate" (as opposed to "Necessary")
+/// OutMode (type state): "Alternate" (as opposed to "Primary")
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Alternate;
@@ -377,7 +377,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputSelect> {
 
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<PushPull, Floating, NoFilter>> {
     /// Build an output `Pin` with PushPull
-    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+    pub fn build(self) -> Pin<P, N, Output<Primary>> {
         Self::set_mode(MODE0::Pushpull);
         Pin::new()
     }
@@ -392,7 +392,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, Floating, N
     }
 
     /// Build an output `Pin` with OpenSource
-    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+    pub fn build(self) -> Pin<P, N, Output<Primary>> {
         Self::set_mode(MODE0::Wiredor);
         Pin::new()
     }
@@ -400,7 +400,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, Floating, N
 
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, PullDown, NoFilter>> {
     /// Build an output `Pin` with OpenSource and PullDown
-    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+    pub fn build(self) -> Pin<P, N, Output<Primary>> {
         Self::set_mode(MODE0::Wiredorpulldown);
         Pin::new()
     }
@@ -422,7 +422,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, No
     }
 
     /// Build an output `Pin` with OpenDrain
-    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+    pub fn build(self) -> Pin<P, N, Output<Primary>> {
         Self::set_mode(MODE0::Wiredand);
         Pin::new()
     }
@@ -430,7 +430,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, No
 
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, Filter>> {
     /// Build an output `Pin` with OpenDrain and a Filter enabled
-    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+    pub fn build(self) -> Pin<P, N, Output<Primary>> {
         Self::set_mode(MODE0::Wiredandfilter);
         Pin::new()
     }
@@ -438,7 +438,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, Floating, Fi
 
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenSource, Floating, Filter>> {
     /// Build an output `Pin` with OpenSource and a Filter enabled
-    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+    pub fn build(self) -> Pin<P, N, Output<Primary>> {
         Pin::new()
     }
 }
@@ -452,7 +452,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, PullUp, NoFi
     }
 
     /// Build an output `Pin` with OpenDrain and PullUp
-    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+    pub fn build(self) -> Pin<P, N, Output<Primary>> {
         Self::set_mode(MODE0::Wiredandpullup);
         Pin::new()
     }
@@ -460,7 +460,7 @@ impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, PullUp, NoFi
 
 impl<const P: char, const N: u8> Pin<P, N, OutputBuilder<OpenDrain, PullUp, Filter>> {
     /// Build an output `Pin` with OpenDrain, a PullUp, and a Filter enabled
-    pub fn build(self) -> Pin<P, N, Output<Necessary>> {
+    pub fn build(self) -> Pin<P, N, Output<Primary>> {
         Self::set_mode(MODE0::Wiredandpullupfilter);
         Pin::new()
     }
@@ -576,7 +576,7 @@ impl<const P: char, const N: u8, OUTMODE> OutputPin for Pin<P, N, Output<OUTMODE
 }
 
 /// `StatefulOutputPin` implementation for trait from `embedded-hal`
-impl<const P: char, const N: u8> StatefulOutputPin for Pin<P, N, Output<Necessary>> {
+impl<const P: char, const N: u8> StatefulOutputPin for Pin<P, N, Output<Primary>> {
     fn is_set_high(&mut self) -> Result<bool, Self::Error> {
         if Port::<P>::new().din_dis() {
             Err(GpioError::DataInDisabled)

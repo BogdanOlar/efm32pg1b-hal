@@ -31,7 +31,7 @@ fn main() -> ! {
     // FIXME: this should not be permitted because `PF0` is a debug pin
     // let mut dbg_swclk = gpio.pf0.into_disabled();
 
-    // Calling this is fine since the debug pins use the `Necessary` not the `Alternate` port `F` ctrl configs
+    // Calling this is fine since the debug pins use the `Primary` not the `Alternate` port `F` ctrl configs
     gpio.port_f.set_din_dis_alt(DataInCtrl::Disabled);
 
     let mut led0 = gpio.pf4.into_output().with_push_pull().build();

@@ -1,7 +1,16 @@
-use efm32pg1b_pac::{usart0::RegisterBlock, Cmu, Usart0, Usart1};
-use embedded_hal::digital::{InputPin, OutputPin};
+use core::fmt;
 
-use crate::gpio::Pin;
+use crate::{cmu::Clocks, gpio::Pin};
+use efm32pg1b_pac::{usart0::RegisterBlock, Cmu, Usart0, Usart1};
+use embedded_hal::{
+    digital::{InputPin, OutputPin},
+    spi::{Error, ErrorKind, ErrorType, SpiBus},
+};
+
+use fugit::{HertzU32, RateExtU32};
+
+#[cfg(feature = "defmt")]
+use defmt_rtt as _;
 
 /// Extension trait to specialize USART peripheral for a single use (SPI, UART, etc.)
 pub trait UsartSpiExt<MCLK, MTX, MRX>
@@ -13,7 +22,14 @@ where
     type SpiPart;
 
     /// Configure the USART peripheral as an SPI
-    fn into_spi(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX) -> Self::SpiPart;
+    fn into_spi(
+        self,
+        pin_clk: MCLK,
+        pin_tx: MTX,
+        pin_rx: MRX,
+        baud: HertzU32,
+        clocks: &Clocks,
+    ) -> Self::SpiPart;
 }
 
 impl<MCLK, MTX, MRX> UsartSpiExt<MCLK, MTX, MRX> for Usart1
@@ -24,14 +40,23 @@ where
 {
     type SpiPart = Spi<1>;
 
-    fn into_spi(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX) -> Self::SpiPart {
+    fn into_spi(
+        self,
+        pin_clk: MCLK,
+        pin_tx: MTX,
+        pin_rx: MRX,
+        baud: HertzU32,
+        clocks: &Clocks,
+    ) -> Self::SpiPart {
         // FIXME: Hardcoded USART id <1>
         let usart = usartx::<1>();
 
         // Enable USART 1 peripheral clock
         unsafe {
             // FIXME: Hardcoded USART1
-            Cmu::steal().hfperclken0().write(|w| w.usart1().set_bit());
+            Cmu::steal()
+                .hfperclken0()
+                .modify(|_, w| w.usart1().set_bit());
         };
 
         // FIXME: Hardcoded USART id <1>
@@ -59,7 +84,11 @@ where
             w.parity().none()
         });
 
-        // TODO: CLKDIV
+        // Set clock divider in order to obtain the closest baudrate to the one requested
+        //          USARTn_CLKDIV = 256 x (fHFPERCLK/(2 x brdesired) - 1)
+        // We are not bitshifting by `8` because the `div` field starts at bit 3, so we only bitshift by 5
+        let clk_div: u32 = ((clocks.hf_per_clk / (baud * 2)) - 1) << 5;
+        usart.clkdiv().write(|w| unsafe { w.div().bits(clk_div) });
 
         // Master enable
         usart.cmd().write(|w| w.masteren().set_bit());
@@ -112,7 +141,6 @@ impl<const U: u8> Spi<U> {
 
     pub fn set_loopback(&mut self, enabled: bool) {
         let usart = usartx::<U>();
-
         usart.ctrl().write(|w| match enabled {
             true => w.loopbk().set_bit(),
             false => w.loopbk().clear_bit(),
@@ -121,16 +149,55 @@ impl<const U: u8> Spi<U> {
 
     pub fn write(&mut self, buf: &[u8]) {
         let usart = usartx::<U>();
-
         for b in buf {
             // Wait for TX buffer to be empty (TXBL is set when empty)
             while usart.status().read().txbl().bit_is_clear() {}
 
             usart.txdata().write(|w| unsafe { w.txdata().bits(*b) });
-
-            // Wait for TX to finish
-            while usart.status().read().txc().bit_is_clear() {}
         }
+
+        // Wait for TX to finish
+        while usart.status().read().txc().bit_is_clear() {}
+    }
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum SpiError {
+    /// FIXME: add used errors
+    Other,
+}
+
+impl Error for SpiError {
+    fn kind(&self) -> ErrorKind {
+        todo!()
+    }
+}
+
+// Implementations for `Pin` to be used for `embedded-hal` traits
+impl<const U: u8> ErrorType for Spi<U> {
+    type Error = SpiError;
+}
+
+impl<const U: u8> SpiBus for Spi<U> {
+    fn read(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn write(&mut self, words: &[u8]) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn transfer_in_place(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        todo!()
     }
 }
 
