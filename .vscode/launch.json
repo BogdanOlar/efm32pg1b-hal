@@ -10,6 +10,32 @@
             /* Configuration for the STM32F303 Discovery board */
             "type": "cortex-debug",
             "request": "launch",
+            "name": "JLink cmu example",
+            "servertype": "jlink",
+            "cwd": "${workspaceRoot}",
+            // "preLaunchTask": "Cargo Build (debug)",
+            "runToEntryPoint": "main",
+            "executable": "./target/thumbv7em-none-eabihf/debug/examples/cmu",
+            "device": "EFM32PG1B200F256GM48",
+            "svdFile": "${workspaceRoot}/EFM32PG1B.svd",
+            "swoConfig": {
+                "enabled": true,
+                "cpuFrequency": 8000000,
+                "swoFrequency": 2000000,
+                "source": "probe",
+                "decoders": [
+                    {
+                        "type": "console",
+                        "label": "ITM",
+                        "port": 0
+                    }
+                ]
+            }
+        },
+        {
+            /* Configuration for the STM32F303 Discovery board */
+            "type": "cortex-debug",
+            "request": "launch",
             "name": "JLink gpio example",
             "servertype": "jlink",
             "cwd": "${workspaceRoot}",
