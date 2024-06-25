@@ -33,11 +33,23 @@ fn main() -> ! {
     let mut disp_enable = gpio.pd15.into_output().with_push_pull().build();
     let mut btn0 = gpio.pf6.into_input().build();
 
-    let mut spi = p.usart1.into_spi(clk, tx, rx, 1.MHz(), &clocks);
-
+    let mut spi = p.usart1.into_spi_bus(clk, tx, rx);
     let buf = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
-    spi.write(&buf);
+    let br = spi.set_baudrate(0.MHz(), &clocks);
+    defmt::println!("br: {}", br);
+
+    let br = spi.set_baudrate(2.MHz(), &clocks);
+    let ret_w = spi.write(&buf);
+    defmt::println!("br: {}, ret_w: {}", br, ret_w);
+
+    let br = spi.set_baudrate(1.MHz(), &clocks);
+    let ret_w = spi.write(&buf);
+    defmt::println!("br: {}, ret_w: {}", br, ret_w);
+
+    let br = spi.set_baudrate(br.unwrap(), &clocks);
+    let ret_w = spi.write(&buf);
+    defmt::println!("br: {}, ret_w: {}", br, ret_w);
 
     defmt::println!("SPI!");
 

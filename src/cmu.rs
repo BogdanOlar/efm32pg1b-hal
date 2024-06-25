@@ -13,9 +13,16 @@ pub trait CmuExt {
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Clocks {
+    /// High Frequency Peripheral Clock
     pub hf_per_clk: HertzU32,
+
+    /// High Frequency Core Clock
     pub hf_core_clk: HertzU32,
+
+    /// High Frequency Export Clock
     pub hf_exp_clk: HertzU32,
+
+    /// High Frequency  Bus Clock
     pub hf_bus_clk: HertzU32,
 }
 
