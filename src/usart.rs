@@ -237,12 +237,14 @@ impl<const N: u8> Spi<N> {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SpiError {
     InvalidBaudrate(HertzU32),
+    TxUnderflow,
 }
 
 impl Error for SpiError {
     fn kind(&self) -> ErrorKind {
         match self {
             SpiError::InvalidBaudrate(_) => ErrorKind::Other,
+            SpiError::TxUnderflow => ErrorKind::Other,
         }
     }
 }
@@ -258,17 +260,45 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
     }
 
     fn write(&mut self, words: &[u8]) -> Result<(), Self::Error> {
-        for b in words {
-            // Wait for TX buffer to be empty (TXBL is set when empty)
-            while self.usart.status().read().txbl().bit_is_clear() {}
+        let mut words_iter = words.iter();
 
-            self.usart
-                .txdata()
-                .write(|w| unsafe { w.txdata().bits(*b) });
+        // This closure  waits until there are at least 2 (out of 3) bytes available in the TX buffer
+        let wait_for_buffer_space = || {
+            // TODO: maybe calculate a counter based on minimum possible baudrate.
+            // The current counter value was determined empirically with a requested 1Hz baudrate in Release builds
+            // (actually it's ~316 Hz, with a Peripheral clock @ 19 Mhz),
+            const MAX_COUNT: u32 = 1_000_000;
+            let mut bail_countdown = MAX_COUNT;
+
+            // Wait until there are at least 2 available bytes (out of 3) in the TX buffer
+            while self.usart.status().read().txbufcnt().bits() > 1 {
+                bail_countdown -= 1;
+
+                if bail_countdown == 0 {
+                    return Err(SpiError::TxUnderflow);
+                }
+            }
+            Ok(())
+        };
+
+        while let Some(b0) = words_iter.next() {
+            if let Some(b1) = words_iter.next() {
+                wait_for_buffer_space()?;
+
+                // We have 2 bytes to send, use the `txdouble` register
+                self.usart.txdouble().write(|w| unsafe {
+                    w.txdata0().bits(*b0);
+                    w.txdata1().bits(*b1)
+                })
+            } else {
+                wait_for_buffer_space()?;
+
+                // We have only 1 byte left to send, use the `txdata` register
+                self.usart
+                    .txdata()
+                    .write(|w| unsafe { w.txdata().bits(*b0) });
+            }
         }
-
-        // Wait for TX to finish
-        while self.usart.status().read().txc().bit_is_clear() {}
 
         Ok(())
     }
