@@ -285,17 +285,15 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
     }
 
     fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Self::Error> {
-        let read_len = read.len();
-        let write_len = write.len();
+        let max_byte_count = max(read.len(), write.len());
         let mut tx_iter = write.into_iter();
         let mut rx_iter = read.into_iter();
         let mut rx_discard = 0;
 
-        let zipped_longest = (0..max(write_len, read_len))
+        for (txo, rxo) in (0..max_byte_count)
             .into_iter()
-            .map(|_| (tx_iter.next(), rx_iter.next()));
-
-        for (txo, rxo) in zipped_longest {
+            .map(|_| (tx_iter.next(), rx_iter.next()))
+        {
             let tx_byte = match txo {
                 Some(txr) => *txr,
                 None => Self::FILLER_BYTE,
