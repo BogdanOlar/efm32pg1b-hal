@@ -34,25 +34,28 @@ fn main() -> ! {
     let mut btn0 = gpio.pf6.into_input().build();
 
     let mut spi = p.usart1.into_spi_bus(clk, tx, rx);
-    let buf = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    let write = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    let mut read = [0; 5];
 
     let br = spi.set_baudrate(10.MHz(), &clocks);
-    let ret_w = spi.write(&buf);
+    let ret_w = spi.write(&write);
     defmt::println!("br: {}, ret_w: {}", br, ret_w);
     assert_eq!(br.unwrap(), 9500000.Hz::<1, 1>());
+    let ret_tr = spi.transfer(&mut read, &write);
+    defmt::println!("\tret_tr: {}, {}, {}", ret_tr, write, read);
 
     let br = spi.set_baudrate(1.MHz(), &clocks);
-    let ret_w = spi.write(&buf);
+    let ret_w = spi.write(&write);
     defmt::println!("br: {}, ret_w: {}", br, ret_w);
     assert_eq!(br.unwrap(), 1055555.Hz::<1, 1>());
 
     let br = spi.set_baudrate(100.kHz(), &clocks);
-    let ret_w = spi.write(&buf);
+    let ret_w = spi.write(&write);
     defmt::println!("br: {}, ret_w: {}", br, ret_w);
     assert_eq!(br.unwrap(), 100000.Hz::<1, 1>());
 
     let br = spi.set_baudrate(1.Hz(), &clocks);
-    let ret_w = spi.write(&buf);
+    let ret_w = spi.write(&write);
     defmt::println!("br: {}, ret_w: {}", br, ret_w);
     assert_eq!(br.unwrap(), 1.Hz::<1, 1>()); // FIXME: This is wrong. The actual br is about 316 Hz
 
