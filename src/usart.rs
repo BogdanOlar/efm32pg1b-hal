@@ -250,24 +250,6 @@ impl<const N: u8> Spi<N> {
         }
         Ok(())
     }
-
-    fn wait_for_buffer_space(&self) -> Result<(), SpiError> {
-        // TODO: maybe calculate a counter based on minimum possible baudrate.
-        // The current counter value was determined empirically with a requested 1Hz baudrate in *Release* build
-        // (actually it's ~316 Hz, with a Peripheral clock @ 19 Mhz).
-        const MAX_COUNT: u32 = 1_000_000;
-        let mut bail_countdown = MAX_COUNT;
-
-        // Wait until there are at least 2 available bytes (out of 3) in the TX buffer.
-        while self.usart.status().read().txbufcnt().bits() > 1 {
-            bail_countdown -= 1;
-
-            if bail_countdown == 0 {
-                return Err(SpiError::TxUnderflow);
-            }
-        }
-        Ok(())
-    }
 }
 
 #[derive(Debug)]
@@ -307,6 +289,7 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
         let write_len = write.len();
         let mut tx_iter = write.into_iter();
         let mut rx_iter = read.into_iter();
+        let mut rx_discard = 0;
 
         let zipped_longest = (0..max(write_len, read_len))
             .into_iter()
@@ -318,16 +301,18 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
                 None => Self::FILLER_BYTE,
             };
 
+            let rx_byte = match rxo {
+                Some(rx) => rx,
+                None => &mut rx_discard,
+            };
+
             self.usart
                 .txdata()
                 .write(|w| unsafe { w.txdata().bits(tx_byte) });
 
             self.wait_tx_complete()?;
 
-            match rxo {
-                Some(rx) => *rx = self.usart.rxdata().read().rxdata().bits(),
-                None => { /* Discard received byte */ }
-            }
+            *rx_byte = self.usart.rxdata().read().rxdata().bits();
         }
 
         Ok(())
