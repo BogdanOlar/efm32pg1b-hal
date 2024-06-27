@@ -76,6 +76,8 @@ pub struct Spi<const N: u8> {
 }
 
 impl<const N: u8> Spi<N> {
+    const FILLER_BYTE: u8 = 0x00;
+
     fn new(usart: &'static RegisterBlock, clk_loc: u8, tx_loc: u8, rx_loc: u8) -> Self {
         let mut spi = Spi { usart };
 
@@ -233,6 +235,39 @@ impl<const N: u8> Spi<N> {
 
         br.Hz()
     }
+
+    fn wait_tx_complete(&self) -> Result<(), SpiError> {
+        // TODO: maybe calculate a counter based on minimum possible baudrate.
+        const MAX_COUNT: u32 = 1_000_000;
+        let mut bail_countdown = MAX_COUNT;
+
+        while self.usart.status().read().txc().bit_is_clear() {
+            bail_countdown -= 1;
+
+            if bail_countdown == 0 {
+                return Err(SpiError::TxUnderflow);
+            }
+        }
+        Ok(())
+    }
+
+    fn wait_for_buffer_space(&self) -> Result<(), SpiError> {
+        // TODO: maybe calculate a counter based on minimum possible baudrate.
+        // The current counter value was determined empirically with a requested 1Hz baudrate in *Release* build
+        // (actually it's ~316 Hz, with a Peripheral clock @ 19 Mhz).
+        const MAX_COUNT: u32 = 1_000_000;
+        let mut bail_countdown = MAX_COUNT;
+
+        // Wait until there are at least 2 available bytes (out of 3) in the TX buffer.
+        while self.usart.status().read().txbufcnt().bits() > 1 {
+            bail_countdown -= 1;
+
+            if bail_countdown == 0 {
+                return Err(SpiError::TxUnderflow);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -260,117 +295,18 @@ impl<const U: u8> ErrorType for Spi<U> {
 
 impl<const U: u8> SpiBus<u8> for Spi<U> {
     fn read(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
-        const FILLER_BYTE: u8 = 0x00;
-        let mut words_iter = words.iter_mut();
-
-        let wait_for_tx_complete = || {
-            // TODO: maybe calculate a counter based on minimum possible baudrate.
-            // The current counter value was determined empirically with a requested 1Hz baudrate in *Release* build
-            // (actually it's ~316 Hz, with a Peripheral clock @ 19 Mhz).
-            const MAX_COUNT: u32 = 1_000_000;
-            let mut bail_countdown = MAX_COUNT;
-
-            while self.usart.status().read().txc().bit_is_clear() {
-                bail_countdown -= 1;
-
-                if bail_countdown == 0 {
-                    return Err(SpiError::TxUnderflow);
-                }
-            }
-            Ok(())
-        };
-
-        while let Some(b0) = words_iter.next() {
-            if let Some(b1) = words_iter.next() {
-                self.usart.txdouble().write(|w| unsafe {
-                    w.txdata0().bits(FILLER_BYTE);
-                    w.txdata1().bits(FILLER_BYTE)
-                });
-
-                wait_for_tx_complete()?;
-
-                *b0 = self.usart.rxdouble().read().rxdata0().bits();
-                *b1 = self.usart.rxdouble().read().rxdata1().bits();
-            } else {
-                // We have only 1 byte left to send, use the `txdata` register
-                self.usart
-                    .txdata()
-                    .write(|w| unsafe { w.txdata().bits(FILLER_BYTE) });
-
-                wait_for_tx_complete()?;
-
-                *b0 = self.usart.rxdata().read().rxdata().bits();
-            }
-        }
-
-        Ok(())
+        self.transfer(words, &[])
     }
 
     fn write(&mut self, words: &[u8]) -> Result<(), Self::Error> {
-        let mut words_iter = words.iter();
-
-        // This closure  waits until there are at least 2 (out of 3) bytes available in the TX buffer
-        // The first position in the TX Buffer is the Shift Register, which is not accessible through registers
-        // See [Reference Manual](doc/efm32pg1-rm.pdf#page=466)
-        let wait_for_buffer_space = || {
-            // TODO: maybe calculate a counter based on minimum possible baudrate.
-            // The current counter value was determined empirically with a requested 1Hz baudrate in *Release* build
-            // (actually it's ~316 Hz, with a Peripheral clock @ 19 Mhz).
-            const MAX_COUNT: u32 = 1_000_000;
-            let mut bail_countdown = MAX_COUNT;
-
-            // Wait until there are at least 2 available bytes (out of 3) in the TX buffer.
-            while self.usart.status().read().txbufcnt().bits() > 1 {
-                bail_countdown -= 1;
-
-                if bail_countdown == 0 {
-                    return Err(SpiError::TxUnderflow);
-                }
-            }
-            Ok(())
-        };
-
-        while let Some(b0) = words_iter.next() {
-            wait_for_buffer_space()?;
-
-            if let Some(b1) = words_iter.next() {
-                // We have 2 bytes to send, use the `txdouble` register
-                self.usart.txdouble().write(|w| unsafe {
-                    w.txdata0().bits(*b0);
-                    w.txdata1().bits(*b1)
-                })
-            } else {
-                // We have only 1 byte left to send, use the `txdata` register
-                self.usart
-                    .txdata()
-                    .write(|w| unsafe { w.txdata().bits(*b0) });
-            }
-        }
-
-        Ok(())
+        self.transfer(&mut [], words)
     }
 
     fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Self::Error> {
-        const FILLER_BYTE: u8 = 0x00;
         let read_len = read.len();
         let write_len = write.len();
         let mut tx_iter = write.into_iter();
         let mut rx_iter = read.into_iter();
-
-        let wait_tx_complete = || {
-            // TODO: maybe calculate a counter based on minimum possible baudrate.
-            const MAX_COUNT: u32 = 1_000_000;
-            let mut bail_countdown = MAX_COUNT;
-
-            while self.usart.status().read().txc().bit_is_clear() {
-                bail_countdown -= 1;
-
-                if bail_countdown == 0 {
-                    return Err(SpiError::TxUnderflow);
-                }
-            }
-            Ok(())
-        };
 
         let zipped_longest = (0..max(write_len, read_len))
             .into_iter()
@@ -379,14 +315,14 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
         for (txo, rxo) in zipped_longest {
             let tx_byte = match txo {
                 Some(txr) => *txr,
-                None => FILLER_BYTE,
+                None => Self::FILLER_BYTE,
             };
 
             self.usart
                 .txdata()
                 .write(|w| unsafe { w.txdata().bits(tx_byte) });
 
-            wait_tx_complete()?;
+            self.wait_tx_complete()?;
 
             match rxo {
                 Some(rx) => *rx = self.usart.rxdata().read().rxdata().bits(),
@@ -398,43 +334,29 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
     }
 
     fn transfer_in_place(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
-        let mut words_iter = words.iter();
-
-        // This closure  waits until there are at least 2 (out of 3) bytes available in the TX buffer
-        // The first position in the TX Buffer is the Shift Register, which is not accessible through registers
-        // See [Reference Manual](doc/efm32pg1-rm.pdf#page=466)
-        let wait_for_buffer_space = || {
-            // TODO: maybe calculate a counter based on minimum possible baudrate.
-            // The current counter value was determined empirically with a requested 1Hz baudrate in *Release* build
-            // (actually it's ~316 Hz, with a Peripheral clock @ 19 Mhz).
-            const MAX_COUNT: u32 = 1_000_000;
-            let mut bail_countdown = MAX_COUNT;
-
-            // Wait until there are at least 2 available bytes (out of 3) in the TX buffer.
-            while self.usart.status().read().txbufcnt().bits() > 1 {
-                bail_countdown -= 1;
-
-                if bail_countdown == 0 {
-                    return Err(SpiError::TxUnderflow);
-                }
-            }
-            Ok(())
-        };
+        let mut words_iter = words.iter_mut();
 
         while let Some(b0) = words_iter.next() {
-            wait_for_buffer_space()?;
-
             if let Some(b1) = words_iter.next() {
                 // We have 2 bytes to send, use the `txdouble` register
                 self.usart.txdouble().write(|w| unsafe {
                     w.txdata0().bits(*b0);
                     w.txdata1().bits(*b1)
-                })
+                });
+
+                self.wait_tx_complete()?;
+
+                *b0 = self.usart.rxdouble().read().rxdata0().bits();
+                *b1 = self.usart.rxdouble().read().rxdata1().bits();
             } else {
                 // We have only 1 byte left to send, use the `txdata` register
                 self.usart
                     .txdata()
                     .write(|w| unsafe { w.txdata().bits(*b0) });
+
+                self.wait_tx_complete()?;
+
+                *b0 = self.usart.rxdata().read().rxdata().bits();
             }
         }
 
@@ -442,7 +364,7 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        todo!()
+        self.wait_tx_complete()
     }
 }
 
