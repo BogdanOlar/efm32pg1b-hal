@@ -57,7 +57,28 @@
             },
             "group": {
                 "kind": "build",
-                "isDefault": true
+                // "isDefault": true
+            }
+        },
+        {
+            "label": "cargo build example spi LCD",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "spi_lcd",
+                "--features='defmt'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "presentation": {
+                "clear": true
+            },
+            "group": {
+                "kind": "build",
+                // "isDefault": true
             }
         }
     ]

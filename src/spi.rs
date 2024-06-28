@@ -1,6 +1,9 @@
 use core::cmp::max;
 
-use crate::{cmu::Clocks, gpio::Pin};
+use crate::{
+    cmu::Clocks,
+    gpio::{Input, Output, Pin},
+};
 use efm32pg1b_pac::{usart0::RegisterBlock, Cmu, Usart0, Usart1};
 use embedded_hal::{
     digital::{InputPin, OutputPin},
@@ -392,7 +395,7 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
 }
 
 /// Marker trait to show a pin is can function as a Clock output
-pub trait UsartClkPin {
+trait UsartClkPin {
     fn loc(&self) -> u8;
 }
 
@@ -411,25 +414,25 @@ pub trait UsartCsPin {
     fn loc(&self) -> u8;
 }
 
-impl<ANY> UsartClkPin for Pin<'C', 8, ANY> {
+impl<ANY> UsartClkPin for Pin<'C', 8, Output<ANY>> {
     fn loc(&self) -> u8 {
         11
     }
 }
 
-impl<ANY> UsartTxPin for Pin<'C', 6, ANY> {
+impl<ANY> UsartTxPin for Pin<'C', 6, Output<ANY>> {
     fn loc(&self) -> u8 {
         11
     }
 }
 
-impl<ANY> UsartRxPin for Pin<'C', 7, ANY> {
+impl UsartRxPin for Pin<'C', 7, Input> {
     fn loc(&self) -> u8 {
         11
     }
 }
 
-impl<ANY> UsartCsPin for Pin<'D', 14, ANY> {
+impl<ANY> UsartCsPin for Pin<'D', 14, Output<ANY>> {
     fn loc(&self) -> u8 {
         19
     }
