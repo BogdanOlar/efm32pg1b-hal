@@ -60,6 +60,10 @@ required-features = ["defmt"]
 name = "spi"
 required-features = ["defmt"]
 
+[[example]]
+name = "spi_lcd"
+required-features = ["defmt"]
+
 [dev-dependencies]
 # Be able to print out types in `embedded-hal` when running the examples
 embedded-hal = { version = "1", features = ["defmt-03"] }
