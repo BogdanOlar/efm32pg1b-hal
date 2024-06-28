@@ -23,6 +23,7 @@ const fn usartx<const N: u8>() -> &'static RegisterBlock {
     }
 }
 
+/// USART SPI Modes
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SpiMode {
@@ -112,7 +113,7 @@ impl<const N: u8> Spi<N> {
                 SpiMode::Mode2 | SpiMode::Mode3 => w.clkpol().set_bit(),
             };
 
-            // set phase
+            // Set phase
             match mode {
                 SpiMode::Mode0 | SpiMode::Mode2 => w.clkpha().clear_bit(),
                 SpiMode::Mode1 | SpiMode::Mode3 => w.clkpha().set_bit(),
@@ -137,8 +138,8 @@ impl<const N: u8> Spi<N> {
         spi.usart.cmd().write(|w| w.masteren().set_bit());
 
         spi.usart.ctrl().modify(|_, w| {
-            // Auto CS
-            w.autocs().set_bit();
+            // Auto CS: a `SpiBus` implementation must not control CS pin
+            w.autocs().clear_bit();
             // No CS invert
             w.csinv().clear_bit()
         });
@@ -162,7 +163,7 @@ impl<const N: u8> Spi<N> {
             w.rxpen().set_bit()
         });
 
-        // Finally, enable UART
+        // Enable Usart
         spi.usart.cmd().write(|w| {
             w.rxen().set_bit();
             w.txen().set_bit()
