@@ -33,7 +33,7 @@ fn main() -> ! {
     let mut disp_enable = gpio.pd15.into_output().with_push_pull().build();
     let mut btn0 = gpio.pf6.into_input().build();
 
-    let mut spi = p.usart1.into_spi_bus(clk, tx, rx);
+    let mut spi = p.usart1.into_spi_bus(clk, tx, rx, SpiMode::Mode0);
     let br = spi.set_baudrate(1.MHz(), &clocks);
     defmt::println!("br: {}", br);
     assert_eq!(br.unwrap(), 1055555.Hz::<1, 1>());

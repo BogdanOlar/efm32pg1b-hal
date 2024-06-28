@@ -23,12 +23,28 @@ const fn usartx<const N: u8>() -> &'static RegisterBlock {
     }
 }
 
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum SpiMode {
+    /// CLKPOL=0, CLKPHA=0
+    Mode0,
+
+    /// CLKPOL=0, CLKPHA=1
+    Mode1,
+
+    /// CLKPOL=1, CLKPHA=0
+    Mode2,
+
+    /// CLKPOL=1, CLKPHA=1
+    Mode3,
+}
+
 /// Extension trait to specialize USART peripheral for SPI
 pub trait UsartSpiExt<MCLK, MTX, MRX> {
     type SpiPart;
 
     /// Configure the USART peripheral as an SPI
-    fn into_spi_bus(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX) -> Self::SpiPart;
+    fn into_spi_bus(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX, mode: SpiMode) -> Self::SpiPart;
 }
 
 impl<MCLK, MTX, MRX> UsartSpiExt<MCLK, MTX, MRX> for Usart0
@@ -39,7 +55,7 @@ where
 {
     type SpiPart = Spi<0>;
 
-    fn into_spi_bus(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX) -> Self::SpiPart {
+    fn into_spi_bus(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX, mode: SpiMode) -> Self::SpiPart {
         // Enable USART 0 peripheral clock
         unsafe {
             Cmu::steal()
@@ -47,7 +63,7 @@ where
                 .modify(|_, w| w.usart0().set_bit());
         };
 
-        Self::SpiPart::new(pin_clk.loc(), pin_tx.loc(), pin_rx.loc())
+        Self::SpiPart::new(pin_clk.loc(), pin_tx.loc(), pin_rx.loc(), mode)
     }
 }
 
@@ -59,7 +75,7 @@ where
 {
     type SpiPart = Spi<1>;
 
-    fn into_spi_bus(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX) -> Self::SpiPart {
+    fn into_spi_bus(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX, mode: SpiMode) -> Self::SpiPart {
         // Enable USART 1 peripheral clock
         unsafe {
             Cmu::steal()
@@ -67,7 +83,7 @@ where
                 .modify(|_, w| w.usart1().set_bit());
         };
 
-        Self::SpiPart::new(pin_clk.loc(), pin_tx.loc(), pin_rx.loc())
+        Self::SpiPart::new(pin_clk.loc(), pin_tx.loc(), pin_rx.loc(), mode)
     }
 }
 
@@ -79,8 +95,7 @@ pub struct Spi<const N: u8> {
 impl<const N: u8> Spi<N> {
     const FILLER_BYTE: u8 = 0x00;
 
-    /// TODO: pass SPI mode parameter (CLK phase, polatity)
-    fn new(clk_loc: u8, tx_loc: u8, rx_loc: u8) -> Self {
+    fn new(clk_loc: u8, tx_loc: u8, rx_loc: u8, mode: SpiMode) -> Self {
         let mut spi = Spi {
             usart: usartx::<N>(),
         };
@@ -90,10 +105,19 @@ impl<const N: u8> Spi<N> {
         spi.usart.ctrl().write(|w| {
             // Set USART to Synchronous Mode
             w.sync().set_bit();
-            // Clocl idle low
-            w.clkpol().clear_bit();
-            // Sample on rising edge
-            w.clkpha().clear_bit();
+
+            // Set polarity
+            match mode {
+                SpiMode::Mode0 | SpiMode::Mode1 => w.clkpol().clear_bit(),
+                SpiMode::Mode2 | SpiMode::Mode3 => w.clkpol().set_bit(),
+            };
+
+            // set phase
+            match mode {
+                SpiMode::Mode0 | SpiMode::Mode2 => w.clkpha().clear_bit(),
+                SpiMode::Mode1 | SpiMode::Mode3 => w.clkpha().set_bit(),
+            };
+
             // Most significant bit first
             w.msbf().set_bit();
             // Disable auto TX
