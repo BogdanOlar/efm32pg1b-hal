@@ -79,6 +79,7 @@ pub struct Spi<const N: u8> {
 impl<const N: u8> Spi<N> {
     const FILLER_BYTE: u8 = 0x00;
 
+    /// TODO: pass SPI mode parameter (CLK phase, polatity)
     fn new(clk_loc: u8, tx_loc: u8, rx_loc: u8) -> Self {
         let mut spi = Spi {
             usart: usartx::<N>(),
@@ -528,10 +529,10 @@ impl_tx_loc!(29, 'F', 5);
 impl_tx_loc!(30, 'F', 6);
 impl_tx_loc!(31, 'F', 7);
 
-/// Marker trait to enforce which (output) pins can be used as an SPI Rx output.
+/// Marker trait to enforce which (input) pins can be used as an SPI Rx output.
 ///
 /// This trait is implemented privately in this module for select pins specified in the
-/// [Data Sheet - page 86](doc/efm32pg1-datasheet.pdf#page=86), and it is used to constrain the type of the `pin_tx`
+/// [Data Sheet - page 86](doc/efm32pg1-datasheet.pdf#page=86), and it is used to constrain the type of the `pin_rx`
 /// parameter passed to the `into_spi_bus()` method of the `UsartSpiExt` trait.
 ///
 /// Note: if you try to create an `Spi` instance and get a compiler error like
