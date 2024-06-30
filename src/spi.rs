@@ -1,4 +1,8 @@
-use core::cmp::max;
+//! Hello SPI mod!
+//!
+//! Some other description
+
+use core::{cmp::max, marker::PhantomData};
 
 use crate::{
     cmu::Clocks,
@@ -24,6 +28,11 @@ const fn usartx<const N: u8>() -> &'static RegisterBlock {
 }
 
 /// USART SPI Modes
+///
+///     Mode0 => CLKPOL=0, CLKPHA=0
+///     Mode1 => CLKPOL=0, CLKPHA=1
+///     Mode2 => CLKPOL=1, CLKPHA=0
+///     Mode3 => CLKPOL=1, CLKPHA=1
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SpiMode {
@@ -41,22 +50,22 @@ pub enum SpiMode {
 }
 
 /// Extension trait to specialize USART peripheral for SPI
-pub trait UsartSpiExt<MCLK, MTX, MRX> {
+pub trait UsartSpiExt<PCLK, PTX, PRX> {
     type SpiPart;
 
     /// Configure the USART peripheral as an SPI
-    fn into_spi_bus(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX, mode: SpiMode) -> Self::SpiPart;
+    fn into_spi_bus(self, pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: SpiMode) -> Self::SpiPart;
 }
 
-impl<MCLK, MTX, MRX> UsartSpiExt<MCLK, MTX, MRX> for Usart0
+impl<PCLK, PTX, PRX> UsartSpiExt<PCLK, PTX, PRX> for Usart0
 where
-    MCLK: OutputPin + UsartClkPin,
-    MTX: OutputPin + UsartTxPin,
-    MRX: InputPin + UsartRxPin,
+    PCLK: OutputPin + UsartClkPin,
+    PTX: OutputPin + UsartTxPin,
+    PRX: InputPin + UsartRxPin,
 {
-    type SpiPart = Spi<0>;
+    type SpiPart = Spi<0, PCLK, PTX, PRX>;
 
-    fn into_spi_bus(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX, mode: SpiMode) -> Self::SpiPart {
+    fn into_spi_bus(self, pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: SpiMode) -> Self::SpiPart {
         // Enable USART 0 peripheral clock
         unsafe {
             Cmu::steal()
@@ -64,19 +73,19 @@ where
                 .modify(|_, w| w.usart0().set_bit());
         };
 
-        Self::SpiPart::new(pin_clk.loc(), pin_tx.loc(), pin_rx.loc(), mode)
+        Self::SpiPart::new(pin_clk, pin_tx, pin_rx, mode)
     }
 }
 
-impl<MCLK, MTX, MRX> UsartSpiExt<MCLK, MTX, MRX> for Usart1
+impl<PCLK, PTX, PRX> UsartSpiExt<PCLK, PTX, PRX> for Usart1
 where
-    MCLK: OutputPin + UsartClkPin,
-    MTX: OutputPin + UsartTxPin,
-    MRX: InputPin + UsartRxPin,
+    PCLK: OutputPin + UsartClkPin,
+    PTX: OutputPin + UsartTxPin,
+    PRX: InputPin + UsartRxPin,
 {
-    type SpiPart = Spi<1>;
+    type SpiPart = Spi<1, PCLK, PTX, PRX>;
 
-    fn into_spi_bus(self, pin_clk: MCLK, pin_tx: MTX, pin_rx: MRX, mode: SpiMode) -> Self::SpiPart {
+    fn into_spi_bus(self, pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: SpiMode) -> Self::SpiPart {
         // Enable USART 1 peripheral clock
         unsafe {
             Cmu::steal()
@@ -84,21 +93,34 @@ where
                 .modify(|_, w| w.usart1().set_bit());
         };
 
-        Self::SpiPart::new(pin_clk.loc(), pin_tx.loc(), pin_rx.loc(), mode)
+        Self::SpiPart::new(pin_clk, pin_tx, pin_rx, mode)
     }
 }
 
+/// An SPI master which implements `SpiBus` trait
 #[derive(Debug)]
-pub struct Spi<const N: u8> {
+pub struct Spi<const N: u8, PCLK, PTX, PRX> {
     usart: &'static RegisterBlock,
+    pin_clk: PCLK,
+    pin_tx: PTX,
+    pin_rx: PRX,
 }
 
-impl<const N: u8> Spi<N> {
+impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX>
+where
+    PCLK: OutputPin + UsartClkPin,
+    PTX: OutputPin + UsartTxPin,
+    PRX: InputPin + UsartRxPin,
+{
     const FILLER_BYTE: u8 = 0x00;
 
-    fn new(clk_loc: u8, tx_loc: u8, rx_loc: u8, mode: SpiMode) -> Self {
+    /// TODO: add documentation
+    fn new(pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: SpiMode) -> Self {
         let mut spi = Spi {
             usart: usartx::<N>(),
+            pin_clk,
+            pin_tx,
+            pin_rx,
         };
 
         spi.reset();
@@ -150,6 +172,9 @@ impl<const N: u8> Spi<N> {
         });
 
         // Set IO pin routing for Usart
+        let clk_loc = spi.pin_clk.loc();
+        let tx_loc = spi.pin_tx.loc();
+        let rx_loc = spi.pin_rx.loc();
         spi.usart.routeloc0().modify(|_, w| unsafe {
             w.clkloc().bits(clk_loc);
             w.txloc().bits(tx_loc);
@@ -207,6 +232,11 @@ impl<const N: u8> Spi<N> {
             1 => self.usart.i2sctrl().reset(),
             _ => unreachable!(),
         }
+    }
+
+    pub fn destroy(mut self) -> (PCLK, PTX, PRX) {
+        self.reset();
+        (self.pin_clk, self.pin_tx, self.pin_rx)
     }
 
     /// TODO:
@@ -299,12 +329,17 @@ impl Error for SpiError {
     }
 }
 
-// Implementations for `Pin` to be used for `embedded-hal` traits
-impl<const U: u8> ErrorType for Spi<U> {
+// Implementations for `ErrorType` to be used by `SpiBus` `embedded-hal` trait
+impl<const N: u8, PCLK, PTX, PRX> ErrorType for Spi<N, PCLK, PTX, PRX> {
     type Error = SpiError;
 }
 
-impl<const U: u8> SpiBus<u8> for Spi<U> {
+impl<const N: u8, PCLK, PTX, PRX> SpiBus<u8> for Spi<N, PCLK, PTX, PRX>
+where
+    PCLK: OutputPin + UsartClkPin,
+    PTX: OutputPin + UsartTxPin,
+    PRX: InputPin + UsartRxPin,
+{
     fn read(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
         self.transfer(words, &[])
     }
@@ -314,7 +349,7 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
 
         // This closure  waits until there are at least 2 (out of 3) bytes available in the TX buffer
         // The first position in the TX Buffer is the Shift Register, which is not accessible through registers
-        // See [Reference Manual](doc/efm32pg1-rm.pdf#page=466)
+        // See [Reference Manual](../../../../../doc/efm32pg1-rm.pdf#page=466)
         let wait_for_buffer_space = || {
             // TODO: maybe calculate a bailout counter based on minimum possible baudrate.
             // The current counter value was determined empirically with a requested 1Hz baudrate in *Release* build
@@ -423,11 +458,11 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
 /// Marker trait to enforce which (output) pins can be used as an SPI Clock output.
 ///
 /// This trait is implemented privately in this module for select pins specified in the
-/// [Data Sheet - page 85](doc/efm32pg1-datasheet.pdf#page=85), and it is used to constrain the type of the `pin_clk`
+/// [Data Sheet - page 85](../../../../../doc/efm32pg1-datasheet.pdf#page=85), and it is used to constrain the type of the `pin_clk`
 /// parameter passed to the `into_spi_bus()` method of the `UsartSpiExt` trait.
 ///
 /// Note: if you try to create an `Spi` instance and get a compiler error like
-/// ```
+/// ```text
 ///     the trait `efm32pg1b_hal::spi::UsartClkPin` is not implemented for
 ///     `efm32pg1b_hal::gpio::Pin<'D', 8, efm32pg1b_hal::gpio::Input>`, which is required by
 ///     `efm32pg1b_hal::efm32pg1b_pac::Usart1: efm32pg1b_hal::spi::UsartSpiExt<_, _, _>`
@@ -436,14 +471,14 @@ impl<const U: u8> SpiBus<u8> for Spi<U> {
 /// then it's probably the case that you're trying to use a Pin as an SPI Clock pin when that pin is not available
 /// to the `usart` peripheral as a CLK pin.
 ///
-/// Please consult the [Data Sheet - page 85](doc/efm32pg1-datasheet.pdf#page=85) (`US0_CLK` or `US1_CLK` Alternate
+/// Please consult the [Data Sheet - page 85](../../../../../doc/efm32pg1-datasheet.pdf#page=85) (`US0_CLK` or `US1_CLK` Alternate
 /// Functionality) to see which pins can be used as SPI clock pins.
-trait UsartClkPin {
+pub trait UsartClkPin {
     fn loc(&self) -> u8;
 }
 
 /// Implement the `UsartClkPin` trait for the `US0_CLK`/`US1_CLK` alternate function.
-/// See [Data Sheet](doc/efm32pg1-datasheet.pdf#page=86).
+/// See [Data Sheet](../../../../../doc/efm32pg1-datasheet.pdf#page=86).
 macro_rules! impl_clock_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
         impl<ANY> UsartClkPin for Pin<$port, $pin, Output<ANY>> {
@@ -490,11 +525,11 @@ impl_clock_loc!(31, 'A', 1);
 /// Marker trait to enforce which (output) pins can be used as an SPI Tx output.
 ///
 /// This trait is implemented privately in this module for select pins specified in the
-/// [Data Sheet - page 85](doc/efm32pg1-datasheet.pdf#page=85), and it is used to constrain the type of the `pin_tx`
+/// [Data Sheet - page 85](../../../../../doc/efm32pg1-datasheet.pdf#page=85), and it is used to constrain the type of the `pin_tx`
 /// parameter passed to the `into_spi_bus()` method of the `UsartSpiExt` trait.
 ///
 /// Note: if you try to create an `Spi` instance and get a compiler error like
-/// ```
+/// ```text
 ///     the trait `efm32pg1b_hal::spi::UsartTxPin` is not implemented for
 ///     `efm32pg1b_hal::gpio::Pin<'D', 8, efm32pg1b_hal::gpio::Input>`, which is required by
 ///     `efm32pg1b_hal::efm32pg1b_pac::Usart1: efm32pg1b_hal::spi::UsartSpiExt<_, _, _>`
@@ -503,14 +538,14 @@ impl_clock_loc!(31, 'A', 1);
 /// then it's probably the case that you're trying to use a Pin as an SPI Tx pin when that pin is not available
 /// to the `usart` peripheral as a TX pin.
 ///
-/// Please consult the [Data Sheet - page 85](doc/efm32pg1-datasheet.pdf#page=85) (`US0_TX` or `US1_TX` Alternate
+/// Please consult the [Data Sheet - page 85](../../../../../doc/efm32pg1-datasheet.pdf#page=85) (`US0_TX` or `US1_TX` Alternate
 /// Functionality) to see which pins can be used as SPI Tx pins.
-trait UsartTxPin {
+pub trait UsartTxPin {
     fn loc(&self) -> u8;
 }
 
 /// Implement the `UsartTxPin` trait for the `US0_TX`/`US1_TX` alternate function.
-/// See [Data Sheet](doc/efm32pg1-datasheet.pdf#page=86).
+/// See [Data Sheet](../../../../../doc/efm32pg1-datasheet.pdf#page=86).
 macro_rules! impl_tx_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
         impl<ANY> UsartTxPin for Pin<$port, $pin, Output<ANY>> {
@@ -554,14 +589,14 @@ impl_tx_loc!(29, 'F', 5);
 impl_tx_loc!(30, 'F', 6);
 impl_tx_loc!(31, 'F', 7);
 
-/// Marker trait to enforce which (input) pins can be used as an SPI Rx output.
+/// Marker trait to enforce which (input) pins can be used as an SPI Rx input.
 ///
 /// This trait is implemented privately in this module for select pins specified in the
-/// [Data Sheet - page 86](doc/efm32pg1-datasheet.pdf#page=86), and it is used to constrain the type of the `pin_rx`
+/// [Data Sheet - page 86](../../../../../doc/efm32pg1-datasheet.pdf#page=86), and it is used to constrain the type of the `pin_rx`
 /// parameter passed to the `into_spi_bus()` method of the `UsartSpiExt` trait.
 ///
 /// Note: if you try to create an `Spi` instance and get a compiler error like
-/// ```
+/// ```text
 ///     the trait `efm32pg1b_hal::spi::UsartRxPin` is not implemented for
 ///     `efm32pg1b_hal::gpio::Pin<'D', 8, efm32pg1b_hal::gpio::Input>`, which is required by
 ///     `efm32pg1b_hal::efm32pg1b_pac::Usart1: efm32pg1b_hal::spi::UsartSpiExt<_, _, _>`
@@ -570,14 +605,14 @@ impl_tx_loc!(31, 'F', 7);
 /// then it's probably the case that you're trying to use a Pin as an SPI Rx pin when that pin is not available
 /// to the `usart` peripheral as a RX pin.
 ///
-/// Please consult the [Data Sheet - page 86](doc/efm32pg1-datasheet.pdf#page=86) (`US0_RX` or `US1_RX` Alternate
+/// Please consult the [Data Sheet - page 86](../../../../../doc/efm32pg1-datasheet.pdf#page=86) (`US0_RX` or `US1_RX` Alternate
 /// Functionality) to see which pins can be used as SPI Rx pins.
-trait UsartRxPin {
+pub trait UsartRxPin {
     fn loc(&self) -> u8;
 }
 
 /// Implement the `UsartRxkPin` trait for the `US0_RX`/`US1_RX` alternate function.
-/// See [Data Sheet](doc/efm32pg1-datasheet.pdf#page=86).
+/// See [Data Sheet](../../../../../doc/efm32pg1-datasheet.pdf#page=86).
 macro_rules! impl_rx_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
         impl UsartRxPin for Pin<$port, $pin, Input> {
@@ -625,14 +660,14 @@ impl_rx_loc!(31, 'A', 0);
 ///
 /// TODO: this is not actually used when instantiating an SPI. Should it?
 ///
-/// Please consult the [Data Sheet - page 85](doc/efm32pg1-datasheet.pdf#page=85) (`US0_CS` or `US1_CS` Alternate
+/// Please consult the [Data Sheet - page 85](../../../../../doc/efm32pg1-datasheet.pdf#page=85) (`US0_CS` or `US1_CS` Alternate
 /// Functionality) to see which pins can be used as SPI CS pins.
 pub trait UsartCsPin {
     fn loc(&self) -> u8;
 }
 
 /// Implement the `UsartCsPin` trait for the `US0_CS`/`US1_CS` alternate function.
-/// See [Data Sheet](doc/efm32pg1-datasheet.pdf#page=86).
+/// See [Data Sheet](../../../../../doc/efm32pg1-datasheet.pdf#page=86).
 macro_rules! impl_cs_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
         impl<ANY> UsartCsPin for Pin<$port, $pin, Output<ANY>> {

@@ -27,11 +27,11 @@ fn main() -> ! {
     let tx = gpio.pc6.into_output().with_push_pull().build();
     let rx = gpio.pc7.into_input().with_filter().build();
     let clk = gpio.pc8.into_output().with_push_pull().build();
-    let cs = gpio.pd14.into_output().with_push_pull().build();
+    // let cs = gpio.pd14.into_output().with_push_pull().build();
 
-    let mut disp_com = gpio.pd13.into_output().with_push_pull().build();
-    let mut disp_enable = gpio.pd15.into_output().with_push_pull().build();
-    let mut btn0 = gpio.pf6.into_input().build();
+    // let mut disp_com = gpio.pd13.into_output().with_push_pull().build();
+    // let mut disp_enable = gpio.pd15.into_output().with_push_pull().build();
+    // let mut btn0 = gpio.pf6.into_input().build();
 
     let mut spi = p.usart1.into_spi_bus(clk, tx, rx, SpiMode::Mode0);
     let br = spi.set_baudrate(1.MHz(), &clocks);
@@ -39,6 +39,13 @@ fn main() -> ! {
     assert_eq!(br.unwrap(), 1055555.Hz::<1, 1>());
 
     defmt::println!("SPI LCD!");
+
+    defmt::println!("SPI Destroyed");
+    let (mut clk, mut tx, mut rx) = spi.destroy();
+
+    defmt::println!("\t {}", clk.is_set_high());
+    defmt::println!("\t {}", tx.is_set_high());
+    defmt::println!("\t {}", rx.is_high());
 
     loop {}
 }
