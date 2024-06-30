@@ -11,6 +11,7 @@ use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch
                      // use panic_abort as _; // requires nightly
                      // use panic_itm as _; // logs messages over ITM; requires ITM support
                      // use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
+use defmt::{assert_eq, println};
 use defmt_rtt as _;
 
 #[entry]
@@ -34,22 +35,17 @@ fn main() -> ! {
 
     let mut spi = p.usart1.into_spi_bus(clk, tx, rx, SpiMode::Mode0);
     let br = spi.set_baudrate(1.MHz(), &clocks);
-    defmt::println!("br: {}", br);
+    println!("br: {}", br);
     assert_eq!(br.unwrap(), 1055555.Hz::<1, 1>());
 
-    defmt::println!("SPI LCD!");
+    println!("SPI LCD!");
 
-    defmt::println!("SPI Destroyed");
     let (clk, tx, rx) = spi.destroy();
 
-    defmt::println!("\t {}", clk);
-    defmt::println!("\t {:?}", tx);
-    defmt::println!("\t {:?}", rx);
-    defmt::println!("\t {}", gpio.pf0);
-    defmt::println!("\t {:?}", gpio.pf1);
-    defmt::println!("\t {:?}", gpio.pf2);
-    defmt::println!("\t {:?}", gpio.pf3);
-    defmt::println!("\t {:?}", gpio.pd13);
+    println!("SPI Destroyed. Returned pins:");
+    println!("\t clk: {}", clk);
+    println!("\t tx: {}", tx);
+    println!("\t rx: {}", rx);
 
     loop {}
 }

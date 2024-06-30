@@ -6,12 +6,12 @@
 use cortex_m_rt::entry;
 use efm32pg1b_hal::prelude::*;
 
-use fugit::RateExtU32;
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
                      // use panic_itm as _; // logs messages over ITM; requires ITM support
                      // use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
+use defmt::{assert_eq, println};
 use defmt_rtt as _;
 
 #[entry]
@@ -37,80 +37,85 @@ fn main() -> ! {
     // 10.MHz()
 
     let br = spi.set_baudrate(10.MHz(), &clocks);
-    defmt::println!("br: {}", br);
+    println!("br: {}", br);
     assert_eq!(br.unwrap(), 9500000.Hz::<1, 1>());
 
     let ret_w = spi.write(&write);
-    defmt::println!("\t ret_w: \t {}, {}", ret_w, write);
+    println!("\t ret_w: \t {}, {}", ret_w, write);
 
     let ret_tr1 = spi.transfer(&mut read1, &write);
-    defmt::println!("\t ret_tr1: \t {}, {}, {}", ret_tr1, write, read1);
+    println!("\t ret_tr1: \t {}, {}, {}", ret_tr1, write, read1);
 
     let ret_tr2 = spi.transfer(&mut read2, &write);
-    defmt::println!("\t ret_tr2: \t {}, {}, {}", ret_tr2, write, read2);
+    println!("\t ret_tr2: \t {}, {}, {}", ret_tr2, write, read2);
 
     let ret_trip = spi.transfer_in_place(&mut write);
-    defmt::println!("\t ret_trip: \t {}, {}", ret_trip, write);
+    println!("\t ret_trip: \t {}, {}", ret_trip, write);
     write = write_orig;
 
     // 1.MHz()
 
     let br = spi.set_baudrate(1.MHz(), &clocks);
-    defmt::println!("br: {}", br);
+    println!("br: {}", br);
     assert_eq!(br.unwrap(), 1055555.Hz::<1, 1>());
 
     let ret_w = spi.write(&write);
-    defmt::println!("\t ret_w: \t {}, {}", ret_w, write);
+    println!("\t ret_w: \t {}, {}", ret_w, write);
 
     let ret_tr1 = spi.transfer(&mut read1, &write);
-    defmt::println!("\t ret_tr1: \t {}, {}, {}", ret_tr1, write, read1);
+    println!("\t ret_tr1: \t {}, {}, {}", ret_tr1, write, read1);
 
     let ret_tr2 = spi.transfer(&mut read2, &write);
-    defmt::println!("\t ret_tr2: \t {}, {}, {}", ret_tr2, write, read2);
+    println!("\t ret_tr2: \t {}, {}, {}", ret_tr2, write, read2);
 
     let ret_trip = spi.transfer_in_place(&mut write);
-    defmt::println!("\t ret_trip: \t {}, {}", ret_trip, write);
+    println!("\t ret_trip: \t {}, {}", ret_trip, write);
     write = write_orig;
 
     // 1.kHz()
 
     let br = spi.set_baudrate(1.kHz(), &clocks);
-    defmt::println!("br: {}", br);
+    println!("br: {}", br);
     assert_eq!(br.unwrap(), 1.kHz::<1, 1>());
 
     let ret_w = spi.write(&write);
-    defmt::println!("\t ret_w: \t {}, {}", ret_w, write);
+    println!("\t ret_w: \t {}, {}", ret_w, write);
 
     let ret_tr1 = spi.transfer(&mut read1, &write);
-    defmt::println!("\t ret_tr1: \t {}, {}, {}", ret_tr1, write, read1);
+    println!("\t ret_tr1: \t {}, {}, {}", ret_tr1, write, read1);
 
     let ret_tr2 = spi.transfer(&mut read2, &write);
-    defmt::println!("\t ret_tr2: \t {}, {}, {}", ret_tr2, write, read2);
+    println!("\t ret_tr2: \t {}, {}, {}", ret_tr2, write, read2);
 
     let ret_trip = spi.transfer_in_place(&mut write);
-    defmt::println!("\t ret_trip: \t {}, {}", ret_trip, write);
+    println!("\t ret_trip: \t {}, {}", ret_trip, write);
     write = write_orig;
 
     // 1.Hz()
 
     let br = spi.set_baudrate(1.Hz(), &clocks);
-    defmt::println!("br: {}", br);
+    println!("br: {}", br);
     assert_eq!(br.unwrap(), 1.Hz::<1, 1>()); // FIXME: This is wrong. The actual br is about 316 Hz
 
     let ret_w = spi.write(&write);
-    defmt::println!("\t ret_w: \t {}, {}", ret_w, write);
+    println!("\t ret_w: \t {}, {}", ret_w, write);
 
     let ret_tr1 = spi.transfer(&mut read1, &write);
-    defmt::println!("\t ret_tr1: \t {}, {}, {}", ret_tr1, write, read1);
+    println!("\t ret_tr1: \t {}, {}, {}", ret_tr1, write, read1);
 
     let ret_tr2 = spi.transfer(&mut read2, &write);
-    defmt::println!("\t ret_tr2: \t {}, {}, {}", ret_tr2, write, read2);
+    println!("\t ret_tr2: \t {}, {}, {}", ret_tr2, write, read2);
 
     let ret_trip = spi.transfer_in_place(&mut write);
-    defmt::println!("\t ret_trip: \t {}, {}", ret_trip, write);
+    println!("\t ret_trip: \t {}, {}", ret_trip, write);
     // write = write_orig;
 
-    defmt::println!("SPI!");
+    let (clk, tx, rx) = spi.destroy();
+
+    println!("SPI Destroyed. Returned pins:");
+    println!("\t clk: {}", clk);
+    println!("\t tx: {}", tx);
+    println!("\t rx: {}", rx);
 
     loop {}
 }
