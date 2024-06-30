@@ -18,6 +18,7 @@ pub mod prelude {
     pub use efm32pg1b_pac as pac;
     pub use embedded_hal::digital::{InputPin, OutputPin, PinState, StatefulOutputPin};
     pub use embedded_hal::spi::SpiBus;
+    pub use fugit::RateExtU32;
 }
 
 fn stripped_type_name<T>() -> &'static str {

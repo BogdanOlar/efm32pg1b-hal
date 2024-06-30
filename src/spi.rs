@@ -15,9 +15,6 @@ use embedded_hal::{
 };
 use fugit::{HertzU32, RateExtU32};
 
-#[cfg(feature = "defmt")]
-use defmt_rtt as _;
-
 /// Get a reference to the `RegisterBlock` of either `Usart0` or `Usart1`
 const fn usartx<const N: u8>() -> &'static RegisterBlock {
     match N {
