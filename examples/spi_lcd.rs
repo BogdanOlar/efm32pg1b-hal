@@ -41,11 +41,16 @@ fn main() -> ! {
     defmt::println!("SPI LCD!");
 
     defmt::println!("SPI Destroyed");
-    let (mut clk, mut tx, mut rx) = spi.destroy();
+    let (clk, tx, rx) = spi.destroy();
 
-    defmt::println!("\t {}", clk.is_set_high());
-    defmt::println!("\t {}", tx.is_set_high());
-    defmt::println!("\t {}", rx.is_high());
+    defmt::println!("\t {}", clk);
+    defmt::println!("\t {:?}", tx);
+    defmt::println!("\t {:?}", rx);
+    defmt::println!("\t {}", gpio.pf0);
+    defmt::println!("\t {:?}", gpio.pf1);
+    defmt::println!("\t {:?}", gpio.pf2);
+    defmt::println!("\t {:?}", gpio.pf3);
+    defmt::println!("\t {:?}", gpio.pd13);
 
     loop {}
 }

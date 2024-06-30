@@ -59,24 +59,6 @@ impl<const P: char, const N: u8, MODE> ErrorType for Pin<P, N, MODE> {
     type Error = GpioError;
 }
 
-impl<const P: char, const N: u8, MODE> fmt::Debug for Pin<P, N, MODE> {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_fmt(format_args!(
-            "P{}{}<{}>",
-            P,
-            N,
-            crate::stripped_type_name::<MODE>()
-        ))
-    }
-}
-
-#[cfg(feature = "defmt")]
-impl<const P: char, const N: u8, MODE> defmt::Format for Pin<P, N, MODE> {
-    fn format(&self, f: defmt::Formatter) {
-        defmt::write!(f, "P{}{}<{}>", P, N, crate::stripped_type_name::<MODE>());
-    }
-}
-
 /// Id, port and mode for any pin
 pub trait PinExt {
     /// Current pin mode
@@ -935,3 +917,77 @@ pub mod gpio {
     pub type PF7<MODE = Disabled> = Pin<'F', 7, MODE>;
 }
 pub use gpio::{PF5, PF7};
+
+impl<const P: char, const N: u8> fmt::Debug for Pin<P, N, Disabled> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_fmt(format_args!("Pin<'{}', {}, Disabled>", P, N))
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl<const P: char, const N: u8> defmt::Format for Pin<P, N, Disabled> {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "Pin<'{}', {}, Disabled>", P, N);
+    }
+}
+
+impl<const P: char, const N: u8> fmt::Debug for Pin<P, N, Input> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_fmt(format_args!("Pin<'{}', {}, Input>", P, N))
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl<const P: char, const N: u8> defmt::Format for Pin<P, N, Input> {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "Pin<'{}', {}, Input>", P, N);
+    }
+}
+
+impl<const P: char, const N: u8, MODE> fmt::Debug for Pin<P, N, Output<MODE>> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_fmt(format_args!(
+            "Pin<'{}', {}, Output<{}>>",
+            P,
+            N,
+            crate::stripped_type_name::<MODE>()
+        ))
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl<const P: char, const N: u8, MODE> defmt::Format for Pin<P, N, Output<MODE>> {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(
+            f,
+            "Pin<'{}', {}, Output<{}>>",
+            P,
+            N,
+            crate::stripped_type_name::<MODE>()
+        );
+    }
+}
+
+impl<const P: char, const N: u8, MODE> fmt::Debug for Pin<P, N, Swd<MODE>> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_fmt(format_args!(
+            "Pin<'{}', {}, Swd<{}>>",
+            P,
+            N,
+            crate::stripped_type_name::<MODE>()
+        ))
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl<const P: char, const N: u8, MODE> defmt::Format for Pin<P, N, Swd<MODE>> {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(
+            f,
+            "Pin<'{}', {}, Swd<{}>>",
+            P,
+            N,
+            crate::stripped_type_name::<MODE>()
+        );
+    }
+}

@@ -1,9 +1,8 @@
+//! TODO: Crate documentation
+//!
+//! ## Feature flags
+#![doc = document_features::document_features!()]
 #![no_std]
-//!
-//! Hello crate doc!
-//!
-//! yes to crate description
-//!
 
 pub use efm32pg1b_pac as pac;
 pub use embedded_hal as hal;

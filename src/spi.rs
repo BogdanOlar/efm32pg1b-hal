@@ -2,7 +2,7 @@
 //!
 //! Some other description
 
-use core::{cmp::max, marker::PhantomData};
+use core::cmp::max;
 
 use crate::{
     cmu::Clocks,
