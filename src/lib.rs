@@ -5,7 +5,6 @@
 #![no_std]
 
 pub use efm32pg1b_pac as pac;
-pub use embedded_hal as hal;
 
 pub mod cmu;
 pub mod gpio;
@@ -14,7 +13,7 @@ pub mod spi;
 pub mod prelude {
     pub use crate::cmu::{Clocks, CmuExt};
     pub use crate::gpio::{DataInCtrl, DriveStrengthCtrl, GpioExt};
-    pub use crate::spi::{SpiMode, UsartSpiExt};
+    pub use crate::spi::UsartSpiExt;
     pub use efm32pg1b_pac as pac;
     pub use embedded_hal::digital::{InputPin, OutputPin, PinState, StatefulOutputPin};
     pub use embedded_hal::spi::SpiBus;

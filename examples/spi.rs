@@ -6,6 +6,7 @@
 use cortex_m_rt::entry;
 use efm32pg1b_hal::prelude::*;
 
+use embedded_hal::spi::{self, Phase, Polarity};
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
@@ -28,7 +29,15 @@ fn main() -> ! {
     let rx = gpio.pc7.into_input().with_filter().build();
     let clk = gpio.pc8.into_output().with_push_pull().build();
 
-    let mut spi = p.usart1.into_spi_bus(clk, tx, rx, SpiMode::Mode0);
+    let mut spi = p.usart1.into_spi_bus(
+        clk,
+        tx,
+        rx,
+        spi::Mode {
+            polarity: Polarity::IdleHigh,
+            phase: Phase::CaptureOnFirstTransition,
+        },
+    );
     let write_orig = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
     let mut write = write_orig;
     let mut read1 = [0; 5];

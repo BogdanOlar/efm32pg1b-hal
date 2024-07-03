@@ -11,7 +11,7 @@ use crate::{
 use efm32pg1b_pac::{usart0::RegisterBlock, Cmu, Usart0, Usart1};
 use embedded_hal::{
     digital::{InputPin, OutputPin},
-    spi::{Error, ErrorKind, ErrorType, SpiBus},
+    spi::{self, Error, ErrorKind, ErrorType, Mode, Phase, Polarity, SpiBus},
 };
 use fugit::{HertzU32, RateExtU32};
 
@@ -24,34 +24,18 @@ const fn usartx<const N: u8>() -> &'static RegisterBlock {
     }
 }
 
-/// USART SPI Modes
-///
-///     Mode0 => CLKPOL=0, CLKPHA=0
-///     Mode1 => CLKPOL=0, CLKPHA=1
-///     Mode2 => CLKPOL=1, CLKPHA=0
-///     Mode3 => CLKPOL=1, CLKPHA=1
-#[derive(Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum SpiMode {
-    /// CLKPOL=0, CLKPHA=0
-    Mode0,
-
-    /// CLKPOL=0, CLKPHA=1
-    Mode1,
-
-    /// CLKPOL=1, CLKPHA=0
-    Mode2,
-
-    /// CLKPOL=1, CLKPHA=1
-    Mode3,
-}
-
 /// Extension trait to specialize USART peripheral for SPI
 pub trait UsartSpiExt<PCLK, PTX, PRX> {
     type SpiPart;
 
     /// Configure the USART peripheral as an SPI
-    fn into_spi_bus(self, pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: SpiMode) -> Self::SpiPart;
+    fn into_spi_bus(
+        self,
+        pin_clk: PCLK,
+        pin_tx: PTX,
+        pin_rx: PRX,
+        mode: spi::Mode,
+    ) -> Self::SpiPart;
 }
 
 impl<PCLK, PTX, PRX> UsartSpiExt<PCLK, PTX, PRX> for Usart0
@@ -62,7 +46,13 @@ where
 {
     type SpiPart = Spi<0, PCLK, PTX, PRX>;
 
-    fn into_spi_bus(self, pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: SpiMode) -> Self::SpiPart {
+    fn into_spi_bus(
+        self,
+        pin_clk: PCLK,
+        pin_tx: PTX,
+        pin_rx: PRX,
+        mode: spi::Mode,
+    ) -> Self::SpiPart {
         // Enable USART 0 peripheral clock
         unsafe {
             Cmu::steal()
@@ -82,7 +72,13 @@ where
 {
     type SpiPart = Spi<1, PCLK, PTX, PRX>;
 
-    fn into_spi_bus(self, pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: SpiMode) -> Self::SpiPart {
+    fn into_spi_bus(
+        self,
+        pin_clk: PCLK,
+        pin_tx: PTX,
+        pin_rx: PRX,
+        mode: spi::Mode,
+    ) -> Self::SpiPart {
         // Enable USART 1 peripheral clock
         unsafe {
             Cmu::steal()
@@ -112,7 +108,7 @@ where
     const FILLER_BYTE: u8 = 0x00;
 
     /// TODO: add documentation
-    fn new(pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: SpiMode) -> Self {
+    fn new(pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: Mode) -> Self {
         let mut spi = Spi {
             usart: usartx::<N>(),
             pin_clk,
@@ -127,16 +123,11 @@ where
             w.sync().set_bit();
 
             // Set polarity
-            match mode {
-                SpiMode::Mode0 | SpiMode::Mode1 => w.clkpol().clear_bit(),
-                SpiMode::Mode2 | SpiMode::Mode3 => w.clkpol().set_bit(),
-            };
+            w.clkpol().bit(mode.polarity == Polarity::IdleHigh);
 
             // Set phase
-            match mode {
-                SpiMode::Mode0 | SpiMode::Mode2 => w.clkpha().clear_bit(),
-                SpiMode::Mode1 | SpiMode::Mode3 => w.clkpha().set_bit(),
-            };
+            w.clkpha()
+                .bit(mode.phase == Phase::CaptureOnSecondTransition);
 
             // Most significant bit first
             w.msbf().set_bit();
