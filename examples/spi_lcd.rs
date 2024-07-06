@@ -38,7 +38,7 @@ fn main() -> ! {
     // let mut btn0 = gpio.pf6.into_input().build();
 
     let mut spi = p.usart1.into_spi_bus(clk, tx, rx, SPIMODE);
-    let spi_br = spi.set_baudrate(500.kHz(), &clocks);
+    let spi_br = spi.set_baudrate(1.MHz(), &clocks);
     // assert_eq!(spi_br.unwrap(), 1055555.Hz::<1, 1>());
     let cs = gpio.pd14.into_output().with_push_pull().build();
     let disp_com = gpio.pd13.into_output().with_push_pull().build();
