@@ -11,19 +11,16 @@ use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch
                      // use panic_abort as _; // requires nightly
                      // use panic_itm as _; // logs messages over ITM; requires ITM support
                      // use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
-use defmt::{assert_eq, println};
+use defmt::assert_eq;
 use defmt_rtt as _;
 
-use ls013b7dh03::{Ls013b7dh03, HEIGHT, SPIMODE};
+use ls013b7dh03::{Ls013b7dh03, BUF_SIZE, HEIGHT, SPIMODE};
 
 #[entry]
 fn main() -> ! {
     let _core_p = cortex_m::Peripherals::take().unwrap();
-
     let p = pac::Peripherals::take().unwrap();
-
     let clocks = p.cmu.split();
-
     let gpio = p.gpio.split();
 
     let tx = gpio.pc6.into_output().with_push_pull().build();
@@ -32,18 +29,16 @@ fn main() -> ! {
 
     let mut board_disp_enable = gpio.pd15.into_output().with_push_pull().build();
 
-    // Let this App take control of display
+    // Let this App take control of display (the dev kit paticularity)
     let _ = board_disp_enable.set_high();
-
-    // let mut btn0 = gpio.pf6.into_input().build();
 
     let mut spi = p.usart1.into_spi_bus(clk, tx, rx, SPIMODE);
     let spi_br = spi.set_baudrate(1.MHz(), &clocks);
-    // assert_eq!(spi_br.unwrap(), 1055555.Hz::<1, 1>());
+    assert_eq!(spi_br.unwrap(), 1055555.Hz::<1, 1>());
     let cs = gpio.pd14.into_output().with_push_pull().build();
     let disp_com = gpio.pd13.into_output().with_push_pull().build();
 
-    let mut buffer: [u8; 2304] = [0; 2304];
+    let mut buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
     let mut disp = Ls013b7dh03::new(spi, cs, disp_com, &mut buffer);
 
     let mut poor_mans_timer: u32 = 0;
@@ -51,7 +46,7 @@ fn main() -> ! {
     let mut counter = 0;
     let mut ypos = 0;
 
-    // FIXME: this whole thing only works in Debug builds :D
+    // FIXME: this whole thing only works in Debug builds, since the Release build will toggle `disp_com` like there's no tomorrow :D
     loop {
         if poor_mans_timer >= (136_666 / 19) {
             poor_mans_timer = 0;
@@ -69,11 +64,11 @@ fn main() -> ! {
                 counter = 0;
 
                 for x in 10..100 {
-                    disp.write(x, ypos, false);
+                    let _ = disp.write(x, ypos, false);
                 }
                 ypos += 1;
                 for x in 10..100 {
-                    disp.write(x, ypos, true);
+                    let _ = disp.write(x, ypos, true);
                 }
 
                 ypos = ypos % HEIGHT as u8;
