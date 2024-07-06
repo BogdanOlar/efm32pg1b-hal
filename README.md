@@ -8,7 +8,7 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
 ## Roadmap
 
 - CMU: Clock Management Unit
-    - [x] Basic implementation, can return the default [`Clocks`]
+    - [x] Basic implementation, can return the default [`crate::cmu::Clocks`]
     - [ ] Handle prescalers to change clocks frequency
     - [ ] Handle Low Energy modes
     - [ ] Interrupts?
