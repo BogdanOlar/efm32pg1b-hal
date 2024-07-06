@@ -9,27 +9,27 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
 
 - CMU: Clock Management Unit
 
-    -[x] Basic implementation, can return the default [`Clocks`]
-    -[ ] Handle prescalers to change clocks frequency
-    -[ ] Handle Low Energy modes
-    -[ ] Interrupts?
-    -[ ] Unit tests ?
+    - [x] Basic implementation, can return the default [`Clocks`]
+    - [ ] Handle prescalers to change clocks frequency
+    - [ ] Handle Low Energy modes
+    - [ ] Interrupts?
+    - [ ] Unit tests ?
 
 - GPIO:
 
-    -[x] Basic implementation, implements ['embedded_hal::digital::InputPin`], ['embedded_hal::digital::OutputPin`] and [`embedded_hal::digital::StatefulOutputPin`] traits
-    
-    -[ ] Interrupts
-    -[ ] Unit tests ?
+    - [x] Basic implementation, implements ['embedded_hal::digital::InputPin`], ['embedded_hal::digital::OutputPin`] and [`embedded_hal::digital::StatefulOutputPin`] traits
+
+    - [ ] Interrupts
+    - [ ] Unit tests ?
 
 - SPI:
-    -[x] Basic implementation, implements blocking master operations
-    -[x] Pin constraints for alternate functions related to `Usart` in Synchronous mode
-    -[x] ['embedded_hal::spi::SpiBus`] trait implementation
-    -[ ] ['embedded_hal::spi::SpiDevice`] trait implementation
-    -[ ] Interrupts
-    -[ ] Dma channel operation
-    -[ ] Unit tests ?
+    - [x] Basic implementation, implements blocking master operations
+    - [x] Pin constraints for alternate functions related to `Usart` in Synchronous mode
+    - [x] ['embedded_hal::spi::SpiBus`] trait implementation
+    - [ ] ['embedded_hal::spi::SpiDevice`] trait implementation
+    - [ ] Interrupts
+    - [ ] Dma channel operation
+    - [ ] Unit tests ?
 
 - TIMER:
     -[ ] [`embedded-hal`] traits ?
