@@ -64,5 +64,5 @@ required-features = ["defmt"]
 embedded-hal = { version = "1", features = ["defmt-03"] }
 defmt-rtt = { version = "0.4" }
 embedded-graphics-core = { version = "0.4.0", features = ["defmt"] }
-ls013b7dh03 = { version = "0.2" }
+ls013b7dh03 = { version = "0.3" }
 # ls013b7dh03 = { path = "../ls013b7dh03" }
