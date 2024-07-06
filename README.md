@@ -1,6 +1,10 @@
 # efm32pg1b-hal
 Hardware abstraction layer (HAL) for [Silicon Labs EFM32PG1B](https://www.silabs.com/mcu/32-bit/efm32-pearl-gecko/device.EFM32PG1B200F256GM48) microcontrollers
 
+The [efm32pg1b-pac](https://github.com/BogdanOlar/efm32pg1b-pac) crate provides the register definitions and is re-exported as `pac` by this crate.
+
+This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/embedded-hal)
+
 ## Roadmap
 
 - CMU: Clock Management Unit
@@ -33,9 +37,6 @@ Hardware abstraction layer (HAL) for [Silicon Labs EFM32PG1B](https://www.silabs
 - TBD
 
 ## Documentation
-
-The [efm32pg1b-pac](https://github.com/BogdanOlar/efm32pg1b-pac) crate provides the register definitions and is re-exported as `pac` by this crate.
-This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/embedded-hal)
 
 Additional vendor supplied documents:
 - [Datasheet](https://www.silabs.com/documents/public/data-sheets/efm32pg1-datasheet.pdf)
