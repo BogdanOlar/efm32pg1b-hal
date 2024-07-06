@@ -29,10 +29,10 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
     - [ ] Unit tests ?
 
 - TIMER:
-    -[ ] [`embedded-hal`] traits ?
-    -[ ] Interrupts
-    -[ ] PWM generation ?
-    -[ ] Unit tests ?
+    - [ ] [`embedded-hal`] traits ?
+    - [ ] Interrupts
+    - [ ] PWM generation ?
+    - [ ] Unit tests ?
 
 - TBD
 
