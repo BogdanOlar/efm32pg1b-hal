@@ -1,12 +1,41 @@
 # efm32pg1b-hal
 Hardware abstraction layer (HAL) for [Silicon Labs EFM32PG1B](https://www.silabs.com/mcu/32-bit/efm32-pearl-gecko/device.EFM32PG1B200F256GM48) microcontrollers
 
-# WORK IN PROGRESS
+## Roadmap
+
+- CMU: Clock Management Unit
+    -[x] Basic implementation, can return the default [`Clocks`]
+    -[ ] Handle prescalers to change clocks frequency
+    -[ ] Handle Low Energy modes
+    -[ ] Interrupts?
+    -[ ] Unit tests ?
+
+- GPIO:
+    -[x] Basic implementation, implements ['embedded_hal::digital::InputPin`], ['embedded_hal::digital::OutputPin`] and [`embedded_hal::digital::StatefulOutputPin`] traits
+    -[ ] Interrupts
+    -[ ] Unit tests ?
+
+- SPI:
+    -[x] Basic implementation, implements blocking master operations
+    -[x] Pin constraints for alternate functions related to `Usart` in Synchronous mode
+    -[x] ['embedded_hal::spi::SpiBus`] trait implementation
+    -[ ] ['embedded_hal::spi::SpiDevice`] trait implementation
+    -[ ] Interrupts
+    -[ ] Dma channel operation
+    -[ ] Unit tests ?
+
+- TIMER:
+    -[ ] [`embedded-hal`] traits ?
+    -[ ] Interrupts
+    -[ ] PWM generation ?
+    -[ ] Unit tests ?
+
+- TBD
 
 ## Documentation
 
 The [efm32pg1b-pac](https://github.com/BogdanOlar/efm32pg1b-pac) crate provides the register definitions and is re-exported as `pac` by this crate.
-
+This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/embedded-hal)
 
 Additional vendor supplied documents:
 - [Datasheet](https://www.silabs.com/documents/public/data-sheets/efm32pg1-datasheet.pdf)
