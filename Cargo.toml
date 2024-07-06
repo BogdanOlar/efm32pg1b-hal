@@ -1,6 +1,6 @@
 [package]
 name = "efm32pg1b-hal"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Bogdan Olar <olar.bogdan.dev@gmail.com>"]
 edition = "2018"
 description = "Hardware abstraction layer (HAL) for Silicon Labs EFM32PG1B microcontrollers"
@@ -11,13 +11,7 @@ license = "MIT/Apache-2.0"
 repository = "https://github.com/BogdanOlar/efm32pg1b-hal"
 
 [dependencies]
-# TODO: Revert this when done with PAC
-# efm32pg1b-pac = { version = "0.2.5", features = [
-#     "critical-section",
-#     "rt",
-#     "defmt",
-# ] }
-efm32pg1b-pac = { path = "../efm32pg1b-pac", features = [
+efm32pg1b-pac = { version = "0.2.7", features = [
     "critical-section",
     "rt",
     "defmt",
