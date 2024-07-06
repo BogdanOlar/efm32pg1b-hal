@@ -15,15 +15,15 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
     - [ ] Unit tests ?
 
 - GPIO:
-    - [x] Basic implementation, implements [`embedded_hal::digital::InputPin`], ['embedded_hal::digital::OutputPin`] and [`embedded_hal::digital::StatefulOutputPin`] traits
+    - [x] Basic implementation, implements [`embedded_hal::digital::InputPin`], [`embedded_hal::digital::OutputPin`] and [`embedded_hal::digital::StatefulOutputPin`] traits
     - [ ] Interrupts
     - [ ] Unit tests ?
 
 - SPI:
     - [x] Basic implementation, implements blocking master operations
     - [x] Pin constraints for alternate functions related to `Usart` in Synchronous mode
-    - [x] ['embedded_hal::spi::SpiBus`] trait implementation
-    - [ ] ['embedded_hal::spi::SpiDevice`] trait implementation
+    - [x] [`embedded_hal::spi::SpiBus`] trait implementation
+    - [ ] [`embedded_hal::spi::SpiDevice`] trait implementation
     - [ ] Interrupts
     - [ ] Dma channel operation
     - [ ] Unit tests ?
