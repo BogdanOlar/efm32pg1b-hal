@@ -57,12 +57,13 @@ required-features = ["defmt"]
 
 [[example]]
 name = "spi_lcd"
+dependencies = ["embedded-graphics"]
 required-features = ["defmt"]
 
 [dev-dependencies]
 # Be able to print out types in `embedded-hal` when running the examples
 embedded-hal = { version = "1", features = ["defmt-03"] }
 defmt-rtt = { version = "0.4" }
-embedded-graphics-core = { version = "0.4.0", features = ["defmt"] }
-ls013b7dh03 = { version = "0.3" }
-# ls013b7dh03 = { path = "../ls013b7dh03" }
+embedded-graphics = { version = "0.8" }
+ls013b7dh03 = { version = "0.4", features = ["embedded_graphics"] }
+# ls013b7dh03 = { path = "../ls013b7dh03", features = ["embedded_graphics"] }

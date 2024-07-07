@@ -6,6 +6,12 @@
 use cortex_m_rt::entry;
 use efm32pg1b_hal::prelude::*;
 
+use embedded_graphics::{
+    geometry::Point,
+    pixelcolor::BinaryColor,
+    prelude::*,
+    primitives::{Circle, Primitive, PrimitiveStyle},
+};
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
@@ -44,7 +50,7 @@ fn main() -> ! {
     let mut poor_mans_timer: u32 = 0;
     let mut tgl = true;
     let mut counter = 0;
-    let mut ypos = 0;
+    let mut ypos: i32 = 0;
 
     // FIXME: this whole thing only works in Debug builds, since the Release build will toggle `disp_com` like there's no tomorrow :D
     loop {
@@ -63,16 +69,20 @@ fn main() -> ! {
             if counter >= 10 {
                 counter = 0;
 
-                for x in 10..100 {
-                    let _ = disp.write(x, ypos, false);
-                }
-                ypos += 1;
-                for x in 10..100 {
-                    let _ = disp.write(x, ypos, true);
-                }
+                // erase old circle
+                let circle = Circle::new(Point::new(22, ypos as i32), ypos as u32 + 5)
+                    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::Off, 2));
+                let _ = circle.draw(&mut disp);
 
-                ypos = ypos % HEIGHT as u8;
+                ypos += 2;
+                ypos = ypos % HEIGHT as i32;
 
+                // draw new circle
+                let circle = Circle::new(Point::new(22, ypos as i32), ypos as u32 + 5)
+                    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2));
+                let _ = circle.draw(&mut disp);
+
+                // Update the display
                 disp.flush();
             }
         } else {
