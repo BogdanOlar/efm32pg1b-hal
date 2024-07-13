@@ -11,7 +11,7 @@ license = "MIT/Apache-2.0"
 repository = "https://github.com/BogdanOlar/efm32pg1b-hal"
 
 [dependencies]
-efm32pg1b-pac = { version = "0.2.8", features = [
+efm32pg1b-pac = { version = "0.3.0", features = [
     "critical-section",
     "rt",
     "defmt",

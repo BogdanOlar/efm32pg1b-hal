@@ -208,10 +208,10 @@ impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
                 compare = (current_count + reload) % reload_max;
 
                 match CN {
-                    0 => while timer.if_().read().cc0().bit_is_clear() {},
-                    1 => while timer.if_().read().cc1().bit_is_clear() {},
-                    2 => while timer.if_().read().cc2().bit_is_clear() {},
-                    3 => while timer.if_().read().cc3().bit_is_clear() {},
+                    0 => while timer.ifl().read().cc0().bit_is_clear() {},
+                    1 => while timer.ifl().read().cc1().bit_is_clear() {},
+                    2 => while timer.ifl().read().cc2().bit_is_clear() {},
+                    3 => while timer.ifl().read().cc3().bit_is_clear() {},
                     _ => unreachable!(),
                 }
             }
