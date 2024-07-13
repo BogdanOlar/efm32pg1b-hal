@@ -11,11 +11,16 @@ license = "MIT/Apache-2.0"
 repository = "https://github.com/BogdanOlar/efm32pg1b-hal"
 
 [dependencies]
-efm32pg1b-pac = { version = "0.2.7", features = [
+efm32pg1b-pac = { version = "0.2.8", features = [
     "critical-section",
     "rt",
     "defmt",
 ] }
+# efm32pg1b-pac = { path = "../efm32pg1b-pac", features = [
+#     "critical-section",
+#     "rt",
+#     "defmt",
+# ] }
 embedded-hal = { version = "1" }
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.3"
@@ -65,5 +70,5 @@ required-features = ["defmt"]
 embedded-hal = { version = "1", features = ["defmt-03"] }
 defmt-rtt = { version = "0.4" }
 embedded-graphics = { version = "0.8" }
-ls013b7dh03 = { version = "0.4", features = ["embedded_graphics"] }
-# ls013b7dh03 = { path = "../ls013b7dh03", features = ["embedded_graphics"] }
+# ls013b7dh03 = { version = "0.4", features = ["embedded_graphics"] }
+ls013b7dh03 = { path = "../ls013b7dh03", features = ["embedded_graphics"] }

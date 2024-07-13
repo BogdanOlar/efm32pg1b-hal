@@ -20,7 +20,7 @@ use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch
 use defmt::assert_eq;
 use defmt_rtt as _;
 
-use ls013b7dh03::{Ls013b7dh03, BUF_SIZE, HEIGHT, SPIMODE};
+use ls013b7dh03::prelude::*;
 
 #[entry]
 fn main() -> ! {
@@ -33,10 +33,8 @@ fn main() -> ! {
     let rx = gpio.pc7.into_input().with_filter().build();
     let clk = gpio.pc8.into_output().with_push_pull().build();
 
-    let mut board_disp_enable = gpio.pd15.into_output().with_push_pull().build();
-
     // Let this App take control of display (the dev kit paticularity)
-    let _ = board_disp_enable.set_high();
+    let _ = gpio.pd15.into_output().with_push_pull().build().set_high();
 
     let mut spi = p.usart1.into_spi_bus(clk, tx, rx, SPIMODE);
     let spi_br = spi.set_baudrate(1.MHz(), &clocks);
@@ -44,8 +42,14 @@ fn main() -> ! {
     let cs = gpio.pd14.into_output().with_push_pull().build();
     let disp_com = gpio.pd13.into_output().with_push_pull().build();
 
-    let mut buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
+    let mut buffer = [0u8; BUF_SIZE];
     let mut disp = Ls013b7dh03::new(spi, cs, disp_com, &mut buffer);
+
+    let tim0 = p.timer0.new(TimerDivider::Div1);
+    let (tim0ch0, tim0ch1, tim0ch2, tim0ch3) = tim0.split();
+
+    let com_inv_delay = tim0ch0.into_delay(&clocks);
+    let display_update_delay = tim0ch1.into_delay(&clocks);
 
     let mut poor_mans_timer: u32 = 0;
     let mut tgl = true;

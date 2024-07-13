@@ -9,12 +9,14 @@ pub use efm32pg1b_pac as pac;
 pub mod cmu;
 pub mod gpio;
 pub mod spi;
+pub mod timer;
 
 pub mod prelude {
     pub use crate::{
         cmu::{Clocks, CmuExt},
         gpio::{DataInCtrl, DriveStrengthCtrl, GpioExt},
         spi::UsartSpiExt,
+        timer::{Timer, TimerDivider, TimerExt},
     };
     pub use efm32pg1b_pac as pac;
     pub use embedded_hal::{
