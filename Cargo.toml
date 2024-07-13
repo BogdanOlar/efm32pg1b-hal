@@ -65,6 +65,10 @@ name = "spi_lcd"
 dependencies = ["embedded-graphics"]
 required-features = ["defmt"]
 
+[[example]]
+name = "timer"
+required-features = ["defmt"]
+
 [dev-dependencies]
 # Be able to print out types in `embedded-hal` when running the examples
 embedded-hal = { version = "1", features = ["defmt-03"] }

@@ -12,6 +12,7 @@ use embedded_graphics::{
     prelude::*,
     primitives::{Circle, Primitive, PrimitiveStyle},
 };
+use embedded_hal::delay::DelayNs;
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
@@ -45,52 +46,46 @@ fn main() -> ! {
     let mut buffer = [0u8; BUF_SIZE];
     let mut disp = Ls013b7dh03::new(spi, cs, disp_com, &mut buffer);
 
-    let tim0 = p.timer0.new(TimerDivider::Div1);
-    let (tim0ch0, tim0ch1, tim0ch2, tim0ch3) = tim0.split();
+    let tim0 = p.timer0.new(TimerDivider::Div2);
+    let (_tim0ch0, tim0ch1, _tim0ch2, _tim0ch3) = tim0.split();
 
-    let com_inv_delay = tim0ch0.into_delay(&clocks);
-    let display_update_delay = tim0ch1.into_delay(&clocks);
+    let mut com_inv_delay = tim0ch1.into_delay(&clocks);
 
-    let mut poor_mans_timer: u32 = 0;
     let mut tgl = true;
     let mut counter = 0;
     let mut ypos: i32 = 0;
 
     // FIXME: this whole thing only works in Debug builds, since the Release build will toggle `disp_com` like there's no tomorrow :D
     loop {
-        if poor_mans_timer >= (136_666 / 19) {
-            poor_mans_timer = 0;
+        tgl = !tgl;
 
-            tgl = !tgl;
-
-            match tgl {
-                true => disp.enable(),
-                false => disp.disable(),
-            }
-
-            counter += 1;
-
-            if counter >= 10 {
-                counter = 0;
-
-                // erase old circle
-                let circle = Circle::new(Point::new(22, ypos as i32), ypos as u32 + 5)
-                    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::Off, 2));
-                let _ = circle.draw(&mut disp);
-
-                ypos += 2;
-                ypos = ypos % HEIGHT as i32;
-
-                // draw new circle
-                let circle = Circle::new(Point::new(22, ypos as i32), ypos as u32 + 5)
-                    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2));
-                let _ = circle.draw(&mut disp);
-
-                // Update the display
-                disp.flush();
-            }
-        } else {
-            poor_mans_timer += 1;
+        match tgl {
+            true => disp.enable(),
+            false => disp.disable(),
         }
+
+        counter += 1;
+
+        if counter >= 10 {
+            counter = 0;
+
+            // erase old circle
+            let circle = Circle::new(Point::new(22, ypos as i32), ypos as u32 + 5)
+                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::Off, 2));
+            let _ = circle.draw(&mut disp);
+
+            ypos += 2;
+            ypos = ypos % HEIGHT as i32;
+
+            // draw new circle
+            let circle = Circle::new(Point::new(22, ypos as i32), ypos as u32 + 5)
+                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2));
+            let _ = circle.draw(&mut disp);
+
+            // Update the display
+            disp.flush();
+        }
+
+        com_inv_delay.delay_ms(16);
     }
 }

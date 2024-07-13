@@ -2,7 +2,7 @@ use crate::{cmu::Clocks, gpio::Pin};
 use core::marker::PhantomData;
 pub use efm32pg1b_pac::timer0::ctrl::PRESC as TimerDivider;
 use efm32pg1b_pac::{
-    timer0::{ctrl::MODE, RegisterBlock},
+    timer0::{cc0_ctrl, cc1_ctrl, cc2_ctrl, cc3_ctrl, ctrl, RegisterBlock},
     Cmu, Timer0, Timer1,
 };
 use embedded_hal::{delay::DelayNs, digital::OutputPin};
@@ -44,8 +44,11 @@ impl<const TN: u8> Timer<TN> {
 
         timer.ctrl().write(|w| {
             w.presc().variant(clock_divider);
-            w.mode().variant(MODE::Up)
+            w.mode().variant(ctrl::MODE::Up)
         });
+
+        // set the resolution of the counter to MAX
+        timer.top().write(|w| unsafe { w.top().bits(u16::MAX) });
 
         Self {}
     }
@@ -100,6 +103,22 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
         let timer = timerx::<TN>();
         let timer_div: u8 = timer.ctrl().read().presc().variant().unwrap().into();
         let timer_freq = clocks.hf_per_clk / (timer_div + 1) as u32;
+
+        match CN {
+            0 => timer
+                .cc0_ctrl()
+                .write(|w| w.mode().variant(cc0_ctrl::MODE::Outputcompare)),
+            1 => timer
+                .cc1_ctrl()
+                .write(|w| w.mode().variant(cc1_ctrl::MODE::Outputcompare)),
+            2 => timer
+                .cc2_ctrl()
+                .write(|w| w.mode().variant(cc2_ctrl::MODE::Outputcompare)),
+            3 => timer
+                .cc3_ctrl()
+                .write(|w| w.mode().variant(cc3_ctrl::MODE::Outputcompare)),
+            _ => unreachable!(),
+        }
         TimerChannelDelay { timer_freq }
     }
 }
@@ -118,7 +137,85 @@ pub struct TimerChannelDelay<const TN: u8, const CN: u8> {
 
 impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
     fn delay_ns(&mut self, ns: u32) {
-        todo!()
+        let microsecs = ns / 1000;
+
+        if microsecs > 0 {
+            let timer = timerx::<TN>();
+            let ticks_left = self.timer_freq.raw() as u64 * microsecs as u64 / 1_000_000_u64;
+            let mut ticks_left = ticks_left as u32;
+            let reload_max = timer.top().read().top().bits() as u32;
+
+            let mut reload = ticks_left.min(reload_max);
+
+            let current_count = timer.cnt().read().cnt().bits() as u32;
+            let mut compare = (current_count + reload) % reload_max;
+
+            while ticks_left > 0 {
+                match CN {
+                    0 => {
+                        // clear interrupt flag
+                        timer.ifc().write(|w| w.cc0().set_bit());
+
+                        // set compare
+                        timer
+                            .cc0_ccv()
+                            .write(|w| unsafe { w.ccv().bits(compare as u16) });
+
+                        // enable channel interrupt
+                        timer.ien().write(|w| w.cc0().set_bit());
+                    }
+                    1 => {
+                        // clear interrupt flag
+                        timer.ifc().write(|w| w.cc1().set_bit());
+
+                        // set compare
+                        timer
+                            .cc1_ccv()
+                            .write(|w| unsafe { w.ccv().bits(compare as u16) });
+
+                        // enable channel interrupt
+                        timer.ien().write(|w| w.cc1().set_bit());
+                    }
+                    2 => {
+                        // clear interrupt flag
+                        timer.ifc().write(|w| w.cc2().set_bit());
+
+                        // set compare
+                        timer
+                            .cc2_ccv()
+                            .write(|w| unsafe { w.ccv().bits(compare as u16) });
+
+                        // enable channel interrupt
+                        timer.ien().write(|w| w.cc2().set_bit());
+                    }
+                    3 => {
+                        // clear interrupt flag
+                        timer.ifc().write(|w| w.cc3().set_bit());
+
+                        // set compare
+                        timer
+                            .cc3_ccv()
+                            .write(|w| unsafe { w.ccv().bits(compare as u16) });
+
+                        // enable channel interrupt
+                        timer.ien().write(|w| w.cc3().set_bit());
+                    }
+                    _ => unreachable!(),
+                }
+
+                ticks_left -= reload;
+                reload = ticks_left.min(reload_max);
+                compare = (current_count + reload) % reload_max;
+
+                match CN {
+                    0 => while timer.if_().read().cc0().bit_is_clear() {},
+                    1 => while timer.if_().read().cc1().bit_is_clear() {},
+                    2 => while timer.if_().read().cc2().bit_is_clear() {},
+                    3 => while timer.if_().read().cc3().bit_is_clear() {},
+                    _ => unreachable!(),
+                }
+            }
+        }
     }
 }
 

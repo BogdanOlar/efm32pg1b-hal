@@ -80,6 +80,27 @@
                 "kind": "build",
                 // "isDefault": true
             }
-        }
+        },
+        {
+            "label": "cargo build example timer",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "timer",
+                "--features='defmt'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "presentation": {
+                "clear": true
+            },
+            "group": {
+                "kind": "build",
+                // "isDefault": true
+            }
+        },
     ]
 }
