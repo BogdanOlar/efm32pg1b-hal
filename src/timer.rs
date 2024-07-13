@@ -60,6 +60,7 @@ impl<const TN: u8> Timer<TN> {
         Self {}
     }
 
+    /// Split the timer into channels which may be specialised for various uses (delay, pwm, etc.)
     pub fn split(
         self,
     ) -> (
