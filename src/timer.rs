@@ -1,28 +1,32 @@
 use crate::{cmu::Clocks, gpio::Pin};
-use core::marker::PhantomData;
+use core::{convert::Infallible, marker::PhantomData};
 pub use efm32pg1b_pac::timer0::ctrl::PRESC as TimerDivider;
 use efm32pg1b_pac::{
     timer0::{cc0_ctrl, cc1_ctrl, cc2_ctrl, cc3_ctrl, ctrl, RegisterBlock},
     Cmu, Timer0, Timer1,
 };
-use embedded_hal::{delay::DelayNs, digital::OutputPin};
+use embedded_hal::{
+    delay::DelayNs,
+    digital::OutputPin,
+    pwm::{ErrorType, SetDutyCycle},
+};
 use fugit::HertzU32;
 
 pub trait TimerExt {
     type Timer;
-    fn new(self, clock_divider: TimerDivider) -> Self::Timer;
+    fn new(clock_divider: TimerDivider) -> Self::Timer;
 }
 
 impl TimerExt for Timer0 {
     type Timer = Timer<0>;
-    fn new(self, clock_divider: TimerDivider) -> Self::Timer {
+    fn new(clock_divider: TimerDivider) -> Self::Timer {
         Self::Timer::new(clock_divider)
     }
 }
 
 impl TimerExt for Timer1 {
     type Timer = Timer<1>;
-    fn new(self, clock_divider: TimerDivider) -> Self::Timer {
+    fn new(clock_divider: TimerDivider) -> Self::Timer {
         Self::Timer::new(clock_divider)
     }
 }
@@ -36,9 +40,12 @@ const fn timerx<const TN: u8>() -> &'static RegisterBlock {
     }
 }
 
+#[derive(Debug)]
 pub struct Timer<const TN: u8> {}
 
 impl<const TN: u8> Timer<TN> {
+    /// FIXME: take a (timer counter) frequency as parameter and to a best effort to set the timer prescaler and the
+    /// 'top` value to get as close as possible
     fn new(clock_divider: TimerDivider) -> Self {
         let timer = timerx::<TN>();
 
@@ -89,6 +96,7 @@ impl<const TN: u8> Timer<TN> {
     }
 }
 
+#[derive(Debug)]
 pub struct TimerChannel<const TN: u8, const CN: u8> {}
 
 impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
@@ -96,7 +104,47 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
     where
         PIN: OutputPin + TimerPin<CN>,
     {
-        todo!()
+        let timer = timerx::<TN>();
+
+        match CN {
+            0 => {
+                timer
+                    .routeloc0()
+                    .write(|w| unsafe { w.cc0loc().bits(pin.loc()) });
+                timer
+                    .cc0_ctrl()
+                    .write(|w| w.mode().variant(cc0_ctrl::MODE::Pwm));
+            }
+            1 => {
+                timer
+                    .routeloc0()
+                    .write(|w| unsafe { w.cc1loc().bits(pin.loc()) });
+                timer
+                    .cc1_ctrl()
+                    .write(|w| w.mode().variant(cc1_ctrl::MODE::Pwm));
+            }
+            2 => {
+                timer
+                    .routeloc0()
+                    .write(|w| unsafe { w.cc2loc().bits(pin.loc()) });
+                timer
+                    .cc2_ctrl()
+                    .write(|w| w.mode().variant(cc2_ctrl::MODE::Pwm));
+            }
+            3 => {
+                timer
+                    .routeloc0()
+                    .write(|w| unsafe { w.cc3loc().bits(pin.loc()) });
+                timer
+                    .cc3_ctrl()
+                    .write(|w| w.mode().variant(cc3_ctrl::MODE::Pwm));
+            }
+            _ => unreachable!(),
+        }
+
+        TimerChannelPwm {
+            _pwm_pin: PhantomData,
+        }
     }
 
     pub fn into_delay(self, clocks: &Clocks) -> TimerChannelDelay<TN, CN> {
@@ -119,18 +167,13 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
                 .write(|w| w.mode().variant(cc3_ctrl::MODE::Outputcompare)),
             _ => unreachable!(),
         }
+
         TimerChannelDelay { timer_freq }
     }
 }
 
-pub struct TimerChannelPwm<const TN: u8, const CN: u8, PIN>
-where
-    PIN: OutputPin + TimerPin<CN>,
-{
-    _pwm_pin: PhantomData<PIN>,
-}
-
 /// Specialize the timer channel to be used for delays
+#[derive(Debug)]
 pub struct TimerChannelDelay<const TN: u8, const CN: u8> {
     timer_freq: HertzU32,
 }
@@ -139,16 +182,22 @@ impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
     fn delay_ns(&mut self, ns: u32) {
         let microsecs = ns / 1000;
 
+        // FIXME: converting ns to us is just a band-aid in order to avoid the delay duration being smaller than this
+        //        code can handle. Worst case scenario is if the timer frequency is the same as the core frequency,
+        //        in which case wanting to wait for a few nanoseconds may take longer than expected because the code
+        //        below needs to calculate a Compare value which may have already elapsed by the time it's written to
+        //        the compare field of the CC channel.
+        //        A better accuracy may be obtained if we implement `DelayNs` for `Timer` instead of `TimerChannelDelay`
+        //        since we can control when the timer starts.
         if microsecs > 0 {
             let timer = timerx::<TN>();
             let ticks_left = self.timer_freq.raw() as u64 * microsecs as u64 / 1_000_000_u64;
-            let mut ticks_left = ticks_left as u32;
             let reload_max = timer.top().read().top().bits() as u32;
+            let reference_count = timer.cnt().read().cnt().bits() as u32;
 
+            let mut ticks_left = ticks_left as u32;
             let mut reload = ticks_left.min(reload_max);
-
-            let current_count = timer.cnt().read().cnt().bits() as u32;
-            let mut compare = (current_count + reload) % reload_max;
+            let mut compare = (reference_count + reload) % reload_max;
 
             while ticks_left > 0 {
                 match CN {
@@ -205,7 +254,7 @@ impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
 
                 ticks_left -= reload;
                 reload = ticks_left.min(reload_max);
-                compare = (current_count + reload) % reload_max;
+                compare = (reference_count + reload) % reload_max;
 
                 match CN {
                     0 => while timer.ifl().read().cc0().bit_is_clear() {},
@@ -219,11 +268,49 @@ impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
     }
 }
 
+#[derive(Debug)]
+pub struct TimerChannelPwm<const TN: u8, const CN: u8, PIN>
+where
+    PIN: OutputPin + TimerPin<CN>,
+{
+    _pwm_pin: PhantomData<PIN>,
+}
+
+impl<const TN: u8, const CN: u8, PIN> SetDutyCycle for TimerChannelPwm<TN, CN, PIN>
+where
+    PIN: OutputPin + TimerPin<CN>,
+{
+    fn max_duty_cycle(&self) -> u16 {
+        timerx::<TN>().top().read().top().bits()
+    }
+
+    fn set_duty_cycle(&mut self, duty: u16) -> Result<(), Self::Error> {
+        let timer = timerx::<TN>();
+
+        match CN {
+            0 => timer.cc0_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
+            1 => timer.cc1_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
+            2 => timer.cc2_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
+            3 => timer.cc3_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
+}
+
+impl<const TN: u8, const CN: u8, PIN> ErrorType for TimerChannelPwm<TN, CN, PIN>
+where
+    PIN: OutputPin + TimerPin<CN>,
+{
+    type Error = Infallible;
+}
+
 pub trait TimerPin<const CN: u8> {
     fn loc(&self) -> u8;
 }
 
-/// Implement pin location trait for each of the timer channels
+/// Implement pin location trait for each of the timer channels and their sets of 32 pins
 macro_rules! impl_timer_channel_loc {
     ($channel:literal, $loc:literal, $port:literal, $pin:literal) => {
         impl<ANY> TimerPin<$channel> for Pin<$port, $pin, ANY> {

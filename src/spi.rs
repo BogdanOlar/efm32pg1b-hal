@@ -268,15 +268,11 @@ where
 
     /// TODO:
     fn calculate_baudrate(hf_per_clk: HertzU32, clk_div: u32) -> HertzU32 {
-        let divisor: u64;
-        let remainder: u64;
-        let quotient: u64;
+        let divisor: u64 = ((clk_div as u64) << 3) + 256;
+        let remainder: u64 = hf_per_clk.raw() as u64 % divisor;
+        let quotient: u64 = hf_per_clk.raw() as u64 / divisor;
         let factor: u64 = 128;
-        let clk_div: u64 = (clk_div as u64) << 3;
 
-        divisor = clk_div + 256;
-        quotient = hf_per_clk.raw() as u64 / divisor;
-        remainder = hf_per_clk.raw() as u64 % divisor;
         let br = (factor * quotient) as u32;
         let br = br + ((factor * remainder) / divisor) as u32;
 
@@ -378,14 +374,11 @@ where
 
     fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Self::Error> {
         let max_byte_count = max(read.len(), write.len());
-        let mut tx_iter = write.into_iter();
-        let mut rx_iter = read.into_iter();
+        let mut tx_iter = write.iter();
+        let mut rx_iter = read.iter_mut();
         let mut rx_discard = 0;
 
-        for (txo, rxo) in (0..max_byte_count)
-            .into_iter()
-            .map(|_| (tx_iter.next(), rx_iter.next()))
-        {
+        for (txo, rxo) in (0..max_byte_count).map(|_| (tx_iter.next(), rx_iter.next())) {
             let tx_byte = match txo {
                 Some(txr) => *txr,
                 None => Self::FILLER_BYTE,
