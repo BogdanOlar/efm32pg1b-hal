@@ -55,7 +55,6 @@ fn main() -> ! {
     let mut counter = 0;
     let mut ypos: i32 = 0;
 
-    // FIXME: this whole thing only works in Debug builds, since the Release build will toggle `disp_com` like there's no tomorrow :D
     loop {
         tgl = !tgl;
 
@@ -86,6 +85,7 @@ fn main() -> ! {
             disp.flush();
         }
 
+        // blocking delay of 16ms
         com_inv_delay.delay_ms(16);
     }
 }
