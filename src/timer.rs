@@ -44,8 +44,8 @@ const fn timerx<const TN: u8>() -> &'static RegisterBlock {
 pub struct Timer<const TN: u8> {}
 
 impl<const TN: u8> Timer<TN> {
-    /// FIXME: take a (timer counter) frequency as parameter and to a best effort to set the timer prescaler and the
-    /// 'top` value to get as close as possible
+    /// FIXME: take a (timer counter) frequency as parameter and do a best effort to set the timer prescaler and the
+    ///        'top` value to get as close as possible
     fn new(clock_divider: TimerDivider) -> Self {
         let timer = timerx::<TN>();
 
