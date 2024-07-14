@@ -20,11 +20,12 @@ fn main() -> ! {
     let p = pac::Peripherals::take().unwrap();
     let clocks = p.cmu.split();
     let gpio = p.gpio.split();
-    let disp_com = gpio.pd13.into_output().with_push_pull().build();
+    let mut pin_delay = gpio.pd14.into_output().with_push_pull().build();
+    let pin_pwm = gpio.pd13.into_output().with_push_pull().build();
     let timer = p.timer0.into_timer(TimerDivider::Div1024);
     let (tim0ch0, tim0ch1, _tim0ch2, _tim0ch3) = timer.split();
 
-    let mut pwm = tim0ch1.into_pwm(disp_com);
+    let mut pwm = tim0ch1.into_pwm(pin_pwm);
     let mut delayer = tim0ch0.into_delay(&clocks);
 
     let mut seconds: u32 = 0;
@@ -39,8 +40,9 @@ fn main() -> ! {
         println!("Delay {} seconds, pwm {} %", seconds, percent);
 
         let _ = pwm.set_duty_cycle_percent(percent);
-
         percent = if percent < 100 { percent + 10 } else { 0 };
+
+        let _ = pin_delay.toggle();
         delayer.delay_ms(seconds * 1_000);
     }
 }

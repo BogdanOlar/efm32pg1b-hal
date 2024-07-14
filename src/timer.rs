@@ -267,6 +267,7 @@ impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
                     _ => unreachable!(),
                 }
 
+                // calculate next loop's values _before_ waiting so that the jitter between loops is minimal
                 ticks_left -= reload;
                 reload = ticks_left.min(reload_max);
                 compare = (reference_count + reload) % reload_max;
