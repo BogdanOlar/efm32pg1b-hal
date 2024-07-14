@@ -14,6 +14,12 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
     - [ ] Interrupts?
     - [ ] Unit tests ?
 
+- SYSTICK:
+    - [ ] [`embedded-hal`] traits:
+        - [ ] `embedded_hal::delay::DelayNs`
+        - [ ] `embedded_hal::pwm::SetDutyCycle` ?
+    - [ ] Interrupts
+
 - GPIO:
     - [x] Basic implementation
     - [x] [`embedded-hal`] traits:
@@ -29,6 +35,9 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
     - [ ] [`embedded-hal`] traits:
         - [x] `embedded_hal::spi::SpiBus`
         - [ ] `embedded_hal::spi::SpiDevice`
+    - [ ] Some sort of SPI Manager/Server which arbitrates between of possibly different `embedded_hal::spi::SpiDevice`
+    - [ ] Some sort of `SpiDeviceConfig` for each `SpiDevice`, which specifies the SPI parameters (Mode, Baudrate,
+          Chip Select polarity) that each `embedded_hal::spi::SpiDevice` needs to be set while using the Spi Bus
     - [ ] Interrupts
     - [ ] Dma channel operation
     - [ ] Unit tests ?
@@ -39,12 +48,6 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
         - [x] `embedded_hal::pwm::SetDutyCycle`
     - [ ] Interrupts
     - [ ] Unit tests ?
-
-- SYSTICK:
-    - [ ] [`embedded-hal`] traits:
-        - [ ] `embedded_hal::delay::DelayNs`
-        - [ ] `embedded_hal::pwm::SetDutyCycle` ?
-    - [ ] Interrupts
 
 - TBD
 
