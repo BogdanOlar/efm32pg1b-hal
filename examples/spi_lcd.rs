@@ -1,4 +1,4 @@
-//! Build with `cargo build --example spi --features="defmt"`
+//! Build with `cargo build --example spi_lcd --features="defmt"`
 
 #![no_main]
 #![no_std]
