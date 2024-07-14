@@ -12,7 +12,6 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
     - [ ] Handle prescalers to change clocks frequency
     - [ ] Handle Low Energy modes
     - [ ] Interrupts?
-    - [ ] Unit tests ?
 
 - SYSTICK:
     - [ ] [`embedded-hal`] traits:
@@ -26,8 +25,8 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
         - [x] `embedded_hal::digital::InputPin`
         - [x] `embedded_hal::digital::OutputPin`
         - [x] `embedded_hal::digital::StatefulOutputPin`
+    - [ ] Cargo features to differentiate between MCU HW packages which specify which pins are available
     - [ ] Interrupts
-    - [ ] Unit tests ?
 
 - SPI:
     - [x] Basic implementation, implements blocking master operations
@@ -40,14 +39,12 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
           Chip Select polarity) that each `embedded_hal::spi::SpiDevice` needs to be set while using the Spi Bus
     - [ ] Interrupts
     - [ ] Dma channel operation
-    - [ ] Unit tests ?
 
 - TIMER:
     - [x] [`embedded-hal`] traits:
         - [x] `embedded_hal::delay::DelayNs`
         - [x] `embedded_hal::pwm::SetDutyCycle`
     - [ ] Interrupts
-    - [ ] Unit tests ?
 
 - TBD
 
