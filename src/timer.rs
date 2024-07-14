@@ -304,18 +304,10 @@ where
         let timer = timerx::<TN>();
 
         match CN {
-            0 => {
-                timer.cc0_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
-            }
-            1 => {
-                timer.cc1_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
-            }
-            2 => {
-                timer.cc2_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
-            }
-            3 => {
-                timer.cc3_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
-            }
+            0 => timer.cc0_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
+            1 => timer.cc1_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
+            2 => timer.cc2_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
+            3 => timer.cc3_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
             _ => unreachable!(),
         }
 
