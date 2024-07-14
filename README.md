@@ -15,30 +15,42 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
     - [ ] Unit tests ?
 
 - GPIO:
-    - [x] Basic implementation, implements [`embedded_hal::digital::InputPin`], [`embedded_hal::digital::OutputPin`] and [`embedded_hal::digital::StatefulOutputPin`] traits
+    - [x] Basic implementation
+    - [x] [`embedded-hal`] traits:
+        - [x] `embedded_hal::digital::InputPin`
+        - [x] `embedded_hal::digital::OutputPin`
+        - [x] `embedded_hal::digital::StatefulOutputPin`
     - [ ] Interrupts
     - [ ] Unit tests ?
 
 - SPI:
     - [x] Basic implementation, implements blocking master operations
     - [x] Pin constraints for alternate functions related to `Usart` in Synchronous mode
-    - [x] [`embedded_hal::spi::SpiBus`] trait implementation
-    - [ ] [`embedded_hal::spi::SpiDevice`] trait implementation
+    - [ ] [`embedded-hal`] traits:
+        - [x] `embedded_hal::spi::SpiBus`
+        - [ ] `embedded_hal::spi::SpiDevice`
     - [ ] Interrupts
     - [ ] Dma channel operation
     - [ ] Unit tests ?
 
 - TIMER:
-    - [ ] [`embedded-hal`] traits ?
+    - [x] [`embedded-hal`] traits:
+        - [x] `embedded_hal::delay::DelayNs`
+        - [x] `embedded_hal::pwm::SetDutyCycle`
     - [ ] Interrupts
-    - [ ] PWM generation ?
     - [ ] Unit tests ?
+
+- SYSTICK:
+    - [ ] [`embedded-hal`] traits:
+        - [ ] `embedded_hal::delay::DelayNs`
+        - [ ] `embedded_hal::pwm::SetDutyCycle` ?
+    - [ ] Interrupts
 
 - TBD
 
 ## Documentation
 
-Additional vendor supplied documents:
+Vendor supplied documents:
 - [Datasheet](https://www.silabs.com/documents/public/data-sheets/efm32pg1-datasheet.pdf)
 - [Reference Manual](https://www.silabs.com/documents/public/reference-manuals/EFM32PG1-ReferenceManual.pdf)
 - [Errata](https://www.silabs.com/documents/public/errata/efm32pg1-errata.pdf)
