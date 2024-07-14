@@ -54,8 +54,10 @@ impl<const TN: u8> Timer<TN> {
             w.mode().variant(ctrl::MODE::Up)
         });
 
-        // set the resolution of the counter to MAX
-        timer.top().write(|w| unsafe { w.top().bits(u16::MAX) });
+        // set the resolution of the counter to MAX - 1 because if the timer is going to be split into channels and
+        // any of them is used as PWM, we need to allow the PWM channel to set its compare value to TOP + 1 in order
+        // to achieve 100% duty cycle
+        timer.top().write(|w| unsafe { w.top().bits(u16::MAX - 1) });
 
         Self {}
     }
@@ -107,9 +109,6 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
     {
         let timer = timerx::<TN>();
 
-        // Disable timer
-        timer.cmd().write(|w| w.stop().set_bit());
-
         match CN {
             0 => {
                 timer
@@ -157,9 +156,6 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
             }
             _ => unreachable!(),
         }
-
-        // Enable timer
-        timer.cmd().write(|w| w.start().set_bit());
 
         TimerChannelPwm {
             _pwm_pin: PhantomData,
@@ -300,7 +296,7 @@ where
     PIN: OutputPin + TimerPin<CN>,
 {
     fn max_duty_cycle(&self) -> u16 {
-        timerx::<TN>().top().read().top().bits()
+        timerx::<TN>().top().read().top().bits().saturating_add(1)
     }
 
     fn set_duty_cycle(&mut self, duty: u16) -> Result<(), Self::Error> {
@@ -308,19 +304,15 @@ where
 
         match CN {
             0 => {
-                timer.cc0_ccv().write(|w| unsafe { w.ccv().bits(duty) });
                 timer.cc0_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
             }
             1 => {
-                timer.cc1_ccv().write(|w| unsafe { w.ccv().bits(duty) });
                 timer.cc1_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
             }
             2 => {
-                timer.cc2_ccv().write(|w| unsafe { w.ccv().bits(duty) });
                 timer.cc2_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
             }
             3 => {
-                timer.cc3_ccv().write(|w| unsafe { w.ccv().bits(duty) });
                 timer.cc3_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
             }
             _ => unreachable!(),

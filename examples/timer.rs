@@ -25,10 +25,10 @@ fn main() -> ! {
     let (tim0ch0, tim0ch1, _tim0ch2, _tim0ch3) = timer.split();
 
     let mut pwm = tim0ch1.into_pwm(disp_com);
-    let _ = pwm.set_duty_cycle_percent(30);
     let mut delayer = tim0ch0.into_delay(&clocks);
-    let mut seconds: u32 = 0;
 
+    let mut seconds: u32 = 0;
+    let mut percent = 0;
     loop {
         if seconds > 10 {
             seconds = 0;
@@ -36,7 +36,11 @@ fn main() -> ! {
             seconds += 2;
         }
 
-        println!("Delay {} seconds", seconds);
+        println!("Delay {} seconds, pwm {} %", seconds, percent);
+
+        let _ = pwm.set_duty_cycle_percent(percent);
+
+        percent = if percent < 100 { percent + 10 } else { 0 };
         delayer.delay_ms(seconds * 1_000);
     }
 }
