@@ -12,7 +12,6 @@ use embedded_graphics::{
     prelude::*,
     primitives::{Circle, Primitive, PrimitiveStyle},
 };
-use embedded_hal::delay::DelayNs;
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
@@ -46,7 +45,7 @@ fn main() -> ! {
     let mut buffer = [0u8; BUF_SIZE];
     let mut disp = Ls013b7dh03::new(spi, cs, disp_com, &mut buffer);
 
-    let tim0 = p.timer0.new(TimerDivider::Div2);
+    let tim0 = p.timer0.into_timer(TimerDivider::Div2);
     let (_tim0ch0, tim0ch1, _tim0ch2, _tim0ch3) = tim0.split();
 
     let mut com_inv_delay = tim0ch1.into_delay(&clocks);

@@ -16,11 +16,13 @@ pub mod prelude {
         cmu::{Clocks, CmuExt},
         gpio::{DataInCtrl, DriveStrengthCtrl, GpioExt},
         spi::UsartSpiExt,
-        timer::{Timer, TimerDivider, TimerExt},
+        timer::{Timer, TimerChannelDelay, TimerChannelPwm, TimerDivider, TimerExt},
     };
     pub use efm32pg1b_pac as pac;
     pub use embedded_hal::{
+        delay::DelayNs,
         digital::{InputPin, OutputPin, PinState, StatefulOutputPin},
+        pwm::SetDutyCycle,
         spi::SpiBus,
     };
     pub use fugit::RateExtU32;

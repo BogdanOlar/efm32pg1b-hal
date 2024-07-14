@@ -14,19 +14,19 @@ use fugit::HertzU32;
 
 pub trait TimerExt {
     type Timer;
-    fn new(clock_divider: TimerDivider) -> Self::Timer;
+    fn into_timer(self, clock_divider: TimerDivider) -> Self::Timer;
 }
 
 impl TimerExt for Timer0 {
     type Timer = Timer<0>;
-    fn new(clock_divider: TimerDivider) -> Self::Timer {
+    fn into_timer(self, clock_divider: TimerDivider) -> Self::Timer {
         Self::Timer::new(clock_divider)
     }
 }
 
 impl TimerExt for Timer1 {
     type Timer = Timer<1>;
-    fn new(clock_divider: TimerDivider) -> Self::Timer {
+    fn into_timer(self, clock_divider: TimerDivider) -> Self::Timer {
         Self::Timer::new(clock_divider)
     }
 }
@@ -107,41 +107,59 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
     {
         let timer = timerx::<TN>();
 
+        // Disable timer
+        timer.cmd().write(|w| w.stop().set_bit());
+
         match CN {
             0 => {
                 timer
                     .routeloc0()
                     .write(|w| unsafe { w.cc0loc().bits(pin.loc()) });
-                timer
-                    .cc0_ctrl()
-                    .write(|w| w.mode().variant(cc0_ctrl::MODE::Pwm));
+                timer.cc0_ctrl().write(|w| {
+                    w.icedge().variant(cc0_ctrl::ICEDGE::Both);
+                    w.cmoa().variant(cc0_ctrl::CMOA::Toggle);
+                    w.mode().variant(cc0_ctrl::MODE::Pwm)
+                });
+                timer.routepen().modify(|_, w| w.cc0pen().set_bit());
             }
             1 => {
                 timer
                     .routeloc0()
                     .write(|w| unsafe { w.cc1loc().bits(pin.loc()) });
-                timer
-                    .cc1_ctrl()
-                    .write(|w| w.mode().variant(cc1_ctrl::MODE::Pwm));
+                timer.cc1_ctrl().write(|w| {
+                    w.icedge().variant(cc1_ctrl::ICEDGE::Both);
+                    w.cmoa().variant(cc1_ctrl::CMOA::Toggle);
+                    w.mode().variant(cc1_ctrl::MODE::Pwm)
+                });
+                timer.routepen().modify(|_, w| w.cc1pen().set_bit());
             }
             2 => {
                 timer
                     .routeloc0()
                     .write(|w| unsafe { w.cc2loc().bits(pin.loc()) });
-                timer
-                    .cc2_ctrl()
-                    .write(|w| w.mode().variant(cc2_ctrl::MODE::Pwm));
+                timer.cc2_ctrl().write(|w| {
+                    w.icedge().variant(cc2_ctrl::ICEDGE::Both);
+                    w.cmoa().variant(cc2_ctrl::CMOA::Toggle);
+                    w.mode().variant(cc2_ctrl::MODE::Pwm)
+                });
+                timer.routepen().modify(|_, w| w.cc2pen().set_bit());
             }
             3 => {
                 timer
                     .routeloc0()
                     .write(|w| unsafe { w.cc3loc().bits(pin.loc()) });
-                timer
-                    .cc3_ctrl()
-                    .write(|w| w.mode().variant(cc3_ctrl::MODE::Pwm));
+                timer.cc3_ctrl().write(|w| {
+                    w.icedge().variant(cc3_ctrl::ICEDGE::Both);
+                    w.cmoa().variant(cc3_ctrl::CMOA::Toggle);
+                    w.mode().variant(cc3_ctrl::MODE::Pwm)
+                });
+                timer.routepen().modify(|_, w| w.cc3pen().set_bit());
             }
             _ => unreachable!(),
         }
+
+        // Enable timer
+        timer.cmd().write(|w| w.start().set_bit());
 
         TimerChannelPwm {
             _pwm_pin: PhantomData,
@@ -289,10 +307,22 @@ where
         let timer = timerx::<TN>();
 
         match CN {
-            0 => timer.cc0_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
-            1 => timer.cc1_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
-            2 => timer.cc2_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
-            3 => timer.cc3_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
+            0 => {
+                timer.cc0_ccv().write(|w| unsafe { w.ccv().bits(duty) });
+                timer.cc0_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
+            }
+            1 => {
+                timer.cc1_ccv().write(|w| unsafe { w.ccv().bits(duty) });
+                timer.cc1_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
+            }
+            2 => {
+                timer.cc2_ccv().write(|w| unsafe { w.ccv().bits(duty) });
+                timer.cc2_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
+            }
+            3 => {
+                timer.cc3_ccv().write(|w| unsafe { w.ccv().bits(duty) });
+                timer.cc3_ccvb().write(|w| unsafe { w.ccvb().bits(duty) });
+            }
             _ => unreachable!(),
         }
 
