@@ -23,7 +23,7 @@ fn main() -> ! {
     let mut pin_delay = gpio.pd14.into_output().with_push_pull().build();
     let pin_pwm = gpio.pd13.into_output().with_push_pull().build();
     let timer = p.timer0.into_timer(TimerDivider::Div1024);
-    let (tim0ch0, tim0ch1, _tim0ch2, _tim0ch3) = timer.split();
+    let (tim0ch0, tim0ch1, _tim0ch2, _tim0ch3) = timer.into_channels();
 
     let mut pwm = tim0ch1.into_pwm(pin_pwm);
     let mut delayer = tim0ch0.into_delay(&clocks);

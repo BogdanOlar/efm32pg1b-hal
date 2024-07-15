@@ -64,7 +64,7 @@ impl<const TN: u8> Timer<TN> {
     }
 
     /// Split the timer into channels which may be specialised for various uses (delay, pwm, etc.)
-    pub fn split(
+    pub fn into_channels(
         self,
     ) -> (
         TimerChannel<TN, 0>,
