@@ -41,6 +41,7 @@ const fn timerx<const TN: u8>() -> &'static RegisterBlock {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Timer<const TN: u8> {}
 
 impl<const TN: u8> Timer<TN> {
@@ -100,6 +101,7 @@ impl<const TN: u8> Timer<TN> {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TimerChannel<const TN: u8, const CN: u8> {}
 
 impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
@@ -189,6 +191,7 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
 
 /// Specialize the timer channel to be used for delays
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TimerChannelDelay<const TN: u8, const CN: u8> {
     timer_freq: HertzU32,
 }
@@ -285,6 +288,7 @@ impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TimerChannelPwm<const TN: u8, const CN: u8, PIN>
 where
     PIN: OutputPin + TimerPin<CN>,

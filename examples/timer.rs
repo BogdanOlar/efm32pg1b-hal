@@ -28,6 +28,8 @@ fn main() -> ! {
     let mut pwm = tim0ch1.into_pwm(pin_pwm);
     let mut delayer = tim0ch0.into_delay(&clocks);
 
+    println!("{}", &delayer);
+
     let mut seconds: u32 = 0;
     let mut percent = 0;
     loop {
