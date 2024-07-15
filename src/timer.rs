@@ -45,7 +45,7 @@ pub struct Timer<const TN: u8> {}
 
 impl<const TN: u8> Timer<TN> {
     /// FIXME: take a (timer counter) frequency as parameter and do a best effort to set the timer prescaler and the
-    ///        'top` value to get as close as possible
+    ///        `top` value to get as close as possible
     fn new(clock_divider: TimerDivider) -> Self {
         let timer = timerx::<TN>();
 
@@ -54,7 +54,7 @@ impl<const TN: u8> Timer<TN> {
             w.mode().variant(ctrl::MODE::Up)
         });
 
-        // set the resolution of the counter to MAX - 1 because if the timer is going to be split into channels and
+        // Set the resolution of the counter to MAX - 1 because if the timer is going to be split into channels and
         // any of them is used as PWM, we need to allow the PWM channel to set its compare value to TOP + 1 in order
         // to achieve 100% duty cycle
         timer.top().write(|w| unsafe { w.top().bits(u16::MAX - 1) });
@@ -297,6 +297,7 @@ where
     PIN: OutputPin + TimerPin<CN>,
 {
     fn max_duty_cycle(&self) -> u16 {
+        // A 100% duty cycle is obtained by setting the channel Capture/Compare value to `top + 1`
         timerx::<TN>().top().read().top().bits().saturating_add(1)
     }
 
