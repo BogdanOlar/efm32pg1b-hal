@@ -1,8 +1,5 @@
 use crate::gpio::{Output, Pin};
-use efm32pg1b_pac::{
-    cmu::{hfclksel::HF, hfpresc::PRESC},
-    Cmu,
-};
+use efm32pg1b_pac::{cmu::hfclksel::HF, Cmu};
 use fugit::HertzU32;
 
 /// Extension trait to split the CMU peripheral into clocks
