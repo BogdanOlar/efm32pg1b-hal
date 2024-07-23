@@ -3,6 +3,7 @@
 #![no_main]
 #![no_std]
 
+use cortex_m::asm::nop;
 use cortex_m_rt::entry;
 use efm32pg1b_hal::prelude::*;
 
@@ -19,9 +20,32 @@ fn main() -> ! {
 
     let p = pac::Peripherals::take().unwrap();
 
-    let clocks = p.cmu.split();
+    let cmu = unsafe { efm32pg1b_hal::pac::Cmu::steal() };
+    let selected_hf_clk = cmu.hfclkstatus().read().selected().variant();
+    defmt::println!("{}", selected_hf_clk);
 
-    defmt::println!("{}", clocks);
+    // Safety startup delay, in case the clock test goes wrong
+    defmt::println!("Safe start");
+    for _ in 0..1_000_000 {
+        nop();
+    }
+    defmt::println!("Safe end");
+
+    let clocks = p.cmu.split().with_hf_clk(HfClockSource::HfRco, 1);
+    // let clocks = p.cmu.split().with_hf_clk(HfClockSource::HfXO(40.MHz()), 0);
+
+    // FIXME: the RTT (defmt) can't be used when setting this source clock. Maybe AUX HFRCO has something to do with it?
+    // let clocks = p.cmu.split().with_hf_clk(HfClockSource::LfRco, 0);
+
+    // FIXME: the RTT (defmt) can't be used when setting this source clock. Maybe AUX HFRCO has something to do with it?
+    // let clocks = p
+    //     .cmu
+    //     .split()
+    //     .with_hf_clk(HfClockSource::LfXO(32_768.Hz()), 0);
+
+    defmt::println!("Clocks: {}", clocks);
+    let selected_hf_clk = cmu.hfclkstatus().read().selected().variant();
+    defmt::println!("{}", selected_hf_clk);
 
     loop {}
 }

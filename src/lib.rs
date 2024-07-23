@@ -13,7 +13,7 @@ pub mod timer;
 
 pub mod prelude {
     pub use crate::{
-        cmu::{Clocks, CmuExt},
+        cmu::{Clocks, CmuExt, HfClockSource},
         gpio::{DataInCtrl, DriveStrengthCtrl, GpioExt},
         spi::UsartSpiExt,
         timer::{Timer, TimerChannelDelay, TimerChannelPwm, TimerDivider, TimerExt},

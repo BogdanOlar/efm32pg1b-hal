@@ -1,6 +1,15 @@
 use crate::gpio::{Output, Pin};
-use efm32pg1b_pac::{cmu::hfclksel::HF, Cmu};
+use efm32pg1b_pac::{
+    cmu::{hfclksel::HF, hfclkstatus::SELECTED},
+    Cmu,
+};
 use fugit::HertzU32;
+
+/// Default HF RCO frequency at POR
+const DEFAULT_HF_RCO_FREQUENCY: HertzU32 = HertzU32::MHz(19);
+
+/// Default LF RCO frequency at POR
+const DEFAULT_LF_RCO_FREQUENCY: HertzU32 = HertzU32::kHz(32);
 
 /// Extension trait to split the CMU peripheral into clocks
 pub trait CmuExt {
@@ -11,6 +20,15 @@ pub trait CmuExt {
     fn split(self) -> Self::Parts;
 }
 
+impl CmuExt for Cmu {
+    type Parts = Clocks;
+
+    fn split(self) -> Self::Parts {
+        Clocks::calculate_hf_clocks(DEFAULT_HF_RCO_FREQUENCY)
+    }
+}
+
+/// TODO:
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Clocks {
@@ -27,37 +45,27 @@ pub struct Clocks {
     pub hf_bus_clk: HertzU32,
 }
 
-impl CmuExt for Cmu {
-    type Parts = Clocks;
-
-    fn split(self) -> Self::Parts {
-        // FIXME: this assumes HFRCO clock source @ 19 MHz
-        let hf_src_clk = HertzU32::MHz(19);
-
-        Clocks::calculate_hf_clocks(hf_src_clk)
-    }
-}
-
-pub enum HfClockSource {
-    /// High Frequency external oscillator, outputting the given declared frequency
-    HfXO(HertzU32),
-    /// High Frequency Rco
-    HfRco,
-    /// Low Frequency external oscillator, outputting the given declared frequency
-    LfXO(HertzU32),
-    /// Low Frequency Rco
-    LfRco,
-}
-
 impl Clocks {
     pub fn with_hf_clk(self, clk_src: HfClockSource, prescaler: u8) -> Self {
         let cmu = unsafe { Cmu::steal() };
-        let hf_src_clk;
 
-        match clk_src {
+        // Save the previous HF Clock source
+        // [PANIC]: the reset value of the `SELECTED` field is `0x01`, so the field value cannot evaluate to something
+        //          other than the enum
+        let prev_hf_clk = cmu.hfclkstatus().read().selected().variant().unwrap();
+
+        let hf_src_clk_freq = match clk_src {
             HfClockSource::HfXO(freq) => {
-                hf_src_clk = freq;
-                todo!();
+                // Enable HF XO
+                cmu.oscencmd().write(|w| w.hfxoen().set_bit());
+
+                // wait for HF XO clock to be stable
+                while cmu.status().read().hfxordy().bit_is_clear() {}
+
+                // select to HF XO
+                cmu.hfclksel().write(|w| w.hf().variant(HF::Hfxo));
+
+                freq
             }
             HfClockSource::HfRco => {
                 // Enable HF RCO
@@ -69,13 +77,57 @@ impl Clocks {
                 // select to HF RCO
                 cmu.hfclksel().write(|w| w.hf().variant(HF::Hfrco));
 
-                hf_src_clk = HertzU32::MHz(19);
+                DEFAULT_HF_RCO_FREQUENCY
             }
             HfClockSource::LfXO(freq) => {
-                hf_src_clk = freq;
-                todo!();
+                // Enable LF XO
+                cmu.oscencmd().write(|w| w.lfxoen().set_bit());
+
+                // wait for LF XO clock to be stable
+                while cmu.status().read().lfxordy().bit_is_clear() {}
+
+                // select to LF XO
+                cmu.hfclksel().write(|w| w.hf().variant(HF::Lfxo));
+
+                freq
             }
-            HfClockSource::LfRco => todo!(),
+            HfClockSource::LfRco => {
+                // Enable LF RCO
+                cmu.oscencmd().write(|w| w.lfrcoen().set_bit());
+
+                // wait for LF RCO clock to be stable
+                while cmu.status().read().lfrcordy().bit_is_clear() {}
+
+                // select to LF RCO
+                cmu.hfclksel().write(|w| w.hf().variant(HF::Lfrco));
+
+                DEFAULT_LF_RCO_FREQUENCY
+            }
+        };
+
+        // The new HF Clock source
+        // [PANIC]: the reset value of the `SELECTED` field is `0x01`, so the field value cannot evaluate to something
+        //          other than the enum
+        let cur_hf_clk = cmu.hfclkstatus().read().selected().variant().unwrap();
+
+        // Disable the previously enabled HF Source Clk, if not the same as the currently enabled
+        if prev_hf_clk != cur_hf_clk {
+            match prev_hf_clk {
+                SELECTED::Hfrco => cmu.oscencmd().write(|w| w.hfrcodis().set_bit()),
+                SELECTED::Hfxo => cmu.oscencmd().write(|w| w.hfxodis().set_bit()),
+
+                // FIXME: handle this contraint when implementing EMU
+                // See 10.5.14 CMU_OSCENCMD - Oscillator Enable/Disable Command Register
+                // WARNING: Do not disable the LFRCO if this oscillator is selected as the source for HFCLK.
+                //          When waking up from EM4 make sure EM4UNLATCH in EMU_CMD is set for this to take effect
+                SELECTED::Lfrco => cmu.oscencmd().write(|w| w.lfrcodis().set_bit()),
+
+                // FIXME: handle this contraint when implementing EMU
+                // See 10.5.14 CMU_OSCENCMD - Oscillator Enable/Disable Command Register
+                // WARNING: Do not disable the LFXO if this oscillator is selected as the source for HFCLK.
+                //          When waking up from EM4 make sure EM4UNLATCH in EMU_CMD is set for this to take effect
+                SELECTED::Lfxo => cmu.oscencmd().write(|w| w.lfxodis().set_bit()),
+            }
         }
 
         // Only 5 bits for prescaler
@@ -85,7 +137,7 @@ impl Clocks {
         cmu.hfpresc()
             .write(|w| unsafe { w.presc().bits(prescaler) });
 
-        Self::calculate_hf_clocks(hf_src_clk)
+        Self::calculate_hf_clocks(hf_src_clk_freq)
     }
 
     fn calculate_hf_clocks(hf_src_clk: HertzU32) -> Self {
@@ -117,6 +169,19 @@ impl Clocks {
             hf_bus_clk,
         }
     }
+}
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HfClockSource {
+    /// High Frequency external oscillator, outputting the given declared frequency
+    HfXO(HertzU32),
+    /// High Frequency Rco
+    HfRco,
+    /// Low Frequency external oscillator, outputting the given declared frequency
+    LfXO(HertzU32),
+    /// Low Frequency Rco
+    LfRco,
 }
 
 pub trait CmuPin0 {
