@@ -1,4 +1,5 @@
 use crate::gpio::{Output, Pin};
+use cortex_m::asm::nop;
 use efm32pg1b_pac::{
     cmu::{hfclksel::HF, hfclkstatus::SELECTED},
     Cmu,
@@ -60,7 +61,9 @@ impl Clocks {
                 cmu.oscencmd().write(|w| w.hfxoen().set_bit());
 
                 // wait for HF XO clock to be stable
-                while cmu.status().read().hfxordy().bit_is_clear() {}
+                while cmu.status().read().hfxordy().bit_is_clear() {
+                    nop();
+                }
 
                 // select to HF XO
                 cmu.hfclksel().write(|w| w.hf().variant(HF::Hfxo));
@@ -72,7 +75,9 @@ impl Clocks {
                 cmu.oscencmd().write(|w| w.hfrcoen().set_bit());
 
                 // wait for HF RCO clock to be stable
-                while cmu.status().read().hfrcordy().bit_is_clear() {}
+                while cmu.status().read().hfrcordy().bit_is_clear() {
+                    nop();
+                }
 
                 // select to HF RCO
                 cmu.hfclksel().write(|w| w.hf().variant(HF::Hfrco));
@@ -84,7 +89,9 @@ impl Clocks {
                 cmu.oscencmd().write(|w| w.lfxoen().set_bit());
 
                 // wait for LF XO clock to be stable
-                while cmu.status().read().lfxordy().bit_is_clear() {}
+                while cmu.status().read().lfxordy().bit_is_clear() {
+                    nop();
+                }
 
                 // select to LF XO
                 cmu.hfclksel().write(|w| w.hf().variant(HF::Lfxo));
@@ -96,7 +103,9 @@ impl Clocks {
                 cmu.oscencmd().write(|w| w.lfrcoen().set_bit());
 
                 // wait for LF RCO clock to be stable
-                while cmu.status().read().lfrcordy().bit_is_clear() {}
+                while cmu.status().read().lfrcordy().bit_is_clear() {
+                    nop();
+                }
 
                 // select to LF RCO
                 cmu.hfclksel().write(|w| w.hf().variant(HF::Lfrco));
