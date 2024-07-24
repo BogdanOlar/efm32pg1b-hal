@@ -9,6 +9,9 @@ use fugit::HertzU32;
 /// Default HF RCO frequency at POR
 const DEFAULT_HF_RCO_FREQUENCY: HertzU32 = HertzU32::MHz(19);
 
+/// Default AUX HF RCO frequency at POR
+const DEFAULT_AUX_HF_RCO_FREQUENCY: HertzU32 = HertzU32::MHz(19);
+
 /// Default LF RCO frequency at POR
 const DEFAULT_LF_RCO_FREQUENCY: HertzU32 = HertzU32::kHz(32);
 
@@ -149,6 +152,39 @@ impl Clocks {
         Self::calculate_hf_clocks(hf_src_clk_freq)
     }
 
+    pub fn with_dbg_clk(self, clk_src: DbgClockSource) -> Self {
+        let cmu = unsafe { Cmu::steal() };
+
+        let dbg_clk_freq = match clk_src {
+            DbgClockSource::AuxHfRco => {
+                // check if Aux High Frequency RCO is enabled
+                if cmu.status().read().auxhfrcoens().bit_is_clear() {
+                    // Enable HF RCO
+                    cmu.oscencmd().write(|w| w.auxhfrcoen().set_bit());
+                }
+
+                // wait for AUX HF RCO clock to be stable
+                while cmu.status().read().auxhfrcordy().bit_is_clear() {
+                    nop();
+                }
+
+                // select to LF RCO
+                cmu.dbgclksel().write(|w| w.dbg().auxhfrco());
+
+                DEFAULT_AUX_HF_RCO_FREQUENCY
+            }
+            DbgClockSource::HfClk => {
+                // select to HF Clock as the Debug Clock
+                cmu.dbgclksel().write(|w| w.dbg().hfclk());
+
+                // the HF Bus Clock is the only one derived from HF Clock which dos not have a prescaler
+                self.hf_bus_clk
+            }
+        };
+
+        Self::calculate_hf_clocks(dbg_clk_freq)
+    }
+
     fn calculate_hf_clocks(hf_src_clk: HertzU32) -> Self {
         let cmu = unsafe { Cmu::steal() };
 
@@ -191,6 +227,16 @@ pub enum HfClockSource {
     LfXO(HertzU32),
     /// Low Frequency Rco
     LfRco,
+}
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum DbgClockSource {
+    /// High Frequency Rco ()
+    AuxHfRco,
+    /// High Frequency Clock (i.e. the prescaled High Frequency Source Clock)
+    HfClk,
 }
 
 pub trait CmuPin0 {

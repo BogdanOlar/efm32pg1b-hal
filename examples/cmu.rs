@@ -31,17 +31,31 @@ fn main() -> ! {
     }
     defmt::println!("Safe end");
 
-    let clocks = p.cmu.split().with_hf_clk(HfClockSource::HfRco, 1);
-    // let clocks = p.cmu.split().with_hf_clk(HfClockSource::HfXO(40.MHz()), 0);
+    let clocks = p
+        .cmu
+        .split()
+        .with_hf_clk(HfClockSource::HfRco, 10)
+        .with_dbg_clk(DbgClockSource::HfClk);
 
-    // FIXME: the RTT (defmt) can't be used when setting this source clock. Maybe AUX HFRCO has something to do with it?
-    // let clocks = p.cmu.split().with_hf_clk(HfClockSource::LfRco, 0);
+    // let clocks = p
+    //     .cmu
+    //     .split()
+    //     .with_hf_clk(HfClockSource::HfXO(40.MHz()), 10)
+    //     .with_dbg_clk(DbgClockSource::HfClk);
 
     // FIXME: the RTT (defmt) can't be used when setting this source clock. Maybe AUX HFRCO has something to do with it?
     // let clocks = p
     //     .cmu
     //     .split()
-    //     .with_hf_clk(HfClockSource::LfXO(32_768.Hz()), 0);
+    //     .with_hf_clk(HfClockSource::LfRco, 0)
+    //     .with_dbg_clk(DbgClockSource::HfClk);
+
+    // FIXME: the RTT (defmt) can't be used when setting this source clock. Maybe AUX HFRCO has something to do with it?
+    // let clocks = p
+    //     .cmu
+    //     .split()
+    //     .with_hf_clk(HfClockSource::LfXO(32_768.Hz()), 0)
+    //     .with_dbg_clk(DbgClockSource::HfClk);
 
     defmt::println!("Clocks: {}", clocks);
     let selected_hf_clk = cmu.hfclkstatus().read().selected().variant();
