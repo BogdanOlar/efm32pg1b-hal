@@ -62,7 +62,6 @@ required-features = ["defmt"]
 
 [[example]]
 name = "spi_lcd"
-dependencies = ["embedded-graphics"]
 required-features = ["defmt"]
 
 [[example]]

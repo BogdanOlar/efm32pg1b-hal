@@ -6,13 +6,13 @@ use efm32pg1b_pac::{
 };
 use fugit::HertzU32;
 
-/// Default HF RCO frequency at POR
+/// Default HF RCO frequency at Reset
 const DEFAULT_HF_RCO_FREQUENCY: HertzU32 = HertzU32::MHz(19);
 
-/// Default AUX HF RCO frequency at POR
+/// Default AUX HF RCO frequency at Reset
 const DEFAULT_AUX_HF_RCO_FREQUENCY: HertzU32 = HertzU32::MHz(19);
 
-/// Default LF RCO frequency at POR
+/// Default LF RCO frequency at Reset
 const DEFAULT_LF_RCO_FREQUENCY: HertzU32 = HertzU32::kHz(32);
 
 /// Extension trait to split the CMU peripheral into clocks
