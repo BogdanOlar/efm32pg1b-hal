@@ -258,14 +258,7 @@ impl Clocks {
         let lfa_clk_freq = match clk_src {
             LfClockSource::LfXO(freq) => {
                 // Ensure Low Frequency XO is enabled
-                if cmu.status().read().lfxoens().bit_is_clear() {
-                    cmu.oscencmd().write(|w| w.lfxoen().set_bit());
-                }
-
-                // wait for LF XO clock to be stable
-                while cmu.status().read().lfxordy().bit_is_clear() {
-                    nop();
-                }
+                self.enable_lfxo_clock();
 
                 // select LF XO
                 cmu.lfaclksel().write(|w| w.lfa().lfxo());
@@ -274,14 +267,7 @@ impl Clocks {
             }
             LfClockSource::LfRco => {
                 // Ensure Low Frequency RCO is enabled
-                if cmu.status().read().lfrcoens().bit_is_clear() {
-                    cmu.oscencmd().write(|w| w.lfrcoen().set_bit());
-                }
-
-                // wait for LF RCO clock to be stable
-                while cmu.status().read().lfrcordy().bit_is_clear() {
-                    nop();
-                }
+                self.enable_lfrco_clock();
 
                 // select LF RCO
                 cmu.lfaclksel().write(|w| w.lfa().lfrco());
@@ -309,14 +295,7 @@ impl Clocks {
         let lfb_clk_freq = match clk_src {
             LfBClockSource::LfXO(freq) => {
                 // Ensure Low Frequency XO is enabled
-                if cmu.status().read().lfxoens().bit_is_clear() {
-                    cmu.oscencmd().write(|w| w.lfxoen().set_bit());
-                }
-
-                // wait for LF XO clock to be stable
-                while cmu.status().read().lfxordy().bit_is_clear() {
-                    nop();
-                }
+                self.enable_lfxo_clock();
 
                 // select LF XO
                 cmu.lfbclksel().write(|w| w.lfb().lfxo());
@@ -325,14 +304,7 @@ impl Clocks {
             }
             LfBClockSource::LfRco => {
                 // Ensure Low Frequency RCO is enabled
-                if cmu.status().read().lfrcoens().bit_is_clear() {
-                    cmu.oscencmd().write(|w| w.lfrcoen().set_bit());
-                }
-
-                // wait for LF RCO clock to be stable
-                while cmu.status().read().lfrcordy().bit_is_clear() {
-                    nop();
-                }
+                self.enable_lfrco_clock();
 
                 // Select LF RCO
                 cmu.lfbclksel().write(|w| w.lfb().lfrco());
@@ -376,20 +348,12 @@ impl Clocks {
 
     /// TODO:
     pub fn with_wdog_clk(self, clk_src: LfClockSource) -> Self {
-        let cmu = unsafe { Cmu::steal() };
         let wdog = unsafe { Wdog0::steal() };
 
         let wdog_clk_freq = match clk_src {
             LfClockSource::LfXO(freq) => {
                 // Ensure Low Frequency XO is enabled
-                if cmu.status().read().lfxoens().bit_is_clear() {
-                    cmu.oscencmd().write(|w| w.lfxoen().set_bit());
-                }
-
-                // wait for LF XO clock to be stable
-                while cmu.status().read().lfxordy().bit_is_clear() {
-                    nop();
-                }
+                self.enable_lfxo_clock();
 
                 // select LF XO
                 wdog.ctrl().modify(|_, w| w.clksel().variant(CLKSEL::Lfxo));
@@ -398,14 +362,7 @@ impl Clocks {
             }
             LfClockSource::LfRco => {
                 // Ensure Low Frequency RCO is enabled
-                if cmu.status().read().lfrcoens().bit_is_clear() {
-                    cmu.oscencmd().write(|w| w.lfrcoen().set_bit());
-                }
-
-                // wait for LF RCO clock to be stable
-                while cmu.status().read().lfrcordy().bit_is_clear() {
-                    nop();
-                }
+                self.enable_lfrco_clock();
 
                 // select LF RCO
                 wdog.ctrl().modify(|_, w| w.clksel().variant(CLKSEL::Lfrco));
@@ -429,20 +386,12 @@ impl Clocks {
 
     /// TODO:
     pub fn with_cryo_clk(self, clk_src: LfClockSource) -> Self {
-        let cmu = unsafe { Cmu::steal() };
         let cryo_timer = unsafe { Cryotimer::steal() };
 
         let cryo_clk_freq = match clk_src {
             LfClockSource::LfXO(freq) => {
                 // Ensure Low Frequency XO is enabled
-                if cmu.status().read().lfxoens().bit_is_clear() {
-                    cmu.oscencmd().write(|w| w.lfxoen().set_bit());
-                }
-
-                // wait for LF XO clock to be stable
-                while cmu.status().read().lfxordy().bit_is_clear() {
-                    nop();
-                }
+                self.enable_lfxo_clock();
 
                 // select LF XO
                 cryo_timer.ctrl().modify(|_, w| w.oscsel().lfxo());
@@ -451,14 +400,7 @@ impl Clocks {
             }
             LfClockSource::LfRco => {
                 // Ensure Low Frequency RCO is enabled
-                if cmu.status().read().lfrcoens().bit_is_clear() {
-                    cmu.oscencmd().write(|w| w.lfrcoen().set_bit());
-                }
-
-                // wait for LF RCO clock to be stable
-                while cmu.status().read().lfrcordy().bit_is_clear() {
-                    nop();
-                }
+                self.enable_lfrco_clock();
 
                 // select LF RCO
                 cryo_timer.ctrl().modify(|_, w| w.oscsel().lfrco());
@@ -511,6 +453,34 @@ impl Clocks {
             lfe_clk: None,
             wdog_clk: None,
             cryo_clk: None,
+        }
+    }
+
+    /// Enable Low Frequency XO
+    fn enable_lfxo_clock(&self) {
+        let cmu = unsafe { Cmu::steal() };
+        // Ensure Low Frequency XO is enabled
+        if cmu.status().read().lfxoens().bit_is_clear() {
+            cmu.oscencmd().write(|w| w.lfxoen().set_bit());
+        }
+
+        // wait for LF XO clock to be stable
+        while cmu.status().read().lfxordy().bit_is_clear() {
+            nop();
+        }
+    }
+
+    /// Enable Low Frequency RCO
+    fn enable_lfrco_clock(&self) {
+        let cmu = unsafe { Cmu::steal() };
+        // Ensure Low Frequency RCO is enabled
+        if cmu.status().read().lfrcoens().bit_is_clear() {
+            cmu.oscencmd().write(|w| w.lfrcoen().set_bit());
+        }
+
+        // wait for LF RCO clock to be stable
+        while cmu.status().read().lfrcordy().bit_is_clear() {
+            nop();
         }
     }
 }
