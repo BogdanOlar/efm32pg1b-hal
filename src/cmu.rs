@@ -347,6 +347,43 @@ impl Clocks {
     }
 
     /// TODO:
+    pub fn with_lfe_clk(self, clk_src: LfClockSource) -> Self {
+        let cmu = unsafe { Cmu::steal() };
+
+        let lfe_clk_freq = match clk_src {
+            LfClockSource::LfXO(freq) => {
+                // Ensure Low Frequency XO is enabled
+                self.enable_lfxo_clock();
+
+                // select LF XO
+                cmu.lfeclksel().write(|w| w.lfe().lfxo());
+
+                freq
+            }
+            LfClockSource::LfRco => {
+                // Ensure Low Frequency RCO is enabled
+                self.enable_lfrco_clock();
+
+                // select LF RCO
+                cmu.lfeclksel().write(|w| w.lfe().lfrco());
+
+                DEFAULT_LF_RCO_FREQUENCY
+            }
+            LfClockSource::UlfRco => {
+                // select ULF RCO
+                cmu.lfeclksel().write(|w| w.lfe().ulfrco());
+
+                DEFAULT_ULF_RCO_FREQUENCY
+            }
+        };
+
+        Self {
+            lfe_clk: Some(lfe_clk_freq),
+            ..self
+        }
+    }
+
+    /// TODO:
     pub fn with_wdog_clk(self, clk_src: LfClockSource) -> Self {
         let wdog = unsafe { Wdog0::steal() };
 
