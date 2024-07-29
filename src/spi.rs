@@ -251,7 +251,7 @@ where
         //          USARTn_CLKDIV = 256 x (fHFPERCLK/(2 x brdesired) - 1)
         // We are not bitshifting by `8` (256*...) because the `div` field starts at bit 3, so we only bitshift by 5
         // let clk_div: u32 = ((clocks.hf_per_clk / (baudrate * 2)) - 1) << 5;
-        let clk_div: u32 = clocks.hf_per_clk / (baudrate * 2);
+        let clk_div: u32 = clocks.hf_per_clk() / (baudrate * 2);
 
         // avoid underflow if trying to subtracting `1` from a `clk_div` of `0`
         let clk_div = match clk_div {
@@ -263,7 +263,7 @@ where
             .clkdiv()
             .write(|w| unsafe { w.div().bits(clk_div) });
 
-        Ok(Self::calculate_baudrate(clocks.hf_per_clk, clk_div))
+        Ok(Self::calculate_baudrate(clocks.hf_per_clk(), clk_div))
     }
 
     /// TODO:

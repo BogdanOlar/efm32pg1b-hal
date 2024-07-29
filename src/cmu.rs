@@ -2,7 +2,8 @@ use crate::gpio::{Output, Pin};
 use cortex_m::asm::nop;
 use efm32pg1b_pac::{
     cmu::{hfclksel::HF, hfclkstatus::SELECTED},
-    Cmu,
+    wdog0::ctrl::CLKSEL,
+    Cmu, Cryotimer, Wdog0,
 };
 use fugit::HertzU32;
 
@@ -40,28 +41,79 @@ impl CmuExt for Cmu {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Clocks {
     /// High Frequency Peripheral Clock
-    pub hf_per_clk: HertzU32,
+    hf_per_clk: HertzU32,
 
     /// High Frequency Core Clock
-    pub hf_core_clk: HertzU32,
+    hf_core_clk: HertzU32,
 
     /// High Frequency Export Clock
-    pub hf_exp_clk: HertzU32,
+    hf_exp_clk: HertzU32,
 
     /// High Frequency  Bus Clock
-    pub hf_bus_clk: HertzU32,
+    hf_bus_clk: HertzU32,
 
     /// Low Frequency A Clock
-    pub lfa_clk: Option<HertzU32>,
+    lfa_clk: Option<HertzU32>,
 
     /// Low Frequency B Clock
-    pub lfb_clk: Option<HertzU32>,
+    lfb_clk: Option<HertzU32>,
 
     /// Low Frequency E Clock
-    pub lfe_clk: Option<HertzU32>,
+    lfe_clk: Option<HertzU32>,
+
+    /// Watch Dog Clock
+    wdog_clk: Option<HertzU32>,
+
+    /// Cryo Timer Clock
+    cryo_clk: Option<HertzU32>,
 }
 
 impl Clocks {
+    /// High Frequency Peripheral Clock
+    pub fn hf_per_clk(&self) -> HertzU32 {
+        self.hf_per_clk
+    }
+
+    /// High Frequency Core Clock
+    pub fn hf_core_clk(&self) -> HertzU32 {
+        self.hf_core_clk
+    }
+
+    /// High Frequency Export Clock
+    pub fn hf_exp_clk(&self) -> HertzU32 {
+        self.hf_exp_clk
+    }
+
+    /// High Frequency  Bus Clock
+    pub fn hf_bus_clk(&self) -> HertzU32 {
+        self.hf_bus_clk
+    }
+
+    /// Low Frequency A Clock
+    pub fn lfa_clk(&self) -> Option<HertzU32> {
+        self.lfa_clk
+    }
+
+    /// Low Frequency B Clock
+    pub fn lfb_clk(&self) -> Option<HertzU32> {
+        self.lfb_clk
+    }
+
+    /// Low Frequency E Clock
+    pub fn lfe_clk(&self) -> Option<HertzU32> {
+        self.lfe_clk
+    }
+
+    /// Watch Dog Clock
+    pub fn wdog_clk(&self) -> Option<HertzU32> {
+        self.wdog_clk
+    }
+
+    /// Cryo Timer Clock
+    pub fn cryo_clk(&self) -> Option<HertzU32> {
+        self.cryo_clk
+    }
+
     /// TODO:
     pub fn with_hf_clk(self, clk_src: HfClockSource, prescaler: u8) -> Self {
         let cmu = unsafe { Cmu::steal() };
@@ -323,10 +375,11 @@ impl Clocks {
     }
 
     /// TODO:
-    pub fn with_lfe_clk(self, clk_src: LfClockSource) -> Self {
+    pub fn with_wdog_clk(self, clk_src: LfClockSource) -> Self {
         let cmu = unsafe { Cmu::steal() };
+        let wdog = unsafe { Wdog0::steal() };
 
-        let lfe_clk_freq = match clk_src {
+        let wdog_clk_freq = match clk_src {
             LfClockSource::LfXO(freq) => {
                 // Ensure Low Frequency XO is enabled
                 if cmu.status().read().lfxoens().bit_is_clear() {
@@ -339,7 +392,7 @@ impl Clocks {
                 }
 
                 // select LF XO
-                cmu.lfeclksel().write(|w| w.lfe().lfxo());
+                wdog.ctrl().modify(|_, w| w.clksel().variant(CLKSEL::Lfxo));
 
                 freq
             }
@@ -355,20 +408,73 @@ impl Clocks {
                 }
 
                 // select LF RCO
-                cmu.lfeclksel().write(|w| w.lfe().lfrco());
+                wdog.ctrl().modify(|_, w| w.clksel().variant(CLKSEL::Lfrco));
 
                 DEFAULT_LF_RCO_FREQUENCY
             }
             LfClockSource::UlfRco => {
                 // select ULF RCO
-                cmu.lfeclksel().write(|w| w.lfe().ulfrco());
+                wdog.ctrl()
+                    .modify(|_, w| w.clksel().variant(CLKSEL::Ulfrco));
 
                 DEFAULT_ULF_RCO_FREQUENCY
             }
         };
 
         Self {
-            lfe_clk: Some(lfe_clk_freq),
+            wdog_clk: Some(wdog_clk_freq),
+            ..self
+        }
+    }
+
+    /// TODO:
+    pub fn with_cryo_clk(self, clk_src: LfClockSource) -> Self {
+        let cmu = unsafe { Cmu::steal() };
+        let cryo_timer = unsafe { Cryotimer::steal() };
+
+        let cryo_clk_freq = match clk_src {
+            LfClockSource::LfXO(freq) => {
+                // Ensure Low Frequency XO is enabled
+                if cmu.status().read().lfxoens().bit_is_clear() {
+                    cmu.oscencmd().write(|w| w.lfxoen().set_bit());
+                }
+
+                // wait for LF XO clock to be stable
+                while cmu.status().read().lfxordy().bit_is_clear() {
+                    nop();
+                }
+
+                // select LF XO
+                cryo_timer.ctrl().modify(|_, w| w.oscsel().lfxo());
+
+                freq
+            }
+            LfClockSource::LfRco => {
+                // Ensure Low Frequency RCO is enabled
+                if cmu.status().read().lfrcoens().bit_is_clear() {
+                    cmu.oscencmd().write(|w| w.lfrcoen().set_bit());
+                }
+
+                // wait for LF RCO clock to be stable
+                while cmu.status().read().lfrcordy().bit_is_clear() {
+                    nop();
+                }
+
+                // select LF RCO
+                cryo_timer.ctrl().modify(|_, w| w.oscsel().lfrco());
+
+                DEFAULT_LF_RCO_FREQUENCY
+            }
+            LfClockSource::UlfRco => {
+                // select ULF RCO
+                cryo_timer.ctrl().modify(|_, w| w.oscsel().ulfrco());
+
+                DEFAULT_ULF_RCO_FREQUENCY
+            }
+        };
+
+        Self {
+            cryo_clk: Some(cryo_clk_freq),
             ..self
         }
     }
@@ -403,6 +509,8 @@ impl Clocks {
             lfa_clk: None,
             lfb_clk: None,
             lfe_clk: None,
+            wdog_clk: None,
+            cryo_clk: None,
         }
     }
 }

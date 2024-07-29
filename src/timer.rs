@@ -167,7 +167,7 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
     pub fn into_delay(self, clocks: &Clocks) -> TimerChannelDelay<TN, CN> {
         let timer = timerx::<TN>();
         let timer_div: u8 = timer.ctrl().read().presc().variant().unwrap().into();
-        let timer_freq = clocks.hf_per_clk / (timer_div + 1) as u32;
+        let timer_freq = clocks.hf_per_clk() / (timer_div + 1) as u32;
 
         match CN {
             0 => timer
