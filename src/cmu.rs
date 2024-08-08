@@ -115,7 +115,7 @@ impl Clocks {
     }
 
     /// TODO:
-    pub fn with_hf_clk(self, clk_src: HfClockSource, prescaler: u8) -> Self {
+    pub fn with_hf_clk(self, clk_src: HfClockSource, prescaler: HfClockPrescaler) -> Self {
         let cmu = unsafe { Cmu::steal() };
 
         // Save the previous HF Clock source
@@ -207,12 +207,9 @@ impl Clocks {
             }
         }
 
-        // Only 5 bits for prescaler
-        assert!(prescaler <= 0b11111u8);
-
         // set prescaler
         cmu.hfpresc()
-            .write(|w| unsafe { w.presc().bits(prescaler) });
+            .write(|w| unsafe { w.presc().bits(prescaler as u8) });
 
         Self::calculate_hf_clocks(hf_src_clk_freq)
     }
@@ -534,6 +531,45 @@ pub enum HfClockSource {
     LfXO(HertzU32),
     /// Low Frequency Rco
     LfRco,
+}
+
+/// High Frequency Clock divider values
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum HfClockPrescaler {
+    Div1,
+    Div2,
+    Div3,
+    Div4,
+    Div5,
+    Div6,
+    Div7,
+    Div8,
+    Div9,
+    Div10,
+    Div11,
+    Div12,
+    Div13,
+    Div14,
+    Div15,
+    Div16,
+    Div17,
+    Div18,
+    Div19,
+    Div20,
+    Div21,
+    Div22,
+    Div23,
+    Div24,
+    Div25,
+    Div26,
+    Div27,
+    Div28,
+    Div29,
+    Div30,
+    Div31,
+    Div32,
 }
 
 /// TODO:

@@ -34,7 +34,7 @@ fn main() -> ! {
     let clocks = p
         .cmu
         .split()
-        .with_hf_clk(HfClockSource::HfRco, 10)
+        .with_hf_clk(HfClockSource::HfRco, HfClockPrescaler::Div10)
         .with_dbg_clk(DbgClockSource::HfClk);
 
     // let clocks = p
