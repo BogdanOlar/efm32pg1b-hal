@@ -796,8 +796,10 @@ impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
 
 #[doc = r" GPIO"]
 pub mod gpio {
+    use efm32pg1b_pac::Cmu;
+
     use super::{Disabled, Pin, Port, Swd, SwdClk, SwdDio, SwdTdi, SwdTdo};
-    use crate::pac::{self, Gpio};
+    use crate::pac::Gpio;
 
     #[doc = r" GPIO parts"]
     pub struct GpioParts {
@@ -843,12 +845,10 @@ pub mod gpio {
     impl super::GpioExt for Gpio {
         type Parts = GpioParts;
         fn split(self) -> GpioParts {
-            // Make sure to enable GPIO
-            unsafe {
-                pac::Cmu::steal()
-                    .hfbusclken0()
-                    .write(|w| w.gpio().set_bit());
-            }
+            let cmu = unsafe { Cmu::steal() };
+
+            // Enable GPIO clock
+            cmu.hfbusclken0().modify(|_, w| w.gpio().set_bit());
 
             GpioParts {
                 port_a: Port::new(),

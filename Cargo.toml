@@ -68,6 +68,10 @@ required-features = ["defmt"]
 name = "timer"
 required-features = ["defmt"]
 
+[[example]]
+name = "timer_le"
+required-features = ["defmt"]
+
 [dev-dependencies]
 # Be able to print out types in `embedded-hal` when running the examples
 embedded-hal = { version = "1", features = ["defmt-03"] }

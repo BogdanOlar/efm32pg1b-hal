@@ -252,6 +252,10 @@ impl Clocks {
     pub fn with_lfa_clk(self, clk_src: LfClockSource) -> Self {
         let cmu = unsafe { Cmu::steal() };
 
+        // The bus interface to the Low Energy A Peripherals is clocked by HFBUSCLKLE and this clock therefore needs to
+        // be enabled when programming a Low Energy (LE) peripheral.
+        self.enable_hf_bus_clk_le();
+
         let lfa_clk_freq = match clk_src {
             LfClockSource::LfXO(freq) => {
                 // Ensure Low Frequency XO is enabled
@@ -327,15 +331,16 @@ impl Clocks {
                     }
                 };
 
-                // Enable High Frequency Clock LE
-                cmu.hfbusclken0().modify(|_, w| w.le().set_bit());
-
                 // Select High Frequency Clock LE
                 cmu.lfbclksel().write(|w| w.lfb().hfclkle());
 
                 freq
             }
         };
+
+        // The bus interface to the Low Energy A Peripherals is clocked by HFBUSCLKLE and this clock therefore needs to
+        // be enabled when programming a Low Energy (LE) peripheral.
+        self.enable_hf_bus_clk_le();
 
         Self {
             lfb_clk: Some(lfb_clk_freq),
@@ -373,6 +378,10 @@ impl Clocks {
                 DEFAULT_ULF_RCO_FREQUENCY
             }
         };
+
+        // The bus interface to the Low Energy A Peripherals is clocked by HFBUSCLKLE and this clock therefore needs to
+        // be enabled when programming a Low Energy (LE) peripheral.
+        self.enable_hf_bus_clk_le();
 
         Self {
             lfe_clk: Some(lfe_clk_freq),
@@ -412,6 +421,11 @@ impl Clocks {
             }
         };
 
+        // FIXME: is this ncessary for WatchDog?
+        // The bus interface to the Low Energy A Peripherals is clocked by HFBUSCLKLE and this clock therefore needs to
+        // be enabled when programming a Low Energy (LE) peripheral.
+        self.enable_hf_bus_clk_le();
+
         Self {
             wdog_clk: Some(wdog_clk_freq),
             ..self
@@ -448,6 +462,11 @@ impl Clocks {
                 DEFAULT_ULF_RCO_FREQUENCY
             }
         };
+
+        // FIXME: is this ncessary for CryoTimer?
+        // The bus interface to the Low Energy A Peripherals is clocked by HFBUSCLKLE and this clock therefore needs to
+        // be enabled when programming a Low Energy (LE) peripheral.
+        self.enable_hf_bus_clk_le();
 
         Self {
             cryo_clk: Some(cryo_clk_freq),
@@ -488,6 +507,14 @@ impl Clocks {
             wdog_clk: None,
             cryo_clk: None,
         }
+    }
+
+    /// Set to enable the clock for LE. Interface used for bus access to Low Energy peripherals.
+    fn enable_hf_bus_clk_le(&self) {
+        let cmu = unsafe { Cmu::steal() };
+
+        // Enable High Frequency Clock LE
+        cmu.hfbusclken0().modify(|_, w| w.le().set_bit());
     }
 
     /// Enable Low Frequency XO

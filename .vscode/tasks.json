@@ -102,5 +102,26 @@
                 // "isDefault": true
             }
         },
+        {
+            "label": "cargo build example timer_le",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "timer_le",
+                "--features='defmt'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "presentation": {
+                "clear": true
+            },
+            "group": {
+                "kind": "build",
+                // "isDefault": true
+            }
+        },
     ]
 }

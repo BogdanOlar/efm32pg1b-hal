@@ -10,6 +10,7 @@ pub mod cmu;
 pub mod gpio;
 pub mod spi;
 pub mod timer;
+pub mod timer_le;
 
 pub mod prelude {
     pub use crate::{
