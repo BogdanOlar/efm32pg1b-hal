@@ -39,7 +39,7 @@ fn main() -> ! {
     let mut seconds: u32 = 0;
     let mut percent = 0;
     loop {
-        if seconds > 10 {
+        if seconds > 8 {
             seconds = 0;
         } else {
             seconds += 2;

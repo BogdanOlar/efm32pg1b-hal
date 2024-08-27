@@ -19,7 +19,7 @@ impl LeTimerExt for Letimer0 {
     }
 }
 
-/// Get a reference to one of the two timers register block, specified by `TN` (either `Timer0`, or `Timer1`)
+/// Get a reference to the Low Energy Timer register block
 const fn timerx() -> &'static RegisterBlock {
     unsafe { &*Letimer0::ptr() }
 }
@@ -48,8 +48,8 @@ impl LeTimer {
         let le_timer = timerx();
 
         le_timer.rep0().write(|w| unsafe { w.rep0().bits(1) });
-        le_timer.comp0().write(|w| unsafe { w.comp0().bits(100) });
-        le_timer.comp1().write(|w| unsafe { w.comp1().bits(50) });
+        le_timer.comp0().write(|w| unsafe { w.comp0().bits(1000) });
+        le_timer.comp1().write(|w| unsafe { w.comp1().bits(500) });
         le_timer.routepen().write(|w| w.out0pen().set_bit());
         le_timer
             .routeloc0()
@@ -58,11 +58,6 @@ impl LeTimer {
             w.comp0top().set_bit();
             w.ufoa0().variant(UFOA0::Pwm)
         });
-
-        // Sync
-        while le_timer.syncbusy().read().cmd().bit_is_set() {
-            nop()
-        }
 
         // start timer
         le_timer.cmd().write(|w| w.start().set_bit());

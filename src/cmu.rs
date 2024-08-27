@@ -421,11 +421,6 @@ impl Clocks {
             }
         };
 
-        // FIXME: is this ncessary for WatchDog?
-        // The bus interface to the Low Energy A Peripherals is clocked by HFBUSCLKLE and this clock therefore needs to
-        // be enabled when programming a Low Energy (LE) peripheral.
-        self.enable_hf_bus_clk_le();
-
         Self {
             wdog_clk: Some(wdog_clk_freq),
             ..self
@@ -462,11 +457,6 @@ impl Clocks {
                 DEFAULT_ULF_RCO_FREQUENCY
             }
         };
-
-        // FIXME: is this ncessary for CryoTimer?
-        // The bus interface to the Low Energy A Peripherals is clocked by HFBUSCLKLE and this clock therefore needs to
-        // be enabled when programming a Low Energy (LE) peripheral.
-        self.enable_hf_bus_clk_le();
 
         Self {
             cryo_clk: Some(cryo_clk_freq),
