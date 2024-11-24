@@ -37,6 +37,7 @@ fn main() -> ! {
         .with_hf_clk(HfClockSource::HfRco, HfClockPrescaler::Div10)
         .with_dbg_clk(DbgClockSource::HfClk);
 
+    // FIXME: Core clocks >= 25MHz require flash waitstates of at least `WS1` or `WS1SCBTP` set to `MSC_READCTRL.MODE`
     // let clocks = p
     //     .cmu
     //     .split()
