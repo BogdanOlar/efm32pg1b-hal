@@ -204,7 +204,7 @@ impl Clocks {
                 // WARNING: Do not disable the LFXO if this oscillator is selected as the source for HFCLK.
                 //          When waking up from EM4 make sure EM4UNLATCH in EMU_CMD is set for this to take effect
                 SELECTED::Lfxo => cmu.oscencmd().write(|w| w.lfxodis().set_bit()),
-            }
+            };
         }
 
         // set prescaler

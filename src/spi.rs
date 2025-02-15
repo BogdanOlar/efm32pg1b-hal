@@ -232,7 +232,7 @@ where
         self.usart.ctrl().write(|w| match enabled {
             true => w.loopbk().set_bit(),
             false => w.loopbk().clear_bit(),
-        })
+        });
     }
 
     /// TODO:
@@ -360,7 +360,7 @@ where
                 self.usart.txdouble().write(|w| unsafe {
                     w.txdata0().bits(*b0);
                     w.txdata1().bits(*b1)
-                })
+                });
             } else {
                 // We have only 1 byte left to send, use the `txdata` register
                 self.usart

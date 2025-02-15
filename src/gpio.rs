@@ -657,7 +657,7 @@ impl<const P: char> Port<P> {
         portx::<P>().ctrl().modify(|_, w| match drive_strength {
             DriveStrengthCtrl::Strong => w.drive_strength().clear_bit(),
             DriveStrengthCtrl::Weak => w.drive_strength().set_bit(),
-        })
+        });
     }
 
     /// Set the Alternate Drive Strength setting of this port
@@ -665,7 +665,7 @@ impl<const P: char> Port<P> {
         portx::<P>().ctrl().modify(|_, w| match drive_strength {
             DriveStrengthCtrl::Strong => w.drive_strength().clear_bit(),
             DriveStrengthCtrl::Weak => w.drive_strength().set_bit(),
-        })
+        });
     }
 
     /// Get the Slew Rate setting of this port. Higher values represent faster slewrates.
@@ -727,7 +727,7 @@ impl<const P: char> Port<P> {
         portx::<P>().ctrl().modify(|_, w| match din_dis {
             DataInCtrl::Enabled => w.din_dis().clear_bit(),
             DataInCtrl::Disabled => w.din_dis().set_bit(),
-        })
+        });
     }
 
     /// Set the Alternate Data In Disable setting of this port
@@ -735,7 +735,7 @@ impl<const P: char> Port<P> {
         portx::<P>().ctrl().modify(|_, w| match din_dis {
             DataInCtrl::Enabled => w.din_dis_alt().clear_bit(),
             DataInCtrl::Disabled => w.din_dis_alt().set_bit(),
-        })
+        });
     }
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "efm32pg1b-hal"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Bogdan Olar <olar.bogdan.dev@gmail.com>"]
 edition = "2018"
 description = "Hardware abstraction layer (HAL) for Silicon Labs EFM32PG1B microcontrollers"
@@ -11,7 +11,7 @@ license = "MIT/Apache-2.0"
 repository = "https://github.com/BogdanOlar/efm32pg1b-hal"
 
 [dependencies]
-efm32pg1b-pac = { version = "0.3.0", features = [
+efm32pg1b-pac = { version = "0.4.0", features = [
     "critical-section",
     "rt",
     "defmt",
@@ -23,15 +23,15 @@ efm32pg1b-pac = { version = "0.3.0", features = [
 # ] }
 embedded-hal = { version = "1" }
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
-cortex-m-rt = "0.7.3"
-panic-halt = "0.2.0"
+cortex-m-rt = "0.7.5"
+panic-halt = "1.0.0"
 fugit = { version = "0.3.7", features = ["defmt"] }
 
-defmt = { version = "0.3", optional = true }
-defmt-rtt = { version = "0.4", optional = true }
-panic-probe = { version = "0.3", features = ["print-defmt"] }
+defmt = { version = "0.3.10", optional = true }
+defmt-rtt = { version = "0.4.1", optional = true }
+panic-probe = { version = "0.3.2", features = ["print-defmt"] }
 cortex-m-semihosting = "0.5.0"
-document-features = "0.2"
+document-features = "0.2.10"
 
 [features]
 ## Implementation of `defmt::Format` for public enums and structures. See [defmt](https://crates.io/crates/defmt)

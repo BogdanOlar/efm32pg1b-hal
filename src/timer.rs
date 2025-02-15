@@ -183,7 +183,7 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
                 .cc3_ctrl()
                 .write(|w| w.mode().variant(cc3_ctrl::MODE::Outputcompare)),
             _ => unreachable!(),
-        }
+        };
 
         TimerChannelDelay { timer_freq }
     }
@@ -314,7 +314,7 @@ where
             2 => timer.cc2_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
             3 => timer.cc3_ccvb().write(|w| unsafe { w.ccvb().bits(duty) }),
             _ => unreachable!(),
-        }
+        };
 
         Ok(())
     }
