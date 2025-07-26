@@ -1,4 +1,5 @@
 //! Build with `cargo build --example spi_lcd --features="defmt"`
+//!            `cargo build --example spi_lcd --features="defmt" --release`
 
 #![no_main]
 #![no_std]
@@ -20,13 +21,16 @@ use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch
 use defmt::assert_eq;
 use defmt_rtt as _;
 
-use ls013b7dh03::prelude::*;
+use ls013b7dh03::{prelude::*, WIDTH};
 
 #[entry]
 fn main() -> ! {
     let _core_p = cortex_m::Peripherals::take().unwrap();
     let p = pac::Peripherals::take().unwrap();
-    let clocks = p.cmu.split();
+    let clocks = p
+        .cmu
+        .split()
+        .with_hf_clk(HfClockSource::HfRco, HfClockPrescaler::Div4);
     let gpio = p.gpio.split();
 
     // Let this App take control of display (this is a `UG154: EFM32 Pearl Gecko Starter Kit` paticularity)
@@ -39,60 +43,139 @@ fn main() -> ! {
         SPIMODE,
     );
     let spi_br = spi.set_baudrate(1.MHz(), &clocks);
-    assert_eq!(spi_br.unwrap(), 1055555.Hz::<1, 1>());
+    // assert_eq!(spi_br.unwrap(), 1055555.Hz::<1, 1>());
 
     let cs = gpio.pd14.into_output().with_push_pull().build();
+    let mut led0 = gpio.pf4.into_output().with_push_pull().build();
     let disp_com = gpio.pd13.into_output().with_push_pull().build();
 
     let mut buffer = [0u8; BUF_SIZE];
-    let mut disp = Ls013b7dh03::new(spi, cs, disp_com, &mut buffer);
+    let mut disp = Ls013b7dh03::new(spi, cs, led0, &mut buffer);
 
-    let (_tim0ch0, tim0ch1, _tim0ch2, _tim0ch3) =
-        p.timer0.into_timer(TimerDivider::Div2).into_channels();
+    let (tim0ch0, tim0ch1, _tim0ch2, _tim0ch3) =
+        p.timer0.into_timer(TimerDivider::Div1024).into_channels();
 
-    let mut com_inv_delay = tim0ch1.into_delay(&clocks);
+    let mut com_inv = tim0ch1.into_pwm(disp_com);
+    let ret_pwm = com_inv.set_duty_cycle(10);
 
-    let mut tgl = true;
+    let mut delay_frames = tim0ch0.into_delay(&clocks);
+
     let mut counter = 0;
-    let mut ypos: i32 = 0;
+    const COM_INV_DELAY_MS: u32 = 16;
+    const DRAW_DELAY_LOOP_COUNT_MAX: u32 = 1000 / COM_INV_DELAY_MS;
+
+    enum DrawCmd {
+        Full,
+        ClearFull,
+        Mod,
+        ClearMod,
+        WorstMod,
+        ClearWorstMod,
+        Idle,
+    }
+
+    let mut dm = DrawCmd::Full;
 
     loop {
+        delay_frames.delay_ms(COM_INV_DELAY_MS);
         // blocking delay of 16ms
-        com_inv_delay.delay_ms(16);
-
-        // Toggle Comm Inversion pin
-        tgl = match tgl {
-            true => {
-                disp.enable();
-                !tgl
-            }
-            false => {
-                disp.disable();
-                !tgl
-            }
-        };
+        // com_inv_delay.delay_ms(COM_INV_DELAY_MS);
+        // disp.enable();
+        // com_inv_delay.delay_us(2);
+        // disp.disable();
 
         // Update display once in a while
-        if counter < 1 {
+        if counter < DRAW_DELAY_LOOP_COUNT_MAX {
             counter += 1;
         } else {
             counter = 0;
 
-            // erase old circle
-            let circle = Circle::new(Point::new(22, ypos as i32), ypos as u32 + 5)
-                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::Off, 2));
-            let _ = circle.draw(&mut disp);
+            match dm {
+                DrawCmd::Full => {
+                    for y in 0..HEIGHT as u8 {
+                        for x in 0..WIDTH as u8 {
+                            let write_ret = disp.write(x, y, true);
+                            assert!(write_ret.is_ok());
+                        }
+                    }
 
-            ypos += 2;
-            ypos = ypos % HEIGHT as i32;
+                    // Update the display
+                    disp.flush();
+                    dm = DrawCmd::ClearFull;
+                }
+                DrawCmd::ClearFull => {
+                    for y in 0..HEIGHT as u8 {
+                        for x in 0..WIDTH as u8 {
+                            let write_ret = disp.write(x, y, false);
 
-            // draw new circle
-            let circle = Circle::new(Point::new(22, ypos as i32), ypos as u32 + 5)
-                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2));
-            let _ = circle.draw(&mut disp);
+                            assert!(write_ret.is_ok());
+                        }
+                    }
 
-            // Update the display
-            disp.flush();
+                    // Update the display
+                    disp.flush();
+                    dm = DrawCmd::Mod;
+                }
+                DrawCmd::Mod => {
+                    for y in 0..HEIGHT as u8 {
+                        for x in 0..WIDTH as u8 {
+                            if y != 126 {
+                                let write_ret = disp.write(x, y, true);
+                                assert!(write_ret.is_ok());
+                            } else {
+                                let write_ret = disp.write(x, y, false);
+                                assert!(write_ret.is_ok());
+                            }
+                        }
+                    }
+                    // Update the display
+                    disp.flush();
+                    dm = DrawCmd::ClearMod;
+                }
+                DrawCmd::ClearMod => {
+                    for y in 0..HEIGHT as u8 {
+                        for x in 0..WIDTH as u8 {
+                            let write_ret = disp.write(x, y, false);
+
+                            assert!(write_ret.is_ok());
+                        }
+                    }
+
+                    disp.flush();
+                    dm = DrawCmd::WorstMod;
+                }
+                DrawCmd::WorstMod => {
+                    for y in 0..HEIGHT as u8 {
+                        for x in 0..WIDTH as u8 {
+                            if (y % 2) == 0 {
+                                let write_ret = disp.write(x, y, true);
+                                assert!(write_ret.is_ok());
+                            } else {
+                                let write_ret = disp.write(x, y, false);
+                                assert!(write_ret.is_ok());
+                            }
+                        }
+                    }
+                    // Update the display
+                    disp.flush();
+                    dm = DrawCmd::ClearWorstMod;
+                }
+                DrawCmd::ClearWorstMod => {
+                    for y in 0..HEIGHT as u8 {
+                        for x in 0..WIDTH as u8 {
+                            let write_ret = disp.write(x, y, false);
+
+                            assert!(write_ret.is_ok());
+                        }
+                    }
+
+                    disp.flush();
+                    dm = DrawCmd::Idle;
+                }
+                DrawCmd::Idle => {
+                    dm = DrawCmd::Full;
+                }
+            }
         }
     }
 }
