@@ -1,34 +1,8 @@
-[target.thumbv7em-none-eabihf]
-# uncomment this to make `cargo run` execute programs on QEMU
-# runner = "qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic -semihosting-config enable=on,target=native -kernel"
-
-# use `probe-rs` as runner
-runner = 'probe-rs run --chip EFM32PG1B200F256IM48'
-
-[target.'cfg(all(target_arch = "arm", target_os = "none"))']
-# uncomment ONE of these three option to make `cargo run` start a GDB session
-# which option to pick depends on your system
-# runner = "arm-none-eabi-gdb -q -x openocd.gdb"
-# runner = "gdb-multiarch -q -x openocd.gdb"
-# runner = "gdb -q -x openocd.gdb"
-
-rustflags = [
-  # Previously, the linker arguments --nmagic and -Tlink.x were set here.
-  # They are now set by build.rs instead. The linker argument can still
-  # only be set here, if a custom linker is needed.
-
-  # By default, the LLD linker is used, which is shipped with the Rust
-  # toolchain. If you run into problems with LLD, you can switch to the
-  # GNU linker by uncommenting this line:
-  # "-C", "linker=arm-none-eabi-ld",
-
-  # Added for defmt ...
-  "-C", "link-arg=-Tdefmt.x",
-
-]
-
 [build]
 target = "thumbv7em-none-eabihf"
 
+[target.thumbv7em-none-eabihf]
+runner = "probe-rs run --chip EFM32PG1B200F256IM48"
+
 [env]
-DEFMT_LOG = "info"
+DEFMT_LOG="info"

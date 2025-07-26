@@ -577,7 +577,7 @@ impl_tx_loc!(31, 'F', 7);
 /// parameter passed to the `into_spi_bus()` method of the `UsartSpiExt` trait.
 ///
 /// Note: if you try to create an `Spi` instance and get a compiler error like
-/// ```text
+/// ```sh
 ///     the trait `efm32pg1b_hal::spi::UsartRxPin` is not implemented for
 ///     `efm32pg1b_hal::gpio::Pin<'D', 8, efm32pg1b_hal::gpio::Input>`, which is required by
 ///     `efm32pg1b_hal::efm32pg1b_pac::Usart1: efm32pg1b_hal::spi::UsartSpiExt<_, _, _>`

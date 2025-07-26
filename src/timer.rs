@@ -51,8 +51,10 @@ impl<const TN: u8> Timer<TN> {
         let timer = timerx::<TN>();
 
         timer.ctrl().write(|w| {
-            w.presc().variant(clock_divider);
-            w.mode().variant(ctrl::MODE::Up)
+            w.presc()
+                .variant(clock_divider)
+                .mode()
+                .variant(ctrl::MODE::Up)
         });
 
         // Set the resolution of the counter to MAX - 1 because if the timer is going to be split into channels and
