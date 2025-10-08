@@ -92,6 +92,7 @@
 
 #[cfg(feature = "use_debug_pins")]
 pub use crate::gpio::debug::DebugPinsEnabled;
+use crate::gpio::dynamic::DynamicMode;
 pub use crate::gpio::{
     pin::{
         mode::{
@@ -106,6 +107,7 @@ pub use crate::gpio::{
 use embedded_hal::digital::{self, ErrorKind};
 
 pub mod debug;
+pub mod dynamic;
 pub mod erased;
 pub mod pin;
 pub mod port;
@@ -320,6 +322,9 @@ pub enum GpioError {
     /// Pin level could not be read vecause Data In Disable is enablet for entire port
     DataInDisabled,
 
+    /// Dynamic Pin mode does not support the operation requested
+    InvalidMode(DynamicMode),
+
     /// Conversion of the given u8 to a [`port::DriveSlewRate`] failed
     InvalidSlewRate(u8),
 
@@ -338,6 +343,7 @@ impl embedded_hal::digital::Error for GpioError {
         match self {
             GpioError::GpioDisabled => ErrorKind::Other,
             GpioError::DataInDisabled => ErrorKind::Other,
+            GpioError::InvalidMode(_) => ErrorKind::Other,
             GpioError::InvalidSlewRate(_) => ErrorKind::Other,
             GpioError::DebugPinsEnabled => ErrorKind::Other,
             GpioError::InvalidPortId(_) => ErrorKind::Other,

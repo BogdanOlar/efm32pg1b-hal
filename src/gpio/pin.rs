@@ -4,6 +4,7 @@
 
 use crate::{
     gpio::{
+        dynamic::DynamicPin,
         erased::ErasedPin,
         pin::mode::{InputMode, MultiMode, Out, OutAlt, OutputMode},
         port::{self, PortId},
@@ -109,6 +110,11 @@ where
     /// Convert this pin into an erased pin, where the Port and Pin are not stored as type states
     pub fn into_erased_pin(self) -> ErasedPin<MODE> {
         ErasedPin::new(self.port(), self.pin())
+    }
+
+    /// Convert this pin into a dynamic pin, with no type states
+    pub fn into_dynamic_pin(self) -> DynamicPin {
+        DynamicPin::new(self.port(), self.pin(), MODE::dynamic_mode())
     }
 }
 
@@ -265,6 +271,7 @@ impl<MODE> Sealed for Pin<'F', 7, MODE> {}
 
 /// Pin mode types (type state)
 pub(crate) mod mode {
+    use crate::gpio::dynamic::DynamicMode;
     use crate::gpio::pin::pins;
     use crate::gpio::port::PortId;
     use crate::pac::gpio::port_a::model::MODE0;
@@ -375,6 +382,7 @@ pub(crate) mod mode {
 
     impl Sealed for Disabled {}
     impl Sealed for DisabledPu {}
+    impl Sealed for Analog {}
     impl Sealed for InFloat {}
     impl Sealed for InFilt {}
     impl Sealed for InPu {}
@@ -393,7 +401,6 @@ pub(crate) mod mode {
     impl Sealed for OutOdFiltAlt {}
     impl Sealed for OutOdPuAlt {}
     impl Sealed for OutOdPuFiltAlt {}
-    impl Sealed for Analog {}
 
     /// Marker trait for Input mode pins
     pub trait InputMode: Sealed {}
@@ -428,6 +435,9 @@ pub(crate) mod mode {
     pub trait MultiMode: Sealed {
         /// Set the peripheral registers such that they match the `MODE` of the `pin` in `port`
         fn set_regs(port: PortId, pin: u8);
+
+        /// Get the `DynamicMode` variant corresponding to the mode type which implements this trait
+        fn dynamic_mode() -> DynamicMode;
     }
 
     impl MultiMode for Disabled {
@@ -436,6 +446,10 @@ pub(crate) mod mode {
             pins::mode_set(port, pin, MODE0::Disabled);
             pins::set_dout(port, pin, false);
             pins::set_ovt(port, pin, true);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::Disabled
         }
     }
 
@@ -446,6 +460,23 @@ pub(crate) mod mode {
             pins::set_dout(port, pin, true);
             pins::set_ovt(port, pin, true);
         }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::DisabledPu
+        }
+    }
+
+    impl MultiMode for Analog {
+        #[inline(always)]
+        fn set_regs(port: PortId, pin: u8) {
+            pins::mode_set(port, pin, MODE0::Disabled);
+            pins::set_dout(port, pin, false);
+            pins::set_ovt(port, pin, false);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::Analog
+        }
     }
 
     impl MultiMode for InFloat {
@@ -454,6 +485,10 @@ pub(crate) mod mode {
             pins::mode_set(port, pin, MODE0::Input);
             pins::set_dout(port, pin, false);
             pins::set_ovt(port, pin, true);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::InFloat
         }
     }
 
@@ -464,6 +499,10 @@ pub(crate) mod mode {
             pins::set_dout(port, pin, true);
             pins::set_ovt(port, pin, true);
         }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::InFilt
+        }
     }
 
     impl MultiMode for InPu {
@@ -472,6 +511,10 @@ pub(crate) mod mode {
             pins::mode_set(port, pin, MODE0::Inputpull);
             pins::set_dout(port, pin, true);
             pins::set_ovt(port, pin, true);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::InPu
         }
     }
 
@@ -482,6 +525,10 @@ pub(crate) mod mode {
             pins::set_dout(port, pin, true);
             pins::set_ovt(port, pin, true);
         }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::InPuFilt
+        }
     }
 
     impl MultiMode for InPd {
@@ -490,6 +537,10 @@ pub(crate) mod mode {
             pins::mode_set(port, pin, MODE0::Inputpull);
             pins::set_dout(port, pin, false);
             pins::set_ovt(port, pin, true);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::InPd
         }
     }
 
@@ -500,6 +551,10 @@ pub(crate) mod mode {
             pins::set_dout(port, pin, false);
             pins::set_ovt(port, pin, true);
         }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::InPdFilt
+        }
     }
 
     impl MultiMode for OutPp {
@@ -507,6 +562,10 @@ pub(crate) mod mode {
         fn set_regs(port: PortId, pin: u8) {
             pins::mode_set(port, pin, MODE0::Pushpull);
             pins::set_ovt(port, pin, true);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutPp
         }
     }
 
@@ -516,6 +575,10 @@ pub(crate) mod mode {
             pins::mode_set(port, pin, MODE0::Wiredor);
             pins::set_ovt(port, pin, true);
         }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutOs
+        }
     }
 
     impl MultiMode for OutOsPd {
@@ -523,6 +586,10 @@ pub(crate) mod mode {
         fn set_regs(port: PortId, pin: u8) {
             pins::mode_set(port, pin, MODE0::Wiredorpulldown);
             pins::set_ovt(port, pin, true);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutOsPd
         }
     }
 
@@ -532,6 +599,10 @@ pub(crate) mod mode {
             pins::mode_set(port, pin, MODE0::Wiredand);
             pins::set_ovt(port, pin, true);
         }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutOd
+        }
     }
 
     impl MultiMode for OutOdFilt {
@@ -539,6 +610,10 @@ pub(crate) mod mode {
         fn set_regs(port: PortId, pin: u8) {
             pins::mode_set(port, pin, MODE0::Wiredandfilter);
             pins::set_ovt(port, pin, true);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutOdFilt
         }
     }
 
@@ -548,6 +623,10 @@ pub(crate) mod mode {
             pins::mode_set(port, pin, MODE0::Wiredandpullup);
             pins::set_ovt(port, pin, true);
         }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutOdPu
+        }
     }
 
     impl MultiMode for OutOdPuFilt {
@@ -555,6 +634,10 @@ pub(crate) mod mode {
         fn set_regs(port: PortId, pin: u8) {
             pins::mode_set(port, pin, MODE0::Wiredandpullupfilter);
             pins::set_ovt(port, pin, true);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutOdPuFilt
         }
     }
 
@@ -564,6 +647,10 @@ pub(crate) mod mode {
             pins::mode_set(port, pin, MODE0::Pushpullalt);
             pins::set_ovt(port, pin, true);
         }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutPpAlt
+        }
     }
 
     impl MultiMode for OutOdAlt {
@@ -571,6 +658,10 @@ pub(crate) mod mode {
         fn set_regs(port: PortId, pin: u8) {
             pins::mode_set(port, pin, MODE0::Wiredandalt);
             pins::set_ovt(port, pin, true);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutOdAlt
         }
     }
 
@@ -580,6 +671,10 @@ pub(crate) mod mode {
             pins::mode_set(port, pin, MODE0::Wiredandaltfilter);
             pins::set_ovt(port, pin, true);
         }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutOdFiltAlt
+        }
     }
 
     impl MultiMode for OutOdPuAlt {
@@ -587,6 +682,10 @@ pub(crate) mod mode {
         fn set_regs(port: PortId, pin: u8) {
             pins::mode_set(port, pin, MODE0::Wiredandaltpullup);
             pins::set_ovt(port, pin, true);
+        }
+
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutOdPuAlt
         }
     }
 
@@ -596,14 +695,9 @@ pub(crate) mod mode {
             pins::mode_set(port, pin, MODE0::Wiredandaltpullupfilter);
             pins::set_ovt(port, pin, true);
         }
-    }
 
-    impl MultiMode for Analog {
-        #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
-            pins::mode_set(port, pin, MODE0::Disabled);
-            pins::set_dout(port, pin, false);
-            pins::set_ovt(port, pin, false);
+        fn dynamic_mode() -> DynamicMode {
+            DynamicMode::OutOdPuFiltAlt
         }
     }
 }
@@ -654,22 +748,28 @@ pub(crate) mod pins {
         }
     }
 
-    /// Set the Data Out for a given pin `N` in port `P`
+    /// Get the Data Out for a given `pin` in `port`
+    #[inline(always)]
+    pub(crate) fn dout(port: PortId, pin: u8) -> bool {
+        (ports::get(port).dout().read().pins_dout().bits() & (1u16 << pin)) != 0
+    }
+
+    /// Set the Data Out for a given `pin` in `port`
     #[inline(always)]
     pub(crate) fn set_dout(port: PortId, pin: u8, dout: bool) {
         ports::get(port).dout().modify(|r, w| match dout {
-            true => unsafe { w.pins_dout().bits(r.bits() as u16 | (1 << pin)) },
+            true => unsafe { w.pins_dout().bits(r.bits() as u16 | (1u16 << pin)) },
             false => unsafe { w.pins_dout().bits(r.bits() as u16 & !(1u16 << pin)) },
         });
     }
 
-    /// Get the Data In for a given pin `N` in port `P`
+    /// Get the Data In for a given pin `pin` in `port`
     #[inline(always)]
     pub(crate) fn din(port: PortId, pin: u8) -> bool {
         ports::get(port).din().read().pins_din().bits() as u16 & (1u16 << pin) != 0
     }
 
-    /// Return `true` if Over Voltage Tolerance is enabled for a given pin `N` in port `P`
+    /// Return `true` if Over Voltage Tolerance is enabled for a given `pin` in `port`
     ///
     /// OVT is enabled by default for all pins
     #[allow(dead_code)]
@@ -678,7 +778,7 @@ pub(crate) mod pins {
         ports::get(port).ovt_dis().read().pins_ovt_dis().bits() & (1u16 << pin) == 0
     }
 
-    /// Set the Over Voltage Tolerance for a given pin `N` in port `P`
+    /// Set the Over Voltage Tolerance for a given `pin` in `port`
     ///
     /// OVT is enabled by default for all pins
     #[inline(always)]
