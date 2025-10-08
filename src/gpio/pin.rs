@@ -16,7 +16,7 @@ use embedded_hal::digital::{ErrorType, InputPin, OutputPin, StatefulOutputPin};
 
 /// Generic pin type
 ///
-/// - `MODE` is one of the pin modes (see [Modes](crate::gpio#mode) section).
+/// - `MODE` is one of the pin modes (see [Modes](crate::gpio#modes) section).
 /// - `P` is port name: `A` for GPIOA, `B` for GPIOB, etc.
 /// - `N` is pin number: from `0` to `15`.
 pub struct Pin<const P: char, const N: u8, MODE> {
@@ -35,7 +35,19 @@ where
     Pin<P, N, MODE>: Sealed,
 {
     /// Transition a pin from one mode to another
-    /// See also [`crate::gpio#modes`] for all the modes which can be used with this method.
+    ///
+    /// Available modes:
+    ///
+    /// [`mode::Disabled`], [`mode::DisabledPu`], [`mode::Analog`],
+    ///
+    /// [`mode::InFloat`], [`mode::InFilt`], [`mode::InPu`], [`mode::InPuFilt`], [`mode::InPd`], [`mode::InPdFilt`],
+    ///
+    /// [`mode::OutPp`], [`mode::OutOs`], [`mode::OutOsPd`], [`mode::OutOd`], [`mode::OutOdFilt`], [`mode::OutOdPu`],
+    /// [`mode::OutOdPuFilt`],
+    ///
+    /// [`mode::OutPpAlt`], [`mode::OutOdAlt`], [`mode::OutOdFiltAlt`], [`mode::OutOdPuAlt`], [`mode::OutOdPuFiltAlt`]
+    ///
+    /// See also [`crate::gpio#modes`] for a description of all the modes which can be used with this method.
     ///
     /// Example
     /// ```rust,no_run
@@ -54,10 +66,18 @@ where
 
     /// Temporarily set the mode of a given pin `N` in port `P` to the given `TMODE`.
     ///
-    /// Note that the return type `R` can be omitted with `_`, since it will be automatically deduced based on the
-    /// return of the given closure `f`.
+    /// Available modes:
     ///
-    /// See also [`crate::gpio#modes`] for all the modes which can be used with this method.
+    /// [`mode::Disabled`], [`mode::DisabledPu`], [`mode::Analog`],
+    ///
+    /// [`mode::InFloat`], [`mode::InFilt`], [`mode::InPu`], [`mode::InPuFilt`], [`mode::InPd`], [`mode::InPdFilt`],
+    ///
+    /// [`mode::OutPp`], [`mode::OutOs`], [`mode::OutOsPd`], [`mode::OutOd`], [`mode::OutOdFilt`], [`mode::OutOdPu`],
+    /// [`mode::OutOdPuFilt`],
+    ///
+    /// [`mode::OutPpAlt`], [`mode::OutOdAlt`], [`mode::OutOdFiltAlt`], [`mode::OutOdPuAlt`], [`mode::OutOdPuFiltAlt`]
+    ///
+    /// See also [`crate::gpio#modes`] for a description of all the modes which can be used with this method.
     ///
     /// Example
     /// ```rust,no_run
@@ -72,6 +92,8 @@ where
     ///
     ///     // `btn` can again be used as a filtered input pin
     /// ```
+    /// Note that the return type `R` can be omitted with `_`, since it will be automatically deduced based on the
+    /// return of the given closure `f`.
     pub fn with_mode<TMODE, R>(&mut self, f: impl FnOnce(&mut Pin<P, N, TMODE>) -> R) -> R
     where
         TMODE: MultiMode + Sealed,

@@ -56,6 +56,17 @@ where
 
     /// Change the mode of this pin
     ///
+    /// Available modes:
+    ///
+    /// [`mode::Disabled`], [`mode::DisabledPu`], [`mode::Analog`],
+    ///
+    /// [`mode::InFloat`], [`mode::InFilt`], [`mode::InPu`], [`mode::InPuFilt`], [`mode::InPd`], [`mode::InPdFilt`],
+    ///
+    /// [`mode::OutPp`], [`mode::OutOs`], [`mode::OutOsPd`], [`mode::OutOd`], [`mode::OutOdFilt`], [`mode::OutOdPu`],
+    /// [`mode::OutOdPuFilt`],
+    ///
+    /// [`mode::OutPpAlt`], [`mode::OutOdAlt`], [`mode::OutOdFiltAlt`], [`mode::OutOdPuAlt`], [`mode::OutOdPuFiltAlt`]
+    ///
     /// See also [`crate::gpio#modes`] for all the modes which can be used with this method.
     pub fn into_mode<NMODE>(self) -> ErasedPin<NMODE>
     where
@@ -67,6 +78,17 @@ where
     }
 
     /// Temporarily change the mode of this pin, while executing the given `f`
+    ///
+    /// Available modes:
+    ///
+    /// [`mode::Disabled`], [`mode::DisabledPu`], [`mode::Analog`],
+    ///
+    /// [`mode::InFloat`], [`mode::InFilt`], [`mode::InPu`], [`mode::InPuFilt`], [`mode::InPd`], [`mode::InPdFilt`],
+    ///
+    /// [`mode::OutPp`], [`mode::OutOs`], [`mode::OutOsPd`], [`mode::OutOd`], [`mode::OutOdFilt`], [`mode::OutOdPu`],
+    /// [`mode::OutOdPuFilt`],
+    ///
+    /// [`mode::OutPpAlt`], [`mode::OutOdAlt`], [`mode::OutOdFiltAlt`], [`mode::OutOdPuAlt`], [`mode::OutOdPuFiltAlt`]
     ///
     /// See also [`crate::gpio#modes`] for all the modes which can be used with this method.
     pub fn with_mode<TMODE, R>(&mut self, f: impl FnOnce(&mut ErasedPin<TMODE>) -> R) -> R
