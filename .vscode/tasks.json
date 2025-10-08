@@ -29,7 +29,7 @@
                 "build",
                 "--example",
                 "gpio",
-                "--features='defmt'"
+                "--features='defmt qfn48'"
             ],
             "problemMatcher": [
                 "$rustc"
@@ -47,7 +47,7 @@
                 "build",
                 "--example",
                 "spi",
-                "--features='defmt'"
+                "--features='defmt qfn48'"
             ],
             "problemMatcher": [
                 "$rustc"
@@ -68,7 +68,7 @@
                 "build",
                 "--example",
                 "spi_lcd",
-                "--features='defmt'"
+                "--features='defmt qfn48'"
             ],
             "problemMatcher": [
                 "$rustc"

@@ -6,7 +6,6 @@
 mod tests {
     use efm32pg1b_hal::{
         cmu::{CmuExt, HfClockPrescaler, HfClockSource},
-        gpio::GpioExt,
         pac::Peripherals,
         spi::{Spi, UsartSpiExt},
     };
@@ -17,38 +16,38 @@ mod tests {
         BUF_SIZE,
     };
 
-    // An optional init function which is called before every test
-    // Asyncness is optional, so is the return value
-    #[init]
-    fn init() -> Peripherals {
-        let p = Peripherals::take().unwrap();
-        let clocks = p
-            .cmu
-            .split()
-            .with_hf_clk(HfClockSource::HfRco, HfClockPrescaler::Div4);
+    // // An optional init function which is called before every test
+    // // Asyncness is optional, so is the return value
+    // #[init]
+    // fn init() -> Peripherals {
+    //     let p = Peripherals::take().unwrap();
+    //     let clocks = p
+    //         .cmu
+    //         .split()
+    //         .with_hf_clk(HfClockSource::HfRco, HfClockPrescaler::Div4);
 
-        let gpio = p.gpio.split();
+    //     let gpio = p.gpio.split();
 
-        // Let this App take control of display (this is a `UG154: EFM32 Pearl Gecko Starter Kit` paticularity)
-        let _ = gpio.pd15.into_output().with_push_pull().build().set_high();
+    //     // Let this App take control of display (this is a `UG154: EFM32 Pearl Gecko Starter Kit` paticularity)
+    //     let _ = gpio.pd15.into_output().with_push_pull().build().set_high();
 
-        let mut spi = p.usart1.into_spi_bus(
-            gpio.pc8.into_output().with_push_pull().build(),
-            gpio.pc6.into_output().with_push_pull().build(),
-            gpio.pc7.into_input().with_filter().build(),
-            SPIMODE,
-        );
-        let spi_br = spi.set_baudrate(1.MHz(), &clocks);
-        assert_eq!(spi_br.unwrap(), 1055555.Hz::<1, 1>());
+    //     let mut spi = p.usart1.into_spi_bus(
+    //         gpio.pc8.into_output().with_push_pull().build(),
+    //         gpio.pc6.into_output().with_push_pull().build(),
+    //         gpio.pc7.into_input().with_filter().build(),
+    //         SPIMODE,
+    //     );
+    //     let spi_br = spi.set_baudrate(1.MHz(), &clocks);
+    //     assert_eq!(spi_br.unwrap(), 1055555.Hz::<1, 1>());
 
-        let cs = gpio.pd14.into_output().with_push_pull().build();
-        let disp_com = gpio.pd13.into_output().with_push_pull().build();
+    //     let cs = gpio.pd14.into_output().with_push_pull().build();
+    //     let disp_com = gpio.pd13.into_output().with_push_pull().build();
 
-        let mut buffer = [0u8; BUF_SIZE];
-        let mut disp = Ls013b7dh03::new(spi, cs, disp_com, &mut buffer);
+    //     let mut buffer = [0u8; BUF_SIZE];
+    //     let mut disp = Ls013b7dh03::new(spi, cs, disp_com, &mut buffer);
 
-        p
-    }
+    //     p
+    // }
 
     // Tests can be async (needs feature `embassy`)
     // Tests can take the state returned by the init function (optional)

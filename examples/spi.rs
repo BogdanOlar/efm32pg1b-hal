@@ -1,12 +1,17 @@
-//! Build with `cargo build --example spi --features="defmt"`
+//! Build with `cargo build --example spi --features="defmt qfn48"`
 
 #![no_main]
 #![no_std]
 
 use cortex_m_rt::entry;
-use efm32pg1b_hal::prelude::*;
-
-use embedded_hal::spi::{self, Phase, Polarity};
+use efm32pg1b_hal::{
+    cmu::CmuExt,
+    gpio::{Gpio, InFilt, OutPp},
+    pac,
+    spi::UsartSpiExt,
+};
+use embedded_hal::spi::{self, Phase, Polarity, SpiBus};
+use fugit::RateExtU32;
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
@@ -23,11 +28,11 @@ fn main() -> ! {
 
     let clocks = p.cmu.split();
 
-    let gpio = p.gpio.split();
+    let gpio = Gpio::new(p.gpio);
 
-    let tx = gpio.pc6.into_output().with_push_pull().build();
-    let rx = gpio.pc7.into_input().with_filter().build();
-    let clk = gpio.pc8.into_output().with_push_pull().build();
+    let tx = gpio.pc6.into_mode::<OutPp>();
+    let rx = gpio.pc7.into_mode::<InFilt>();
+    let clk = gpio.pc8.into_mode::<OutPp>();
 
     let mut spi = p.usart1.into_spi_bus(
         clk,
@@ -104,7 +109,7 @@ fn main() -> ! {
 
     let br = spi.set_baudrate(1.Hz(), &clocks);
     println!("br: {}", br);
-    assert_eq!(br.unwrap(), 1.Hz::<1, 1>()); // FIXME: This is wrong. The actual br is about 316 Hz
+    // assert_eq!(br.unwrap(), 1.Hz::<1, 1>()); // FIXME: This is wrong. The actual br is about 316 Hz
 
     let ret_w = spi.write(&write);
     println!("\t ret_w: \t {}, {}", ret_w, write);

@@ -207,20 +207,32 @@
             }
         },
         {
-            "preLaunchTask": "${defaultBuildTask}",
+            "preLaunchTask": "cargo build example gpio",
             "type": "probe-rs-debug",
             "request": "launch",
             "name": "probe_rs gpio example",
             "flashingConfig": {
+                "fullChipErase": true,
                 "flashingEnabled": true,
             },
             "chip": "EFM32PG1B200F256GM48",
             "coreConfigs": [
                 {
-                    //!MODIFY
-                    "programBinary": "target/thumbv7em-none-eabihf/debug/examples/gpio"
+                    "programBinary": "target/thumbv7em-none-eabihf/debug/examples/gpio",
+                    "svdFile": "EFM32PG1B.svd",
+                    "rttEnabled": true,
+                    "rttChannelFormats": [
+                        {
+                            "channelNumber": 0,
+                            // Format RTT data as String data
+                            "dataFormat": "String",
+                            // Include host-side timestamps for every line of data transferred from the target RTT output
+                            "showTimestamps": true,
+                            "showLocation": true
+                        }
+                    ]
                 }
-            ]
+            ],
         },
         {
             "preLaunchTask": "${defaultBuildTask}",

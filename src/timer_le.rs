@@ -1,4 +1,4 @@
-use crate::gpio::Pin;
+use crate::gpio::pin::Pin;
 use core::marker::PhantomData;
 use cortex_m::asm::nop;
 use efm32pg1b_pac::{

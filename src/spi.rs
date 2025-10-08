@@ -6,14 +6,17 @@ use core::cmp::max;
 
 use crate::{
     cmu::Clocks,
-    gpio::{Input, Output, Pin},
+    gpio::{
+        pin::mode::{InputMode, OutputMode},
+        pin::Pin,
+    },
 };
 use efm32pg1b_pac::{usart0::RegisterBlock, Cmu, Usart0, Usart1};
 use embedded_hal::{
     digital::{InputPin, OutputPin},
     spi::{self, Error, ErrorKind, ErrorType, Mode, Phase, Polarity, SpiBus},
 };
-use fugit::{HertzU32, RateExtU32};
+pub use fugit::{HertzU32, RateExtU32};
 
 /// Get a reference to the `RegisterBlock` of either `Usart0` or `Usart1`
 const fn usartx<const N: u8>() -> &'static RegisterBlock {
@@ -462,7 +465,10 @@ pub trait UsartClkPin {
 /// See [Data Sheet](../../../../../doc/efm32pg1-datasheet.pdf#page=86).
 macro_rules! impl_clock_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
-        impl<ANY> UsartClkPin for Pin<$port, $pin, Output<ANY>> {
+        impl<MODE> UsartClkPin for Pin<$port, $pin, MODE>
+        where
+            MODE: OutputMode,
+        {
             fn loc(&self) -> u8 {
                 $loc
             }
@@ -529,7 +535,10 @@ pub trait UsartTxPin {
 /// See [Data Sheet](../../../../../doc/efm32pg1-datasheet.pdf#page=86).
 macro_rules! impl_tx_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
-        impl<ANY> UsartTxPin for Pin<$port, $pin, Output<ANY>> {
+        impl<MODE> UsartTxPin for Pin<$port, $pin, MODE>
+        where
+            MODE: OutputMode,
+        {
             fn loc(&self) -> u8 {
                 $loc
             }
@@ -596,7 +605,10 @@ pub trait UsartRxPin {
 /// See [Data Sheet](../../../../../doc/efm32pg1-datasheet.pdf#page=86).
 macro_rules! impl_rx_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
-        impl UsartRxPin for Pin<$port, $pin, Input> {
+        impl<MODE> UsartRxPin for Pin<$port, $pin, MODE>
+        where
+            MODE: InputMode,
+        {
             fn loc(&self) -> u8 {
                 $loc
             }
@@ -651,7 +663,10 @@ pub trait UsartCsPin {
 /// See [Data Sheet](../../../../../doc/efm32pg1-datasheet.pdf#page=86).
 macro_rules! impl_cs_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
-        impl<ANY> UsartCsPin for Pin<$port, $pin, Output<ANY>> {
+        impl<MODE> UsartCsPin for Pin<$port, $pin, MODE>
+        where
+            MODE: OutputMode,
+        {
             fn loc(&self) -> u8 {
                 $loc
             }

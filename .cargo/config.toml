@@ -2,7 +2,14 @@
 target = "thumbv7em-none-eabihf"
 
 [target.thumbv7em-none-eabihf]
-runner = "probe-rs run --chip EFM32PG1B200F256IM48"
+runner = [
+  "probe-rs",
+  "run",
+  "--chip",
+  "EFM32PG1B200F256IM48",
+#   "--log-format",
+#   "{t} {L} {s}",
+]
 
 [env]
-DEFMT_LOG="info"
+DEFMT_LOG="debug"

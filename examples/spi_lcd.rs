@@ -5,22 +5,22 @@
 #![no_std]
 
 use cortex_m_rt::entry;
-use efm32pg1b_hal::prelude::*;
-
-use embedded_graphics::{
-    geometry::Point,
-    pixelcolor::BinaryColor,
-    prelude::*,
-    primitives::{Circle, Primitive, PrimitiveStyle},
+use efm32pg1b_hal::{
+    cmu::{CmuExt, HfClockPrescaler, HfClockSource},
+    gpio::{Gpio, InFilt, OutPp},
+    pac,
+    spi::UsartSpiExt,
+    timer::{TimerDivider, TimerExt},
 };
+
+use embedded_hal::{delay::DelayNs, digital::OutputPin, pwm::SetDutyCycle};
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
                      // use panic_itm as _; // logs messages over ITM; requires ITM support
                      // use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
-use defmt::assert_eq;
 use defmt_rtt as _;
-
+use fugit::RateExtU32;
 use ls013b7dh03::{prelude::*, WIDTH};
 
 #[entry]
@@ -31,23 +31,24 @@ fn main() -> ! {
         .cmu
         .split()
         .with_hf_clk(HfClockSource::HfRco, HfClockPrescaler::Div4);
-    let gpio = p.gpio.split();
+    let gpio = Gpio::new(p.gpio);
 
     // Let this App take control of display (this is a `UG154: EFM32 Pearl Gecko Starter Kit` paticularity)
-    let _ = gpio.pd15.into_output().with_push_pull().build().set_high();
+    let _ = gpio.pd15.into_mode::<OutPp>().set_high();
+    // let _ = gpio.pd15.into_output().with_push_pull().build().set_high();
 
     let mut spi = p.usart1.into_spi_bus(
-        gpio.pc8.into_output().with_push_pull().build(),
-        gpio.pc6.into_output().with_push_pull().build(),
-        gpio.pc7.into_input().with_filter().build(),
+        gpio.pc8.into_mode::<OutPp>(),
+        gpio.pc6.into_mode::<OutPp>(),
+        gpio.pc7.into_mode::<InFilt>(),
         SPIMODE,
     );
-    let spi_br = spi.set_baudrate(1.MHz(), &clocks);
+    let _spi_br = spi.set_baudrate(1.MHz(), &clocks);
     // assert_eq!(spi_br.unwrap(), 1055555.Hz::<1, 1>());
 
-    let cs = gpio.pd14.into_output().with_push_pull().build();
-    let mut led0 = gpio.pf4.into_output().with_push_pull().build();
-    let disp_com = gpio.pd13.into_output().with_push_pull().build();
+    let cs = gpio.pd14.into_mode::<OutPp>();
+    let led0 = gpio.pf4.into_mode::<OutPp>();
+    let disp_com = gpio.pd13.into_mode::<OutPp>();
 
     let mut buffer = [0u8; BUF_SIZE];
     let mut disp = Ls013b7dh03::new(spi, cs, led0, &mut buffer);
@@ -56,7 +57,7 @@ fn main() -> ! {
         p.timer0.into_timer(TimerDivider::Div1024).into_channels();
 
     let mut com_inv = tim0ch1.into_pwm(disp_com);
-    let ret_pwm = com_inv.set_duty_cycle(10);
+    let _ret_pwm = com_inv.set_duty_cycle(10);
 
     let mut delay_frames = tim0ch0.into_delay(&clocks);
 

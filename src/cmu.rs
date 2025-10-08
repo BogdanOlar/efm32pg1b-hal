@@ -1,4 +1,4 @@
-use crate::gpio::{Output, Pin};
+use crate::gpio::{pin::mode::OutputMode, pin::Pin};
 use cortex_m::asm::nop;
 use efm32pg1b_pac::{
     cmu::{hfclksel::HF, hfclkstatus::SELECTED},
@@ -640,7 +640,10 @@ pub trait CmuPin0 {
 
 macro_rules! impl_clock_0_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
-        impl<ANY> CmuPin0 for Pin<$port, $pin, Output<ANY>> {
+        impl<MODE> CmuPin0 for Pin<$port, $pin, MODE>
+        where
+            MODE: OutputMode,
+        {
             fn loc(&self) -> u8 {
                 $loc
             }
@@ -665,7 +668,10 @@ pub trait CmuPin1 {
 
 macro_rules! impl_clock_1_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
-        impl<ANY> CmuPin1 for Pin<$port, $pin, Output<ANY>> {
+        impl<MODE> CmuPin1 for Pin<$port, $pin, MODE>
+        where
+            MODE: OutputMode,
+        {
             fn loc(&self) -> u8 {
                 $loc
             }

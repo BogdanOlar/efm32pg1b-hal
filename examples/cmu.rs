@@ -5,7 +5,8 @@
 
 use cortex_m::asm::nop;
 use cortex_m_rt::entry;
-use efm32pg1b_hal::prelude::*;
+use efm32pg1b_hal::cmu::{CmuExt, DbgClockSource, HfClockPrescaler, HfClockSource};
+use efm32pg1b_hal::pac;
 
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics

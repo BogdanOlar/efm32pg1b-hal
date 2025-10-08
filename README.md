@@ -20,13 +20,14 @@ This crate implements [embedded-hal v1.0.0](https://github.com/rust-embedded/emb
     - [ ] Interrupts
 
 - GPIO:
-    - [x] Basic implementation
+    - [x] Zero-sized Pins implementation
+    - [x] Erased Pins implementation
+    - [x] Debug Pins handling
     - [x] [`embedded-hal`] traits:
         - [x] `embedded_hal::digital::InputPin`
         - [x] `embedded_hal::digital::OutputPin`
         - [x] `embedded_hal::digital::StatefulOutputPin`
-    - [ ] Cargo features to differentiate between MCU HW packages which specify which pins are available
-    - [ ] Interrupts
+    - [x] Cargo features to differentiate between MCU HW packages which specify which pins are available
 
 - SPI:
     - [x] Basic implementation, implements blocking master operations

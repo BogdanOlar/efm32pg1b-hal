@@ -2,7 +2,7 @@
 name = "efm32pg1b-hal"
 version = "0.1.2"
 authors = ["Bogdan Olar <olar.bogdan.dev@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "Hardware abstraction layer (HAL) for Silicon Labs EFM32PG1B microcontrollers"
 keywords = ["embedded-hal", "efm32", "efm32pg1b", "hal", "silabs"]
 categories = ["embedded", "hardware-support", "no-std"]
@@ -16,11 +16,6 @@ efm32pg1b-pac = { version = "0.4.0", features = [
     "rt",
     "defmt",
 ] }
-# efm32pg1b-pac = { path = "../efm32pg1b-pac", features = [
-#     "critical-section",
-#     "rt",
-#     "defmt",
-# ] }
 embedded-hal = { version = "1" }
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.5"
@@ -48,9 +43,20 @@ ls013b7dh03 = { path = "../ls013b7dh03", features = ["embedded_graphics"] }
 embedded-test = { version = "0.6.2", features = ["defmt"]}
 
 [features]
+default = []
 log = ["dep:log", "dep:rtt-target", "rtt-target/log", "embedded-test/log"]
 defmt = ["dep:defmt", "dep:defmt-rtt", "dep:rtt-target", "rtt-target/defmt", "embedded-test/defmt"]
 
+## Allow changing the function of the debug pins (Pins 0-3 of port `F`)
+use_debug_pins = []
+
+# Pick ONE of these based on the form factor of the controller you are using
+# By default, the pins for "QFN32 with DC-DC GPIO" are enabled. The other two features will add additional pins:
+
+## QFN32 without DC-DC GPIO. Pick EITHER this feature, or `qfn48`, or none of the two!
+qfn32 = []
+## QFN48 with DC-DC GPIO. Pick EITHER this feature, or `qfn32`, or none of the two!
+qfn48 = []
 
 [profile.release]
 codegen-units = 1 # better optimizations
@@ -61,7 +67,7 @@ lto = true        # better optimizations
 codegen-units = 1             # better optimizations
 debug = true                  # symbols are nice and they don't increase the size on Flash
 lto = false                   # better optimizations
-required-features = ["defmt"]
+required-features = ["defmt", "qfn48"]
 
 [[example]]
 name = "cmu"
@@ -69,15 +75,15 @@ required-features = ["defmt"]
 
 [[example]]
 name = "gpio"
-required-features = ["defmt"]
+required-features = ["defmt", "qfn48"]
 
 [[example]]
 name = "spi"
-required-features = ["defmt"]
+required-features = ["defmt", "qfn48"]
 
 [[example]]
 name = "spi_lcd"
-required-features = ["defmt"]
+required-features = ["defmt", "qfn48"]
 
 [[example]]
 name = "timer"

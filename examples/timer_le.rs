@@ -4,9 +4,16 @@
 #![no_std]
 
 use cortex_m_rt::entry;
-use efm32pg1b_hal::{cmu::LfClockSource, prelude::*, timer_le::LeTimerExt};
+use efm32pg1b_hal::{
+    cmu::{CmuExt, LfClockSource},
+    gpio::{Gpio, OutPp},
+    pac,
+    timer::{TimerDivider, TimerExt},
+    timer_le::LeTimerExt,
+};
 
 use efm32pg1b_pac::Letimer0;
+use embedded_hal::{delay::DelayNs, digital::StatefulOutputPin};
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
@@ -20,16 +27,16 @@ fn main() -> ! {
     let _core_p = cortex_m::Peripherals::take().unwrap();
     let p = pac::Peripherals::take().unwrap();
     let clocks = p.cmu.split().with_lfa_clk(LfClockSource::LfRco);
-    let gpio = p.gpio.split();
+    let gpio = Gpio::new(p.gpio);
 
-    let mut pin_delay = gpio.pd14.into_output().with_push_pull().build();
+    let mut pin_delay = gpio.pd14.into_mode::<OutPp>();
 
     let timer = p.timer0.into_timer(TimerDivider::Div1024);
     let (tim0ch0, _tim0ch1, _tim0ch2, _tim0ch3) = timer.into_channels();
     let mut delayer = tim0ch0.into_delay(&clocks);
     println!("{}", &delayer);
 
-    let pin_pwm = gpio.pd13.into_output().with_push_pull().build();
+    let pin_pwm = gpio.pd13.into_mode::<OutPp>();
     let _pwm = p.letimer0.into_timer().into_ch0_pwm(pin_pwm);
 
     let le_timer = unsafe { &*Letimer0::ptr() };

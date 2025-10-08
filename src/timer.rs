@@ -1,4 +1,4 @@
-use crate::{cmu::Clocks, gpio::Pin};
+use crate::{cmu::Clocks, gpio::pin::Pin};
 use core::{convert::Infallible, marker::PhantomData};
 pub use efm32pg1b_pac::timer0::ctrl::PRESC as TimerDivider;
 use efm32pg1b_pac::{
