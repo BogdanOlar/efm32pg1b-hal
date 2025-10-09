@@ -1,10 +1,6 @@
 //! Dynamic pins
 //!
 
-use core::fmt;
-
-use embedded_hal::digital::{ErrorType, InputPin, OutputPin, StatefulOutputPin};
-
 use crate::{
     gpio::{
         pin::{self, mode::MultiMode, pins, PinInfo},
@@ -13,6 +9,8 @@ use crate::{
     },
     Sealed,
 };
+use core::fmt;
+use embedded_hal::digital::{ErrorType, InputPin, OutputPin, StatefulOutputPin};
 
 pub struct DynamicPin {
     /// Most significant nibble is the port id, least significant nibble is the pin id
@@ -29,6 +27,36 @@ impl DynamicPin {
         }
     }
 
+    /// Transition a pin from one mode to another. Available modes (see also [`crate::gpio#modes`] details):
+    ///
+    /// * _Disabled_:
+    ///   [`Disabled`](`pin::mode::Disabled`),
+    ///   [`DisabledPu`](`pin::mode::DisabledPu`),
+    ///   [`Analog`](`pin::mode::Analog`)
+    ///
+    /// * _Input_:
+    ///   [`InFloat`](`pin::mode::InFloat`),
+    ///   [`InFilt`](`pin::mode::InFilt`),
+    ///   [`InPu`](`pin::mode::InPu`),
+    ///   [`InPuFilt`](`pin::mode::InPuFilt`),
+    ///   [`InPd`](`pin::mode::InPd`),
+    ///   [`InPdFilt`](`pin::mode::InPdFilt`)
+    ///
+    /// * _Output_:
+    ///   [`OutPp`](`pin::mode::OutPp`),
+    ///   [`OutOs`](`pin::mode::OutOs`),
+    ///   [`OutOsPd`](`pin::mode::OutOsPd`),
+    ///   [`OutOd`](`pin::mode::OutOd`),
+    ///   [`OutOd`](`pin::mode::OutOdFilt`),
+    ///   [`OutOdPu`](`pin::mode::OutOdPu`),
+    ///   [`OutOdPuFilt`](`pin::mode::OutOdPuFilt`)
+    ///
+    /// * _Alternate Output_:
+    ///   [`OutPpAlt`](`pin::mode::OutPpAlt`),
+    ///   [`OutOdAlt`](`pin::mode::OutOdAlt`),
+    ///   [`OutOdFiltAlt`](`pin::mode::OutOdFiltAlt`),
+    ///   [`OutOdPuAlt`](`pin::mode::OutOdPuAlt`),
+    ///   [`OutOdPuFiltAlt`](`pin::mode::OutOdPuFiltAlt`)
     pub fn into_mode<MODE>(self) -> Self
     where
         MODE: MultiMode + Sealed,
@@ -37,6 +65,37 @@ impl DynamicPin {
         Self::new(self.port(), self.pin(), MODE::dynamic_mode())
     }
 
+    /// Temporarily set the mode of a given pin to a new mode while executing the given closure `f`.
+    /// Available modes (see also [`crate::gpio#modes`] details):
+    ///
+    /// * _Disabled_:
+    ///   [`Disabled`](`pin::mode::Disabled`),
+    ///   [`DisabledPu`](`pin::mode::DisabledPu`),
+    ///   [`Analog`](`pin::mode::Analog`)
+    ///
+    /// * _Input_:
+    ///   [`InFloat`](`pin::mode::InFloat`),
+    ///   [`InFilt`](`pin::mode::InFilt`),
+    ///   [`InPu`](`pin::mode::InPu`),
+    ///   [`InPuFilt`](`pin::mode::InPuFilt`),
+    ///   [`InPd`](`pin::mode::InPd`),
+    ///   [`InPdFilt`](`pin::mode::InPdFilt`)
+    ///
+    /// * _Output_:
+    ///   [`OutPp`](`pin::mode::OutPp`),
+    ///   [`OutOs`](`pin::mode::OutOs`),
+    ///   [`OutOsPd`](`pin::mode::OutOsPd`),
+    ///   [`OutOd`](`pin::mode::OutOd`),
+    ///   [`OutOd`](`pin::mode::OutOdFilt`),
+    ///   [`OutOdPu`](`pin::mode::OutOdPu`),
+    ///   [`OutOdPuFilt`](`pin::mode::OutOdPuFilt`)
+    ///
+    /// * _Alternate Output_:
+    ///   [`OutPpAlt`](`pin::mode::OutPpAlt`),
+    ///   [`OutOdAlt`](`pin::mode::OutOdAlt`),
+    ///   [`OutOdFiltAlt`](`pin::mode::OutOdFiltAlt`),
+    ///   [`OutOdPuAlt`](`pin::mode::OutOdPuAlt`),
+    ///   [`OutOdPuFiltAlt`](`pin::mode::OutOdPuFiltAlt`)
     pub fn with_mode<TMODE, R>(&mut self, f: impl FnOnce(&mut DynamicPin) -> R) -> R
     where
         TMODE: MultiMode + Sealed,
@@ -50,6 +109,8 @@ impl DynamicPin {
 }
 
 /// `InputPin` implementation for trait from `embedded-hal`
+/// Allows treating Outout pins as Input pins, since the uC allows it
+/// TODO: restrict this to input pins?
 impl InputPin for DynamicPin {
     fn is_high(&mut self) -> Result<bool, Self::Error> {
         if !self.mode.readable() {

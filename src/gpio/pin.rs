@@ -35,25 +35,43 @@ where
     MODE: MultiMode + Sealed,
     Pin<P, N, MODE>: Sealed,
 {
-    /// Transition a pin from one mode to another
+    /// Transition a pin from one mode to another. Available modes (see also [`crate::gpio#modes`] details):
     ///
-    /// Available modes:
+    /// * _Disabled_:
+    ///   [`Disabled`](`pin::mode::Disabled`),
+    ///   [`DisabledPu`](`pin::mode::DisabledPu`),
+    ///   [`Analog`](`pin::mode::Analog`)
     ///
-    /// [`mode::Disabled`], [`mode::DisabledPu`], [`mode::Analog`],
+    /// * _Input_:
+    ///   [`InFloat`](`pin::mode::InFloat`),
+    ///   [`InFilt`](`pin::mode::InFilt`),
+    ///   [`InPu`](`pin::mode::InPu`),
+    ///   [`InPuFilt`](`pin::mode::InPuFilt`),
+    ///   [`InPd`](`pin::mode::InPd`),
+    ///   [`InPdFilt`](`pin::mode::InPdFilt`)
     ///
-    /// [`mode::InFloat`], [`mode::InFilt`], [`mode::InPu`], [`mode::InPuFilt`], [`mode::InPd`], [`mode::InPdFilt`],
+    /// * _Output_:
+    ///   [`OutPp`](`pin::mode::OutPp`),
+    ///   [`OutOs`](`pin::mode::OutOs`),
+    ///   [`OutOsPd`](`pin::mode::OutOsPd`),
+    ///   [`OutOd`](`pin::mode::OutOd`),
+    ///   [`OutOd`](`pin::mode::OutOdFilt`),
+    ///   [`OutOdPu`](`pin::mode::OutOdPu`),
+    ///   [`OutOdPuFilt`](`pin::mode::OutOdPuFilt`)
     ///
-    /// [`mode::OutPp`], [`mode::OutOs`], [`mode::OutOsPd`], [`mode::OutOd`], [`mode::OutOdFilt`], [`mode::OutOdPu`],
-    /// [`mode::OutOdPuFilt`],
-    ///
-    /// [`mode::OutPpAlt`], [`mode::OutOdAlt`], [`mode::OutOdFiltAlt`], [`mode::OutOdPuAlt`], [`mode::OutOdPuFiltAlt`]
-    ///
-    /// See also [`crate::gpio#modes`] for a description of all the modes which can be used with this method.
+    /// * _Alternate Output_:
+    ///   [`OutPpAlt`](`pin::mode::OutPpAlt`),
+    ///   [`OutOdAlt`](`pin::mode::OutOdAlt`),
+    ///   [`OutOdFiltAlt`](`pin::mode::OutOdFiltAlt`),
+    ///   [`OutOdPuAlt`](`pin::mode::OutOdPuAlt`),
+    ///   [`OutOdPuFiltAlt`](`pin::mode::OutOdPuFiltAlt`)
     ///
     /// Example
+    ///
     /// ```rust,no_run
     ///     // create an input pin with filter
     ///     let mut btn0 = gpio.pf6.into_mode::<InFilt>();
+    ///     // convert the pin into an Alternative Push-Pull Output pin
     ///     let mut led0 = btn0.into_mode::<OutPpAlt>();
     /// ```
     pub fn into_mode<NMODE>(self) -> Pin<P, N, NMODE>
@@ -65,33 +83,52 @@ where
         Pin::new()
     }
 
-    /// Temporarily set the mode of a given pin `N` in port `P` to the given `TMODE`.
+    /// Temporarily set the mode of a given pin to a new mode while executing the given closure `f`.
+    /// Available modes (see also [`crate::gpio#modes`] details):
     ///
-    /// Available modes:
+    /// * _Disabled_:
+    ///   [`Disabled`](`pin::mode::Disabled`),
+    ///   [`DisabledPu`](`pin::mode::DisabledPu`),
+    ///   [`Analog`](`pin::mode::Analog`)
     ///
-    /// [`mode::Disabled`], [`mode::DisabledPu`], [`mode::Analog`],
+    /// * _Input_:
+    ///   [`InFloat`](`pin::mode::InFloat`),
+    ///   [`InFilt`](`pin::mode::InFilt`),
+    ///   [`InPu`](`pin::mode::InPu`),
+    ///   [`InPuFilt`](`pin::mode::InPuFilt`),
+    ///   [`InPd`](`pin::mode::InPd`),
+    ///   [`InPdFilt`](`pin::mode::InPdFilt`)
     ///
-    /// [`mode::InFloat`], [`mode::InFilt`], [`mode::InPu`], [`mode::InPuFilt`], [`mode::InPd`], [`mode::InPdFilt`],
+    /// * _Output_:
+    ///   [`OutPp`](`pin::mode::OutPp`),
+    ///   [`OutOs`](`pin::mode::OutOs`),
+    ///   [`OutOsPd`](`pin::mode::OutOsPd`),
+    ///   [`OutOd`](`pin::mode::OutOd`),
+    ///   [`OutOd`](`pin::mode::OutOdFilt`),
+    ///   [`OutOdPu`](`pin::mode::OutOdPu`),
+    ///   [`OutOdPuFilt`](`pin::mode::OutOdPuFilt`)
     ///
-    /// [`mode::OutPp`], [`mode::OutOs`], [`mode::OutOsPd`], [`mode::OutOd`], [`mode::OutOdFilt`], [`mode::OutOdPu`],
-    /// [`mode::OutOdPuFilt`],
+    /// * _Alternate Output_:
+    ///   [`OutPpAlt`](`pin::mode::OutPpAlt`),
+    ///   [`OutOdAlt`](`pin::mode::OutOdAlt`),
+    ///   [`OutOdFiltAlt`](`pin::mode::OutOdFiltAlt`),
+    ///   [`OutOdPuAlt`](`pin::mode::OutOdPuAlt`),
+    ///   [`OutOdPuFiltAlt`](`pin::mode::OutOdPuFiltAlt`)
     ///
-    /// [`mode::OutPpAlt`], [`mode::OutOdAlt`], [`mode::OutOdFiltAlt`], [`mode::OutOdPuAlt`], [`mode::OutOdPuFiltAlt`]
+    /// Example:
     ///
-    /// See also [`crate::gpio#modes`] for a description of all the modes which can be used with this method.
-    ///
-    /// Example
     /// ```rust,no_run
-    ///     // create an input pin with filter
-    ///     let mut btn0 = gpio.pf6.into_mode::<InFilt>();
+    ///     // temporarily convert pin A0 from Disabled (default) to an input pin with PULL-UP enabled
+    ///     let state_result = gpio.pa0.with_mode::<InPu, _>(|pin| pin.is_high());
+    ///     assert!(state_result.is_ok_and(|pin_is_high| pin_is_high));
     ///
-    ///     // temporarily convert `btn` to an input pin with pull-up enabled
-    ///     let _ = btn0.with_mode::<InPu, _>(|pin| {
-    ///         // ...
-    ///         return ();
-    ///     });
+    ///     // pin A0 is again disabled
     ///
-    ///     // `btn` can again be used as a filtered input pin
+    ///     // temporarily convert pin A0 from Disabled (default) to an input pin with PULL-DOWN enabled
+    ///     let state_result = gpio.pa0.with_mode::<InPd, _>(|pin| pin.is_high());
+    ///     assert!(state_result.is_ok_and(|pin_is_high| !pin_is_high));
+    ///
+    ///     // pin A0 is again disabled
     /// ```
     /// Note that the return type `R` can be omitted with `_`, since it will be automatically deduced based on the
     /// return of the given closure `f`.
