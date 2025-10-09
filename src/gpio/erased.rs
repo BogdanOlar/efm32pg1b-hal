@@ -57,33 +57,33 @@ where
     /// Transition a pin from one mode to another. Available modes (see also [`crate::gpio#modes`] details):
     ///
     /// * _Disabled_:
-    ///   [`Disabled`](`pin::mode::Disabled`),
-    ///   [`DisabledPu`](`pin::mode::DisabledPu`),
-    ///   [`Analog`](`pin::mode::Analog`)
+    ///   [`Disabled`](`mode::Disabled`),
+    ///   [`DisabledPu`](`mode::DisabledPu`),
+    ///   [`Analog`](`mode::Analog`)
     ///
     /// * _Input_:
-    ///   [`InFloat`](`pin::mode::InFloat`),
-    ///   [`InFilt`](`pin::mode::InFilt`),
-    ///   [`InPu`](`pin::mode::InPu`),
-    ///   [`InPuFilt`](`pin::mode::InPuFilt`),
-    ///   [`InPd`](`pin::mode::InPd`),
-    ///   [`InPdFilt`](`pin::mode::InPdFilt`)
+    ///   [`InFloat`](`mode::InFloat`),
+    ///   [`InFilt`](`mode::InFilt`),
+    ///   [`InPu`](`mode::InPu`),
+    ///   [`InPuFilt`](`mode::InPuFilt`),
+    ///   [`InPd`](`mode::InPd`),
+    ///   [`InPdFilt`](`mode::InPdFilt`)
     ///
     /// * _Output_:
-    ///   [`OutPp`](`pin::mode::OutPp`),
-    ///   [`OutOs`](`pin::mode::OutOs`),
-    ///   [`OutOsPd`](`pin::mode::OutOsPd`),
-    ///   [`OutOd`](`pin::mode::OutOd`),
-    ///   [`OutOd`](`pin::mode::OutOdFilt`),
-    ///   [`OutOdPu`](`pin::mode::OutOdPu`),
-    ///   [`OutOdPuFilt`](`pin::mode::OutOdPuFilt`)
+    ///   [`OutPp`](`mode::OutPp`),
+    ///   [`OutOs`](`mode::OutOs`),
+    ///   [`OutOsPd`](`mode::OutOsPd`),
+    ///   [`OutOd`](`mode::OutOd`),
+    ///   [`OutOd`](`mode::OutOdFilt`),
+    ///   [`OutOdPu`](`mode::OutOdPu`),
+    ///   [`OutOdPuFilt`](`mode::OutOdPuFilt`)
     ///
     /// * _Alternate Output_:
-    ///   [`OutPpAlt`](`pin::mode::OutPpAlt`),
-    ///   [`OutOdAlt`](`pin::mode::OutOdAlt`),
-    ///   [`OutOdFiltAlt`](`pin::mode::OutOdFiltAlt`),
-    ///   [`OutOdPuAlt`](`pin::mode::OutOdPuAlt`),
-    ///   [`OutOdPuFiltAlt`](`pin::mode::OutOdPuFiltAlt`)
+    ///   [`OutPpAlt`](`mode::OutPpAlt`),
+    ///   [`OutOdAlt`](`mode::OutOdAlt`),
+    ///   [`OutOdFiltAlt`](`mode::OutOdFiltAlt`),
+    ///   [`OutOdPuAlt`](`mode::OutOdPuAlt`),
+    ///   [`OutOdPuFiltAlt`](`mode::OutOdPuFiltAlt`)
     pub fn into_mode<NMODE>(self) -> ErasedPin<NMODE>
     where
         NMODE: MultiMode + Sealed,
@@ -97,33 +97,33 @@ where
     /// Available modes (see also [`crate::gpio#modes`] details):
     ///
     /// * _Disabled_:
-    ///   [`Disabled`](`pin::mode::Disabled`),
-    ///   [`DisabledPu`](`pin::mode::DisabledPu`),
-    ///   [`Analog`](`pin::mode::Analog`)
+    ///   [`Disabled`](`mode::Disabled`),
+    ///   [`DisabledPu`](`mode::DisabledPu`),
+    ///   [`Analog`](`mode::Analog`)
     ///
     /// * _Input_:
-    ///   [`InFloat`](`pin::mode::InFloat`),
-    ///   [`InFilt`](`pin::mode::InFilt`),
-    ///   [`InPu`](`pin::mode::InPu`),
-    ///   [`InPuFilt`](`pin::mode::InPuFilt`),
-    ///   [`InPd`](`pin::mode::InPd`),
-    ///   [`InPdFilt`](`pin::mode::InPdFilt`)
+    ///   [`InFloat`](`mode::InFloat`),
+    ///   [`InFilt`](`mode::InFilt`),
+    ///   [`InPu`](`mode::InPu`),
+    ///   [`InPuFilt`](`mode::InPuFilt`),
+    ///   [`InPd`](`mode::InPd`),
+    ///   [`InPdFilt`](`mode::InPdFilt`)
     ///
     /// * _Output_:
-    ///   [`OutPp`](`pin::mode::OutPp`),
-    ///   [`OutOs`](`pin::mode::OutOs`),
-    ///   [`OutOsPd`](`pin::mode::OutOsPd`),
-    ///   [`OutOd`](`pin::mode::OutOd`),
-    ///   [`OutOd`](`pin::mode::OutOdFilt`),
-    ///   [`OutOdPu`](`pin::mode::OutOdPu`),
-    ///   [`OutOdPuFilt`](`pin::mode::OutOdPuFilt`)
+    ///   [`OutPp`](`mode::OutPp`),
+    ///   [`OutOs`](`mode::OutOs`),
+    ///   [`OutOsPd`](`mode::OutOsPd`),
+    ///   [`OutOd`](`mode::OutOd`),
+    ///   [`OutOd`](`mode::OutOdFilt`),
+    ///   [`OutOdPu`](`mode::OutOdPu`),
+    ///   [`OutOdPuFilt`](`mode::OutOdPuFilt`)
     ///
     /// * _Alternate Output_:
-    ///   [`OutPpAlt`](`pin::mode::OutPpAlt`),
-    ///   [`OutOdAlt`](`pin::mode::OutOdAlt`),
-    ///   [`OutOdFiltAlt`](`pin::mode::OutOdFiltAlt`),
-    ///   [`OutOdPuAlt`](`pin::mode::OutOdPuAlt`),
-    ///   [`OutOdPuFiltAlt`](`pin::mode::OutOdPuFiltAlt`)
+    ///   [`OutPpAlt`](`mode::OutPpAlt`),
+    ///   [`OutOdAlt`](`mode::OutOdAlt`),
+    ///   [`OutOdFiltAlt`](`mode::OutOdFiltAlt`),
+    ///   [`OutOdPuAlt`](`mode::OutOdPuAlt`),
+    ///   [`OutOdPuFiltAlt`](`mode::OutOdPuFiltAlt`)
     pub fn with_mode<TMODE, R>(&mut self, f: impl FnOnce(&mut ErasedPin<TMODE>) -> R) -> R
     where
         TMODE: MultiMode + Sealed,
