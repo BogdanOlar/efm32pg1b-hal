@@ -278,6 +278,7 @@ macro_rules! impl_fmt_debug_erased_pin {
 
 impl_fmt_debug_erased_pin!(mode::Disabled, "Disabled");
 impl_fmt_debug_erased_pin!(mode::DisabledPu, "DisabledPu");
+impl_fmt_debug_erased_pin!(mode::Analog, "Analog");
 impl_fmt_debug_erased_pin!(mode::InFloat, "InFloat");
 impl_fmt_debug_erased_pin!(mode::InFilt, "InFilt");
 impl_fmt_debug_erased_pin!(mode::InPu, "InPu");
@@ -296,4 +297,3 @@ impl_fmt_debug_erased_pin!(mode::OutAlt<mode::OpenDrain>, "OutOdAlt");
 impl_fmt_debug_erased_pin!(mode::OutAlt<mode::OpenDrainFilter>, "OutOdFiltAlt");
 impl_fmt_debug_erased_pin!(mode::OutAlt<mode::OpenDrainPullUp>, "OutOdPuAlt");
 impl_fmt_debug_erased_pin!(mode::OutAlt<mode::OpenDrainPullUpFilter>, "OutOdPuFiltAlt");
-impl_fmt_debug_erased_pin!(mode::Analog, "Analog");

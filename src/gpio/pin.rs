@@ -69,6 +69,9 @@ where
     /// Example
     ///
     /// ```rust,no_run
+    ///     let p = pac::Peripherals::take().unwrap();
+    ///     let mut gpio = Gpio::new(p.gpio);
+    ///
     ///     // create an input pin with filter
     ///     let mut btn0 = gpio.pf6.into_mode::<InFilt>();
     ///     // convert the pin into an Alternative Push-Pull Output pin
@@ -118,6 +121,9 @@ where
     /// Example:
     ///
     /// ```rust,no_run
+    ///     let p = pac::Peripherals::take().unwrap();
+    ///     let mut gpio = Gpio::new(p.gpio);
+    ///
     ///     // temporarily convert pin A0 from Disabled (default) to an input pin with PULL-UP enabled
     ///     let state_result = gpio.pa0.with_mode::<InPu, _>(|pin| pin.is_high());
     ///     assert!(state_result.is_ok_and(|pin_is_high| pin_is_high));
@@ -858,6 +864,7 @@ pub(crate) use impl_fmt_debug;
 
 impl_fmt_debug!(mode::Disabled, "Disabled");
 impl_fmt_debug!(mode::DisabledPu, "DisabledPu");
+impl_fmt_debug!(mode::Analog, "Analog");
 impl_fmt_debug!(mode::InFloat, "InFloat");
 impl_fmt_debug!(mode::InFilt, "InFilt");
 impl_fmt_debug!(mode::InPu, "InPu");
@@ -876,4 +883,3 @@ impl_fmt_debug!(mode::OutAlt<mode::OpenDrain>, "OutOdAlt");
 impl_fmt_debug!(mode::OutAlt<mode::OpenDrainFilter>, "OutOdFiltAlt");
 impl_fmt_debug!(mode::OutAlt<mode::OpenDrainPullUp>, "OutOdPuAlt");
 impl_fmt_debug!(mode::OutAlt<mode::OpenDrainPullUpFilter>, "OutOdPuFiltAlt");
-impl_fmt_debug!(mode::Analog, "Analog");
