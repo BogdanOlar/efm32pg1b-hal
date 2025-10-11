@@ -23,7 +23,7 @@ use embedded_hal::digital::{ErrorType, InputPin, OutputPin, StatefulOutputPin};
 use crate::{
     gpio::{
         pin::{
-            mode::{self, InputMode, MultiMode, Out, OutAlt, OutputMode},
+            mode::{self, InputMode, MultiMode, OutputMode},
             pins, PinInfo,
         },
         port::{self, PortId},
@@ -192,55 +192,22 @@ where
     }
 }
 
-/// `StatefulOutputPin` implementation for trait from `embedded-hal`
-impl<SMODE> StatefulOutputPin for ErasedPin<Out<SMODE>>
-where
-    Out<SMODE>: OutputMode,
-{
-    fn is_set_high(&mut self) -> Result<bool, Self::Error> {
-        if !crate::gpio::is_enabled() {
-            Err(GpioError::GpioDisabled)
-        } else if port::ports::din_dis(self.port()) {
-            Err(GpioError::DataInDisabled)
-        } else {
-            Ok(pins::din(self.port(), self.pin()))
-        }
-    }
-
-    fn is_set_low(&mut self) -> Result<bool, Self::Error> {
-        if !crate::gpio::is_enabled() {
-            Err(GpioError::GpioDisabled)
-        } else if port::ports::din_dis(self.port()) {
-            Err(GpioError::DataInDisabled)
-        } else {
-            Ok(!pins::din(self.port(), self.pin()))
-        }
-    }
-}
-
 /// `StatefulOutputPin` (`Alt` output mode) implementation for trait from `embedded-hal`
-impl<SMODE> StatefulOutputPin for ErasedPin<OutAlt<SMODE>>
+impl<MODE> StatefulOutputPin for ErasedPin<MODE>
 where
-    OutAlt<SMODE>: OutputMode,
+    MODE: OutputMode,
 {
     fn is_set_high(&mut self) -> Result<bool, Self::Error> {
         if !crate::gpio::is_enabled() {
             Err(GpioError::GpioDisabled)
-        } else if port::ports::din_dis_alt(self.port()) {
-            Err(GpioError::DataInDisabled)
         } else {
-            Ok(pins::din(self.port(), self.pin()))
+            // Return the current state of the _output_, not of the input register
+            Ok(pins::dout(self.port(), self.pin()))
         }
     }
 
     fn is_set_low(&mut self) -> Result<bool, Self::Error> {
-        if !crate::gpio::is_enabled() {
-            Err(GpioError::GpioDisabled)
-        } else if port::ports::din_dis_alt(self.port()) {
-            Err(GpioError::DataInDisabled)
-        } else {
-            Ok(!pins::din(self.port(), self.pin()))
-        }
+        Ok(!self.is_set_high()?)
     }
 }
 

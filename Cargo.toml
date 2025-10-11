@@ -50,9 +50,6 @@ defmt = ["dep:defmt", "dep:defmt-rtt", "dep:rtt-target", "rtt-target/defmt", "em
 ## Allow changing the function of the debug pins (Pins 0-3 of port `F`)
 use_debug_pins = []
 
-# Pick ONE of these based on the form factor of the controller you are using
-# By default, the pins for "QFN32 with DC-DC GPIO" are enabled. The other two features will add additional pins:
-
 ## QFN32 without DC-DC GPIO. Pick EITHER this feature, or `qfn48`, or none of the two!
 qfn32 = []
 ## QFN48 with DC-DC GPIO. Pick EITHER this feature, or `qfn32`, or none of the two!

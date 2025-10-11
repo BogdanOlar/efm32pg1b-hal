@@ -163,10 +163,10 @@ impl OutputPin for DynamicPin {
 /// `StatefulOutputPin` implementation for trait from `embedded-hal`
 impl StatefulOutputPin for DynamicPin {
     fn is_set_high(&mut self) -> Result<bool, Self::Error> {
-        if !self.mode.writable() {
-            Err(GpioError::InvalidMode(self.mode))
-        } else if !crate::gpio::is_enabled() {
+        if !crate::gpio::is_enabled() {
             Err(GpioError::GpioDisabled)
+        } else if !self.mode.writable() {
+            Err(GpioError::InvalidMode(self.mode))
         } else {
             // Return the current state of the _output_, not of the input register
             Ok(pins::dout(self.port(), self.pin()))
@@ -174,10 +174,7 @@ impl StatefulOutputPin for DynamicPin {
     }
 
     fn is_set_low(&mut self) -> Result<bool, Self::Error> {
-        match self.is_set_high() {
-            Ok(is_h) => Ok(!is_h),
-            Err(e) => Err(e),
-        }
+        Ok(!self.is_set_high()?)
     }
 }
 

@@ -6,7 +6,7 @@ use crate::{
     gpio::{
         dynamic::DynamicPin,
         erased::ErasedPin,
-        pin::mode::{InputMode, MultiMode, Out, OutAlt, OutputMode},
+        pin::mode::{InputMode, MultiMode, OutputMode},
         port::{self, PortId},
         GpioError,
     },
@@ -223,55 +223,22 @@ where
     }
 }
 
-/// `StatefulOutputPin` implementation for trait from `embedded-hal`
-impl<const P: char, const N: u8, SMODE> StatefulOutputPin for Pin<P, N, Out<SMODE>>
-where
-    Out<SMODE>: OutputMode,
-{
-    fn is_set_high(&mut self) -> Result<bool, Self::Error> {
-        if !crate::gpio::is_enabled() {
-            Err(GpioError::GpioDisabled)
-        } else if port::ports::din_dis(self.port()) {
-            Err(GpioError::DataInDisabled)
-        } else {
-            Ok(pins::din(self.port(), self.pin()))
-        }
-    }
-
-    fn is_set_low(&mut self) -> Result<bool, Self::Error> {
-        if !crate::gpio::is_enabled() {
-            Err(GpioError::GpioDisabled)
-        } else if port::ports::din_dis(self.port()) {
-            Err(GpioError::DataInDisabled)
-        } else {
-            Ok(!pins::din(self.port(), self.pin()))
-        }
-    }
-}
-
 /// `StatefulOutputPin` (`Alt` output mode) implementation for trait from `embedded-hal`
-impl<const P: char, const N: u8, SMODE> StatefulOutputPin for Pin<P, N, OutAlt<SMODE>>
+impl<const P: char, const N: u8, MODE> StatefulOutputPin for Pin<P, N, MODE>
 where
-    OutAlt<SMODE>: OutputMode,
+    MODE: OutputMode,
 {
     fn is_set_high(&mut self) -> Result<bool, Self::Error> {
         if !crate::gpio::is_enabled() {
             Err(GpioError::GpioDisabled)
-        } else if port::ports::din_dis_alt(self.port()) {
-            Err(GpioError::DataInDisabled)
         } else {
-            Ok(pins::din(self.port(), self.pin()))
+            // Return the current state of the _output_, not of the input register
+            Ok(pins::dout(self.port(), self.pin()))
         }
     }
 
     fn is_set_low(&mut self) -> Result<bool, Self::Error> {
-        if !crate::gpio::is_enabled() {
-            Err(GpioError::GpioDisabled)
-        } else if port::ports::din_dis_alt(self.port()) {
-            Err(GpioError::DataInDisabled)
-        } else {
-            Ok(!pins::din(self.port(), self.pin()))
-        }
+        Ok(!self.is_set_high()?)
     }
 }
 
@@ -469,12 +436,7 @@ pub(crate) mod mode {
     impl OutputMode for OutOdPuAlt {}
     impl OutputMode for OutOdPuFiltAlt {}
 
-    /// Trait for transitioning a pin from one mode to another, where the possible target modes are:
-    ///
-    /// [`Disabled`], [`DisabledPu`],
-    /// [`InFloat`], [`InFilt`], [`InPu`], [`InPuFilt`], [`InPd`], [`InPdFilt`],
-    /// [`OutPp`], [`OutOs`], [`OutOsPd`], [`OutOd`], [`OutOdFilt`], [`OutOdPu`], [`OutOdPuFilt`],
-    /// [`OutPpAlt`], [`OutOdAlt`], [`OutOdFiltAlt`], [`OutOdPuAlt`], [`OutOdPuFiltAlt`], [`Analog`]
+    /// Trait for transitioning a pin from one mode to another
     pub trait MultiMode: Sealed {
         /// Set the peripheral registers such that they match the `MODE` of the `pin` in `port`
         fn set_regs(port: PortId, pin: u8);
