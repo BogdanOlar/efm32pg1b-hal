@@ -17,19 +17,26 @@
 //! modified if the `use_debug_pins` feature flag is enabled (see [`debug`] module for more info and examples).
 //!
 //! ```rust,no_run
-//! // Zero-sized type pins
-//! let mut led0 = gpio.pf4.into_mode::<OutPp>();
-//! let mut btn0 = gpio.pf6.into_mode::<InFloat>();
+//! // Zero-sized typestate pins
+//! let mut led1 = gpio.pf5.into_mode::<OutPpAlt>();
+//! let mut btn1 = gpio.pf7.into_mode::<InFilt>();
 //!
-//! // Erased pins, where the port and pin info is stored in the
+//! // Erased pins, where the port and pin info is stored in the pin
+//! // instance
 //! let mut led1 = gpio.pf5.into_erased_pin().into_mode::<OutPpAlt>();
 //! let mut btn1 = gpio.pf7.into_erased_pin().into_mode::<InFilt>();
+//!
+//! // Dynamic pins, with no typestate, port,pin, and mode info is stored
+//! // in the 2 byte pin instance
+//! let mut led1 = gpio.pf5.into_dynamic_pin().into_mode::<OutPpAlt>();
+//! let mut btn1 = gpio.pf7.into_dynamic_pin().into_mode::<InFilt>();
 //! ```
 //!
 //! Ports are configured individually
 //!
 //! ```rust,no_run
 //! gpio.port_f.set_drive_strength(DriveStrength::Strong);
+//! gpio.port_f.set_din_dis_alt(DataInCtrl::Disabled);
 //! ```
 //!
 //! # Use HAL Gpio

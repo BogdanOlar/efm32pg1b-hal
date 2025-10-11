@@ -1,5 +1,4 @@
-//! Zero-sized pins
-//!
+//! Zero-sized, typestate pins
 //!
 
 use crate::{
@@ -223,7 +222,7 @@ where
     }
 }
 
-/// `StatefulOutputPin` (`Alt` output mode) implementation for trait from `embedded-hal`
+/// `StatefulOutputPin` implementation for trait from `embedded-hal`
 impl<const P: char, const N: u8, MODE> StatefulOutputPin for Pin<P, N, MODE>
 where
     MODE: OutputMode,
