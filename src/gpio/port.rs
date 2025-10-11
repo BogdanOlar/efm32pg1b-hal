@@ -1,5 +1,13 @@
 //! Gpio Port
 //!
+//! Sep port-wide configurations for each port
+//!
+//! Note than the `set_din_dis()` method is not implemented for Port F unless the `use_debug_pins` crate feature is
+//! enabled. This protects the debug pins (F0, F1, F2, F3) from being accidentally disabled.
+//!
+//! When the `use_debug_pins` feature is enabled, port F provides a `set_din_dis()` method.
+//! This method will only succeede if the debug pins have been converted into GPIO pins using the `into_gpio_pins()`
+//! method on `debug_pins` in [`crate::gpio::Gpio`].
 //!
 
 #[cfg(feature = "use_debug_pins")]
