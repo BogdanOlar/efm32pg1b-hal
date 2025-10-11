@@ -196,13 +196,7 @@ where
     }
 
     fn is_low(&mut self) -> Result<bool, Self::Error> {
-        if !crate::gpio::is_enabled() {
-            Err(GpioError::GpioDisabled)
-        } else if port::ports::din_dis(self.port()) {
-            Err(GpioError::DataInDisabled)
-        } else {
-            Ok(!pins::din(self.port(), self.pin()))
-        }
+        Ok(!self.is_high()?)
     }
 }
 

@@ -128,10 +128,7 @@ impl InputPin for DynamicPin {
     }
 
     fn is_low(&mut self) -> Result<bool, Self::Error> {
-        match self.is_high() {
-            Ok(is_h) => Ok(!is_h),
-            Err(e) => Err(e),
-        }
+        Ok(!self.is_high()?)
     }
 }
 
