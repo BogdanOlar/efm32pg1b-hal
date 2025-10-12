@@ -23,27 +23,29 @@ pub(crate) use sealed::Sealed;
 
 pub mod prelude {
     pub use crate::{
-        gpio::{Gpio, GpioError},
+        cmu::CmuExt,
+        gpio::{
+            pin::mode::{
+                Analog, Disabled, DisabledPu, InFilt, InFloat, InPd, InPdFilt, InPu, InPuFilt,
+                OutOd, OutOdAlt, OutOdFilt, OutOdFiltAlt, OutOdPu, OutOdPuAlt, OutOdPuFilt,
+                OutOdPuFiltAlt, OutOs, OutOsPd, OutPp, OutPpAlt,
+            },
+            port::{DataInCtrl, DriveStrength},
+            Gpio, GpioError,
+        },
         usart::{
             spi::{Spi, SpiError},
             Usart, UsartBuild,
         },
     };
-    // FIXME: determine the reasonable prelude imports
-    // pub use crate::{
-    //     cmu::{Clocks, CmuExt, DbgClockSource, HfClockPrescaler, HfClockSource},
-    //     gpio::{DataInCtrl, DriveStrengthCtrl},
-    //     spi::UsartSpiExt,
-    //     timer::{Timer, TimerChannelDelay, TimerChannelPwm, TimerDivider, TimerExt},
-    // };
-    // pub use efm32pg1b_pac as pac;
-    // pub use embedded_hal::{
-    //     delay::DelayNs,
-    //     digital::{InputPin, OutputPin, PinState, StatefulOutputPin},
-    //     pwm::SetDutyCycle,
-    //     spi::SpiBus,
-    // };
-    // pub use fugit::RateExtU32;
+    pub use efm32pg1b_pac as pac;
+    pub use embedded_hal::{
+        delay::DelayNs,
+        digital::{InputPin, OutputPin, PinState, StatefulOutputPin},
+        pwm::SetDutyCycle,
+        spi::{self, SpiBus},
+    };
+    pub use fugit::RateExtU32;
 }
 
 // fn stripped_type_name<T>() -> &'static str {

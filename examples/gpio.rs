@@ -5,12 +5,7 @@
 
 use cortex_m_rt::entry;
 use defmt_rtt as _;
-use efm32pg1b_hal::gpio::{
-    port::{DataInCtrl, DriveStrength},
-    Gpio, InFilt, InFloat, OutPp, OutPpAlt,
-};
-use efm32pg1b_hal::pac;
-use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin};
+use efm32pg1b_hal::prelude::*;
 use panic_probe as _;
 
 #[entry]

@@ -4,14 +4,8 @@
 #![no_std]
 
 use cortex_m_rt::entry;
-use efm32pg1b_hal::{
-    cmu::CmuExt,
-    gpio::{Gpio, InFilt, OutPp},
-    pac,
-    usart::{Usart, UsartBuild},
-};
-use embedded_hal::spi::{self, SpiBus};
-use fugit::RateExtU32;
+use efm32pg1b_hal::prelude::*;
+
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
                      // use panic_abort as _; // requires nightly
