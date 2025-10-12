@@ -1,3 +1,6 @@
+//! Clock Management Unit
+//!
+
 use crate::gpio::{pin::mode::OutputMode, pin::Pin};
 use cortex_m::asm::nop;
 use efm32pg1b_pac::{

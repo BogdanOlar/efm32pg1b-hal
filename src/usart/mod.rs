@@ -1,4 +1,4 @@
-//! USART
+//! Universal Synchronous Asynchronous Receiver/Transmitter
 //!
 //! Usart driver for either [`Usart0`](`crate::pac::Usart0`) or [`Usart1`](`crate::pac::Usart1`) PAC peripherals
 //!
