@@ -1,105 +1,31 @@
-//! Hello SPI mod!
+//! SPI
 //!
-//! Some other description
-
-use core::cmp::max;
+//! Specialize USART peripherals into SPI peripherals
 
 use crate::{
     cmu::Clocks,
-    gpio::{
-        pin::mode::{InputMode, OutputMode},
-        pin::Pin,
+    gpio::pin::{
+        mode::{InputMode, OutputMode},
+        Pin,
     },
+    pac::usart0::RegisterBlock,
+    usart::{usarts::usartx, UsartInstance},
 };
-use efm32pg1b_pac::{usart0::RegisterBlock, Cmu, Usart0, Usart1};
+use core::cmp::max;
 use embedded_hal::{
     digital::{InputPin, OutputPin},
-    spi::{self, Error, ErrorKind, ErrorType, Mode, Phase, Polarity, SpiBus},
+    spi::{Error, ErrorKind, ErrorType, Mode, Phase, Polarity, SpiBus},
 };
 pub use fugit::{HertzU32, RateExtU32};
 
-/// Get a reference to the `RegisterBlock` of either `Usart0` or `Usart1`
-const fn usartx<const N: u8>() -> &'static RegisterBlock {
-    match N {
-        0 => unsafe { &*Usart0::ptr() },
-        1 => unsafe { &*Usart1::ptr() },
-        _ => unreachable!(),
-    }
-}
-
-/// Extension trait to specialize USART peripheral for SPI
-pub trait UsartSpiExt<PCLK, PTX, PRX> {
-    type SpiPart;
-
-    /// Configure the USART peripheral as an SPI
-    fn into_spi_bus(
-        self,
-        pin_clk: PCLK,
-        pin_tx: PTX,
-        pin_rx: PRX,
-        mode: spi::Mode,
-    ) -> Self::SpiPart;
-}
-
-impl<PCLK, PTX, PRX> UsartSpiExt<PCLK, PTX, PRX> for Usart0
-where
-    PCLK: OutputPin + UsartClkPin,
-    PTX: OutputPin + UsartTxPin,
-    PRX: InputPin + UsartRxPin,
-{
-    type SpiPart = Spi<0, PCLK, PTX, PRX>;
-
-    fn into_spi_bus(
-        self,
-        pin_clk: PCLK,
-        pin_tx: PTX,
-        pin_rx: PRX,
-        mode: spi::Mode,
-    ) -> Self::SpiPart {
-        // Enable USART 0 peripheral clock
-        unsafe {
-            Cmu::steal()
-                .hfperclken0()
-                .modify(|_, w| w.usart0().set_bit());
-        };
-
-        Self::SpiPart::new(pin_clk, pin_tx, pin_rx, mode)
-    }
-}
-
-impl<PCLK, PTX, PRX> UsartSpiExt<PCLK, PTX, PRX> for Usart1
-where
-    PCLK: OutputPin + UsartClkPin,
-    PTX: OutputPin + UsartTxPin,
-    PRX: InputPin + UsartRxPin,
-{
-    type SpiPart = Spi<1, PCLK, PTX, PRX>;
-
-    fn into_spi_bus(
-        self,
-        pin_clk: PCLK,
-        pin_tx: PTX,
-        pin_rx: PRX,
-        mode: spi::Mode,
-    ) -> Self::SpiPart {
-        // Enable USART 1 peripheral clock
-        unsafe {
-            Cmu::steal()
-                .hfperclken0()
-                .modify(|_, w| w.usart1().set_bit());
-        };
-
-        Self::SpiPart::new(pin_clk, pin_tx, pin_rx, mode)
-    }
-}
-
-/// An SPI master which implements `SpiBus` trait
+/// SPI master which implements `SpiBus` trait
 #[derive(Debug)]
 pub struct Spi<const N: u8, PCLK, PTX, PRX> {
-    usart: &'static RegisterBlock,
     pin_clk: PCLK,
     pin_tx: PTX,
     pin_rx: PRX,
+    /// USART N pac peripheral
+    usart_p: &'static RegisterBlock,
 }
 
 impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX>
@@ -110,18 +36,17 @@ where
 {
     const FILLER_BYTE: u8 = 0x00;
 
-    /// TODO: add documentation
-    fn new(pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: Mode) -> Self {
+    pub(crate) fn new(pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: Mode) -> Self {
         let mut spi = Spi {
-            usart: usartx::<N>(),
             pin_clk,
             pin_tx,
             pin_rx,
+            usart_p: usartx::<N>(),
         };
 
         spi.reset();
 
-        spi.usart.ctrl().write(|w| {
+        spi.usart_p.ctrl().write(|w| {
             // Set USART to Synchronous Mode
             w.sync().set_bit();
 
@@ -138,7 +63,7 @@ where
             w.autotx().clear_bit()
         });
 
-        spi.usart.frame().write(|w| {
+        spi.usart_p.frame().write(|w| {
             // 8 data bits
             w.databits().eight();
             // 1 stop bit
@@ -148,16 +73,16 @@ where
         });
 
         // Master enable
-        spi.usart.cmd().write(|w| w.masteren().set_bit());
+        spi.usart_p.cmd().write(|w| w.masteren().set_bit());
 
-        spi.usart.ctrl().modify(|_, w| {
+        spi.usart_p.ctrl().modify(|_, w| {
             // Auto CS: a `SpiBus` implementation must not control CS pin
             w.autocs().clear_bit();
             // No CS invert
             w.csinv().clear_bit()
         });
 
-        spi.usart.timing().modify(|_, w| {
+        spi.usart_p.timing().modify(|_, w| {
             w.cshold().zero();
             w.cssetup().zero()
         });
@@ -166,21 +91,21 @@ where
         let clk_loc = spi.pin_clk.loc();
         let tx_loc = spi.pin_tx.loc();
         let rx_loc = spi.pin_rx.loc();
-        spi.usart.routeloc0().modify(|_, w| unsafe {
+        spi.usart_p.routeloc0().modify(|_, w| unsafe {
             w.clkloc().bits(clk_loc);
             w.txloc().bits(tx_loc);
             w.rxloc().bits(rx_loc)
         });
 
         // Enable IO pins for Usart
-        spi.usart.routepen().modify(|_, w| {
+        spi.usart_p.routepen().modify(|_, w| {
             w.clkpen().set_bit();
             w.txpen().set_bit();
             w.rxpen().set_bit()
         });
 
         // Enable Usart
-        spi.usart.cmd().write(|w| {
+        spi.usart_p.cmd().write(|w| {
             w.rxen().set_bit();
             w.txen().set_bit()
         });
@@ -188,51 +113,19 @@ where
         spi
     }
 
-    fn reset(&mut self) {
-        // Use CMD first
-        self.usart.cmd().write(|w| {
-            w.rxdis().set_bit();
-            w.txdis().set_bit();
-            w.masterdis().set_bit();
-            w.rxblockdis().set_bit();
-            w.txtridis().set_bit();
-            w.cleartx().set_bit();
-            w.clearrx().set_bit()
-        });
-
-        self.usart.ctrl().reset();
-        self.usart.frame().reset();
-        self.usart.trigctrl().reset();
-        self.usart.clkdiv().reset();
-        self.usart.ien().reset();
-
-        // All flags for the IFC register fields
-        const IFC_MASK: u32 = 0x0001FFF9;
-        self.usart.ifc().write(|w| unsafe { w.bits(IFC_MASK) });
-
-        self.usart.timing().reset();
-        self.usart.routepen().reset();
-        self.usart.routeloc0().reset();
-        self.usart.routeloc1().reset();
-        self.usart.input().reset();
-
-        match N {
-            // Only UART0 has IRDA
-            0 => self.usart.irctrl().reset(),
-            // Only USART1 has I2S
-            1 => self.usart.i2sctrl().reset(),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn destroy(mut self) -> (PCLK, PTX, PRX) {
+    pub fn free(mut self) -> (UsartInstance<N>, PCLK, PTX, PRX) {
         self.reset();
-        (self.pin_clk, self.pin_tx, self.pin_rx)
+        (
+            UsartInstance { _p: () },
+            self.pin_clk,
+            self.pin_tx,
+            self.pin_rx,
+        )
     }
 
     /// TODO:
     pub fn set_loopback(&mut self, enabled: bool) {
-        self.usart.ctrl().write(|w| match enabled {
+        self.usart_p.ctrl().write(|w| match enabled {
             true => w.loopbk().set_bit(),
             false => w.loopbk().clear_bit(),
         });
@@ -262,11 +155,48 @@ where
             _ => (clk_div - 1) << 5,
         };
 
-        self.usart
+        self.usart_p
             .clkdiv()
             .write(|w| unsafe { w.div().bits(clk_div) });
 
         Ok(Self::calculate_baudrate(clocks.hf_per_clk(), clk_div))
+    }
+
+    fn reset(&mut self) {
+        // Use CMD first
+        self.usart_p.cmd().write(|w| {
+            w.rxdis().set_bit();
+            w.txdis().set_bit();
+            w.masterdis().set_bit();
+            w.rxblockdis().set_bit();
+            w.txtridis().set_bit();
+            w.cleartx().set_bit();
+            w.clearrx().set_bit()
+        });
+
+        self.usart_p.ctrl().reset();
+        self.usart_p.frame().reset();
+        self.usart_p.trigctrl().reset();
+        self.usart_p.clkdiv().reset();
+        self.usart_p.ien().reset();
+
+        // All flags for the IFC register fields
+        const IFC_MASK: u32 = 0x0001FFF9;
+        self.usart_p.ifc().write(|w| unsafe { w.bits(IFC_MASK) });
+
+        self.usart_p.timing().reset();
+        self.usart_p.routepen().reset();
+        self.usart_p.routeloc0().reset();
+        self.usart_p.routeloc1().reset();
+        self.usart_p.input().reset();
+
+        match N {
+            // Only UART0 has IRDA
+            0 => self.usart_p.irctrl().reset(),
+            // Only USART1 has I2S
+            1 => self.usart_p.i2sctrl().reset(),
+            _ => unreachable!(),
+        }
     }
 
     /// TODO:
@@ -287,7 +217,7 @@ where
         const MAX_COUNT: u32 = 1_000_000;
         let mut bail_countdown = MAX_COUNT;
 
-        while self.usart.status().read().txc().bit_is_clear() {
+        while self.usart_p.status().read().txc().bit_is_clear() {
             bail_countdown -= 1;
 
             if bail_countdown == 0 {
@@ -345,7 +275,7 @@ where
             let mut bail_countdown = MAX_COUNT;
 
             // Wait until there are at least 2 available bytes (out of 3) in the TX buffer.
-            while self.usart.status().read().txbufcnt().bits() > 1 {
+            while self.usart_p.status().read().txbufcnt().bits() > 1 {
                 bail_countdown -= 1;
 
                 if bail_countdown == 0 {
@@ -360,13 +290,13 @@ where
 
             if let Some(b1) = words_iter.next() {
                 // We have 2 bytes to send, use the `txdouble` register
-                self.usart.txdouble().write(|w| unsafe {
+                self.usart_p.txdouble().write(|w| unsafe {
                     w.txdata0().bits(*b0);
                     w.txdata1().bits(*b1)
                 });
             } else {
                 // We have only 1 byte left to send, use the `txdata` register
-                self.usart
+                self.usart_p
                     .txdata()
                     .write(|w| unsafe { w.txdata().bits(*b0) });
             }
@@ -392,13 +322,13 @@ where
                 None => &mut rx_discard,
             };
 
-            self.usart
+            self.usart_p
                 .txdata()
                 .write(|w| unsafe { w.txdata().bits(tx_byte) });
 
             self.wait_tx_complete()?;
 
-            *rx_byte = self.usart.rxdata().read().rxdata().bits();
+            *rx_byte = self.usart_p.rxdata().read().rxdata().bits();
         }
 
         Ok(())
@@ -410,24 +340,24 @@ where
         while let Some(b0) = words_iter.next() {
             if let Some(b1) = words_iter.next() {
                 // We have 2 bytes to send, use the `txdouble` register
-                self.usart.txdouble().write(|w| unsafe {
+                self.usart_p.txdouble().write(|w| unsafe {
                     w.txdata0().bits(*b0);
                     w.txdata1().bits(*b1)
                 });
 
                 self.wait_tx_complete()?;
 
-                *b0 = self.usart.rxdouble().read().rxdata0().bits();
-                *b1 = self.usart.rxdouble().read().rxdata1().bits();
+                *b0 = self.usart_p.rxdouble().read().rxdata0().bits();
+                *b1 = self.usart_p.rxdouble().read().rxdata1().bits();
             } else {
                 // We have only 1 byte left to send, use the `txdata` register
-                self.usart
+                self.usart_p
                     .txdata()
                     .write(|w| unsafe { w.txdata().bits(*b0) });
 
                 self.wait_tx_complete()?;
 
-                *b0 = self.usart.rxdata().read().rxdata().bits();
+                *b0 = self.usart_p.rxdata().read().rxdata().bits();
             }
         }
 

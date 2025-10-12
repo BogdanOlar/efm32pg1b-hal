@@ -8,7 +8,7 @@ use efm32pg1b_hal::{
     cmu::CmuExt,
     gpio::{Gpio, InFilt, OutPp},
     pac,
-    spi::UsartSpiExt,
+    usart::Usart,
 };
 use embedded_hal::spi::{self, Phase, Polarity, SpiBus};
 use fugit::RateExtU32;
@@ -34,7 +34,12 @@ fn main() -> ! {
     let rx = gpio.pc7.into_mode::<InFilt>();
     let clk = gpio.pc8.into_mode::<OutPp>();
 
-    let mut spi = p.usart1.into_spi_bus(
+    let usart = Usart::new(p.usart0, p.usart1);
+
+    // We're not going to use this
+    let _usart1_p = usart.usart1.free();
+
+    let mut spi = usart.usart0.into_spi_bus(
         clk,
         tx,
         rx,
@@ -124,9 +129,10 @@ fn main() -> ! {
     println!("\t ret_trip: \t {}, {}", ret_trip, write);
     // write = write_orig;
 
-    let (clk, tx, rx) = spi.destroy();
+    let (usart, clk, tx, rx) = spi.free();
 
-    println!("SPI Destroyed. Returned pins:");
+    println!("SPI Freed. Returned:");
+    println!("\t usart: {}", usart);
     println!("\t clk: {}", clk);
     println!("\t tx: {}", tx);
     println!("\t rx: {}", rx);

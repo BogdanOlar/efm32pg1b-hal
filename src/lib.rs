@@ -9,9 +9,9 @@ pub use efm32pg1b_pac as pac;
 
 pub mod cmu;
 pub mod gpio;
-pub mod spi;
 pub mod timer;
 pub mod timer_le;
+pub mod usart;
 
 mod sealed {
     /// Sealed (typestate) marker trait for singleton types.
@@ -22,6 +22,7 @@ mod sealed {
 pub(crate) use sealed::Sealed;
 
 pub mod prelude {
+    // FIXME: determine the reasonable prelude imports
     // pub use crate::{
     //     cmu::{Clocks, CmuExt, DbgClockSource, HfClockPrescaler, HfClockSource},
     //     gpio::{DataInCtrl, DriveStrengthCtrl},
