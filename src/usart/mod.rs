@@ -23,22 +23,58 @@ use embedded_hal::{
 
 pub mod spi;
 
-/// Wrapper for each USART PAC peripheral [`Usart0`](`crate::pac::Usart0`) or [`Usart1`](`crate::pac::Usart1`)
-pub struct Usart<const N: u8, USART> {
-    usart_p: USART,
+/// Helper trait to create/free `Usart` instances from either [`Usart0`](`crate::pac::Usart0`) or
+/// [`Usart1`](`crate::pac::Usart1`)
+pub trait UsartBuild<const N: u8, USART>: Sealed {
+    /// Create a Usart driver using one of the PAC peripherals:
+    /// [`Usart0`](`crate::pac::Usart0`) or [`Usart1`](`crate::pac::Usart1`)
+    fn new(usart_p: USART) -> Self;
+
+    /// Free the PAC peripheral used to create this driver, and disable the corresponding USART peripheral clock
+    fn free(self) -> USART;
 }
 
-impl<const N: u8, USART> Usart<N, USART>
-where
-    Usart<N, USART>: UsartBuild<N, USART>,
-{
+impl UsartBuild<0, crate::pac::Usart0> for Usart<0> {
+    fn new(_usart_p: crate::pac::Usart0) -> Self {
+        let mut usart = Self { _p: () };
+        usart.reset();
+        usart
+    }
+
+    fn free(mut self) -> crate::pac::Usart0 {
+        self.reset();
+        self.disable();
+        unsafe { crate::pac::Usart0::steal() }
+    }
+}
+
+impl UsartBuild<1, crate::pac::Usart1> for Usart<1> {
+    fn new(_usart_p: crate::pac::Usart1) -> Self {
+        let mut usart = Self { _p: () };
+        usart.reset();
+        usart
+    }
+
+    fn free(mut self) -> crate::pac::Usart1 {
+        self.reset();
+        self.disable();
+        unsafe { crate::pac::Usart1::steal() }
+    }
+}
+
+/// Usart driver
+pub struct Usart<const N: u8> {
+    _p: (),
+}
+
+impl<const N: u8> Usart<N> {
     pub fn into_spi_bus<PCLK, PTX, PRX>(
         mut self,
         pin_clk: PCLK,
         pin_tx: PTX,
         pin_rx: PRX,
         mode: Mode,
-    ) -> Spi<N, Usart<N, USART>, PCLK, PTX, PRX>
+    ) -> Spi<N, Usart<N>, PCLK, PTX, PRX>
     where
         PCLK: OutputPin + UsartClkPin,
         PTX: OutputPin + UsartTxPin,
@@ -46,13 +82,6 @@ where
     {
         self.enable();
         Spi::new(self, pin_clk, pin_tx, pin_rx, mode)
-    }
-
-    /// Free the PAC peripheral used to create this driver, and disable the corresponding USART peripheral clock
-    pub fn free(mut self) -> USART {
-        self.reset();
-        self.disable();
-        self.usart_p
     }
 
     fn enable(&mut self) {
@@ -114,41 +143,17 @@ where
     }
 }
 
-/// Helper trait to create `Usart` instances from either [`Usart0`](`crate::pac::Usart0`) or
-/// [`Usart1`](`crate::pac::Usart1`)
-pub trait UsartBuild<const N: u8, USART>: Sealed {
-    /// Create a Usart driver using one of the PAC peripherals:
-    /// [`Usart0`](`crate::pac::Usart0`) or [`Usart1`](`crate::pac::Usart1`)
-    fn new(usart_p: USART) -> Self;
-}
+impl Sealed for Usart<0> {}
+impl Sealed for Usart<1> {}
 
-impl UsartBuild<0, crate::pac::Usart0> for Usart<0, crate::pac::Usart0> {
-    fn new(usart_p: crate::pac::Usart0) -> Self {
-        let mut usart = Self { usart_p };
-        usart.reset();
-        usart
-    }
-}
-
-impl UsartBuild<1, crate::pac::Usart1> for Usart<1, crate::pac::Usart1> {
-    fn new(usart_p: crate::pac::Usart1) -> Self {
-        let mut usart = Self { usart_p };
-        usart.reset();
-        usart
-    }
-}
-
-impl Sealed for Usart<0, crate::pac::Usart0> {}
-impl Sealed for Usart<1, crate::pac::Usart1> {}
-
-impl<const N: u8, USART> fmt::Debug for Usart<N, USART> {
+impl<const N: u8> fmt::Debug for Usart<N> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_fmt(format_args!("Usart<{N}>"))
     }
 }
 
 #[cfg(feature = "defmt")]
-impl<const N: u8, USART> defmt::Format for Usart<N, USART> {
+impl<const N: u8> defmt::Format for Usart<N> {
     fn format(&self, f: defmt::Formatter) {
         defmt::write!(f, "Usart<{}>", N);
     }
