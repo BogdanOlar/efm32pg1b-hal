@@ -10,7 +10,7 @@ use efm32pg1b_hal::{
     gpio::{Gpio, InFilt, OutPp},
     pac,
     timer::{TimerDivider, TimerExt},
-    usart::Usart,
+    usart::{Usart, UsartBuild},
 };
 
 use embedded_hal::{delay::DelayNs, digital::OutputPin, pwm::SetDutyCycle};
@@ -37,9 +37,9 @@ fn main() -> ! {
     let _ = gpio.pd15.into_mode::<OutPp>().set_high();
     // let _ = gpio.pd15.into_output().with_push_pull().build().set_high();
 
-    let usart = Usart::new(p.usart0, p.usart1);
+    let usart1 = Usart::new(p.usart1);
 
-    let mut spi = usart.usart1.into_spi_bus(
+    let mut spi = usart1.into_spi_bus(
         gpio.pc8.into_mode::<OutPp>(),
         gpio.pc6.into_mode::<OutPp>(),
         gpio.pc7.into_mode::<InFilt>(),

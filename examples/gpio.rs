@@ -31,12 +31,12 @@ fn main() -> ! {
     let mut btn0 = gpio.pf6.into_mode::<InFloat>();
 
     // LED 1, BTN 1
-    // let mut led1 = gpio.pf5.into_mode::<OutPpAlt>();
-    // let mut btn1 = gpio.pf7.into_mode::<InFilt>();
+    let mut led1 = gpio.pf5.into_mode::<OutPpAlt>();
+    let mut btn1 = gpio.pf7.into_mode::<InFilt>();
     // let mut led1 = gpio.pf5.into_erased_pin().into_mode::<OutPpAlt>();
     // let mut btn1 = gpio.pf7.into_erased_pin().into_mode::<InFilt>();
-    let mut led1 = gpio.pf5.into_dynamic_pin().into_mode::<OutPpAlt>();
-    let mut btn1 = gpio.pf7.into_dynamic_pin().into_mode::<InFilt>();
+    // let mut led1 = gpio.pf5.into_dynamic_pin().into_mode::<OutPpAlt>();
+    // let mut btn1 = gpio.pf7.into_dynamic_pin().into_mode::<InFilt>();
 
     // button states
     let mut btn0_prev = true;

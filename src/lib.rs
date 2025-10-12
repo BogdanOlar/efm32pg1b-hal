@@ -22,6 +22,13 @@ mod sealed {
 pub(crate) use sealed::Sealed;
 
 pub mod prelude {
+    pub use crate::{
+        gpio::{Gpio, GpioError},
+        usart::{
+            spi::{Spi, SpiError},
+            Usart, UsartBuild,
+        },
+    };
     // FIXME: determine the reasonable prelude imports
     // pub use crate::{
     //     cmu::{Clocks, CmuExt, DbgClockSource, HfClockPrescaler, HfClockSource},
@@ -41,6 +48,7 @@ pub mod prelude {
 
 // fn stripped_type_name<T>() -> &'static str {
 //     let s = core::any::type_name::<T>();
+//     let s = s.split("<").next().unwrap();
 //     let p = s.split("::");
 //     p.last().unwrap()
 // }

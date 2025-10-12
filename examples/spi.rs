@@ -8,9 +8,9 @@ use efm32pg1b_hal::{
     cmu::CmuExt,
     gpio::{Gpio, InFilt, OutPp},
     pac,
-    usart::Usart,
+    usart::{Usart, UsartBuild},
 };
-use embedded_hal::spi::{self, Phase, Polarity, SpiBus};
+use embedded_hal::spi::{self, SpiBus};
 use fugit::RateExtU32;
 // pick a panicking behavior
 use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
@@ -34,20 +34,13 @@ fn main() -> ! {
     let rx = gpio.pc7.into_mode::<InFilt>();
     let clk = gpio.pc8.into_mode::<OutPp>();
 
-    let usart = Usart::new(p.usart0, p.usart1);
+    let usart0 = Usart::new(p.usart0);
+    let usart1 = Usart::new(p.usart1);
 
     // We're not going to use this
-    let _usart1_p = usart.usart1.free();
+    let _usart1_p = usart1.free();
 
-    let mut spi = usart.usart0.into_spi_bus(
-        clk,
-        tx,
-        rx,
-        spi::Mode {
-            polarity: Polarity::IdleHigh,
-            phase: Phase::CaptureOnFirstTransition,
-        },
-    );
+    let mut spi = usart0.into_spi_bus(clk, tx, rx, spi::MODE_2);
     let write_orig = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
     let mut write = write_orig;
     let mut read1 = [0; 5];
@@ -129,8 +122,9 @@ fn main() -> ! {
     println!("\t ret_trip: \t {}, {}", ret_trip, write);
     // write = write_orig;
 
-    let (usart, clk, tx, rx) = spi.free();
+    println!("SPI: {}", &spi);
 
+    let (usart, clk, tx, rx) = spi.free();
     println!("SPI Freed. Returned:");
     println!("\t usart: {}", usart);
     println!("\t clk: {}", clk);
