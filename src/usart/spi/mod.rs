@@ -115,7 +115,7 @@ where
     }
 
     /// Release the resources used to create this SPI instance
-    pub fn free(self) -> (USART, PCLK, PTX, PRX) {
+    pub fn free(self) -> (Usart<N>, PCLK, PTX, PRX) {
         (self.usart, self.pin_clk, self.pin_tx, self.pin_rx)
     }
 
