@@ -8,7 +8,7 @@ use crate::{
         mode::{InputMode, OutputMode},
         Pin,
     },
-    usart::usarts::usartx,
+    usart::{usarts::usartx, Usart},
 };
 use core::cmp::max;
 use embedded_hal::{
@@ -27,7 +27,7 @@ pub struct Spi<const N: u8, USART, PCLK, PTX, PRX> {
     pin_rx: PRX,
 }
 
-impl<const N: u8, USART, PCLK, PTX, PRX> Spi<N, USART, PCLK, PTX, PRX>
+impl<const N: u8, PCLK, PTX, PRX> Spi<N, Usart<N>, PCLK, PTX, PRX>
 where
     PCLK: OutputPin + UsartClkPin,
     PTX: OutputPin + UsartTxPin,
@@ -35,7 +35,13 @@ where
 {
     const FILLER_BYTE: u8 = 0x00;
 
-    pub(crate) fn new(usart: USART, pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: Mode) -> Self {
+    pub(crate) fn new(
+        usart: Usart<N>,
+        pin_clk: PCLK,
+        pin_tx: PTX,
+        pin_rx: PRX,
+        mode: Mode,
+    ) -> Self {
         let mut spi = Spi {
             usart,
             pin_clk,
@@ -261,11 +267,11 @@ impl Error for SpiError {
 }
 
 // Implementations for `ErrorType` to be used by `SpiBus` `embedded-hal` trait
-impl<const N: u8, USART, PCLK, PTX, PRX> ErrorType for Spi<N, USART, PCLK, PTX, PRX> {
+impl<const N: u8, PCLK, PTX, PRX> ErrorType for Spi<N, Usart<N>, PCLK, PTX, PRX> {
     type Error = SpiError;
 }
 
-impl<const N: u8, USART, PCLK, PTX, PRX> SpiBus<u8> for Spi<N, USART, PCLK, PTX, PRX>
+impl<const N: u8, PCLK, PTX, PRX> SpiBus<u8> for Spi<N, Usart<N>, PCLK, PTX, PRX>
 where
     PCLK: OutputPin + UsartClkPin,
     PTX: OutputPin + UsartTxPin,
