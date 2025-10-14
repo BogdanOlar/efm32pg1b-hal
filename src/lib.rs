@@ -5,6 +5,8 @@
 //!
 #![no_std]
 #![warn(missing_docs)]
+#![warn(clippy::missing_safety_doc)]
+// #![warn(clippy::undocumented_unsafe_blocks)]
 
 pub use efm32pg1b_pac as pac;
 
