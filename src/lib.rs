@@ -4,6 +4,7 @@
 #![doc = document_features::document_features!()]
 //!
 #![no_std]
+#![warn(missing_docs)]
 
 pub use efm32pg1b_pac as pac;
 
