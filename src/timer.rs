@@ -1,3 +1,6 @@
+//! Timer/Counter
+//!
+
 use crate::{cmu::Clocks, gpio::pin::Pin};
 use core::{convert::Infallible, marker::PhantomData};
 pub use efm32pg1b_pac::timer0::ctrl::PRESC as TimerDivider;
@@ -12,8 +15,11 @@ use embedded_hal::{
 };
 use fugit::HertzU32;
 
+/// Extension trait for Timer PAC peripherals
 pub trait TimerExt {
+    /// Timer type
     type Timer;
+    /// Convert PAC peripheral to HAL Timer struct
     fn into_timer(self, clock_divider: TimerDivider) -> Self::Timer;
 }
 
@@ -40,6 +46,7 @@ const fn timerx<const TN: u8>() -> &'static RegisterBlock {
     }
 }
 
+/// Timer
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Timer<const TN: u8> {}
@@ -102,11 +109,13 @@ impl<const TN: u8> Timer<TN> {
     }
 }
 
+/// Timer channel
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TimerChannel<const TN: u8, const CN: u8> {}
 
 impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
+    /// Convert timer channel to a PWM
     pub fn into_pwm<PIN>(self, pin: PIN) -> TimerChannelPwm<TN, CN, PIN>
     where
         PIN: OutputPin + TimerPin<CN>,
@@ -166,6 +175,7 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
         }
     }
 
+    /// Convert timer to a Delay
     pub fn into_delay(self, clocks: &Clocks) -> TimerChannelDelay<TN, CN> {
         let timer = timerx::<TN>();
         let timer_div: u8 = timer.ctrl().read().presc().variant().unwrap().into();
@@ -289,6 +299,7 @@ impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
     }
 }
 
+/// PWM
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TimerChannelPwm<const TN: u8, const CN: u8, PIN>
@@ -329,7 +340,9 @@ where
     type Error = Infallible;
 }
 
+/// Trait to specify the location values for TIMERn_ROUTELOC0 and TIMERn_ROUTELOC1 for pins which can be used as PWM
 pub trait TimerPin<const CN: u8> {
+    /// TIMERn_ROUTELOC0 and TIMERn_ROUTELOC1 values for each pin which implements this trait
     fn loc(&self) -> u8;
 }
 

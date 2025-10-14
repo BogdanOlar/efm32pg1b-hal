@@ -40,6 +40,7 @@ where
         port.ovt_dis().reset();
     }
 
+    /// Get the port id
     pub fn id(&self) -> PortId {
         // SAFETY: the `P` generic type parameter is guaranteed to be convertible to a `PortId`
         P.try_into().unwrap()
@@ -111,10 +112,15 @@ impl Sealed for Port<'F'> {}
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PortId {
+    /// Port A id
     A = 0,
+    /// Port B id
     B = 1,
+    /// Port C id
     C = 2,
+    /// Port D id
     D = 3,
+    /// Port F id
     F = 4,
 }
 
@@ -365,13 +371,21 @@ pub enum DriveStrength {
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DriveSlewRate {
+    /// Slew rate 0
     SlewRate0,
+    /// Slew rate 1
     SlewRate1,
+    /// Slew rate 2
     SlewRate2,
+    /// Slew rate 3
     SlewRate3,
+    /// Slew rate 4
     SlewRate4,
+    /// Slew rate 5
     SlewRate5,
+    /// Slew rate 6
     SlewRate6,
+    /// Slew rate 7
     SlewRate7,
 }
 

@@ -68,6 +68,8 @@ pub struct Usart<const N: u8> {
 }
 
 impl<const N: u8> Usart<N> {
+    /// Specialize the Usart peripheral into an SPI Master which implements the [`SpiBus`](`embedded_hal::spi::SpiBus`)
+    /// trait
     pub fn into_spi_bus<PCLK, PTX, PRX>(
         mut self,
         pin_clk: PCLK,

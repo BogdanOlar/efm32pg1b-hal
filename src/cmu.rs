@@ -558,37 +558,69 @@ pub enum HfClockSource {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum HfClockPrescaler {
+    /// Divider by 1
     Div1,
+    /// Divider by 2
     Div2,
+    /// Divider by 3
     Div3,
+    /// Divider by 4
     Div4,
+    /// Divider by 5
     Div5,
+    /// Divider by 6
     Div6,
+    /// Divider by 7
     Div7,
+    /// Divider by 8
     Div8,
+    /// Divider by 9
     Div9,
+    /// Divider by 10
     Div10,
+    /// Divider by 11
     Div11,
+    /// Divider by 12
     Div12,
+    /// Divider by 13
     Div13,
+    /// Divider by 14
     Div14,
+    /// Divider by 15
     Div15,
+    /// Divider by 16
     Div16,
+    /// Divider by 17
     Div17,
+    /// Divider by 18
     Div18,
+    /// Divider by 19
     Div19,
+    /// Divider by 20
     Div20,
+    /// Divider by 21
     Div21,
+    /// Divider by 22
     Div22,
+    /// Divider by 23
     Div23,
+    /// Divider by 24
     Div24,
+    /// Divider by 25
     Div25,
+    /// Divider by 26
     Div26,
+    /// Divider by 27
     Div27,
+    /// Divider by 28
     Div28,
+    /// Divider by 29
     Div29,
+    /// Divider by 30
     Div30,
+    /// Divider by 31
     Div31,
+    /// Divider by 32
     Div32,
 }
 

@@ -248,11 +248,15 @@ where
     }
 }
 
+/// SPI Errors
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SpiError {
+    /// Invalid baud rate
     InvalidBaudrate(HertzU32),
+    /// Tx underflow
     TxUnderflow,
+    /// Rx underflow
     RxUnderflow,
 }
 
@@ -409,6 +413,8 @@ where
 /// Please consult the [Data Sheet - page 85](../../../../../doc/efm32pg1-datasheet.pdf#page=85) (`US0_CLK` or `US1_CLK` Alternate
 /// Functionality) to see which pins can be used as SPI clock pins.
 pub trait UsartClkPin {
+    /// Value to be written to USARTn_ROUTELOC0 to select the pin which wil function as the CLK pin
+    /// `Pin` types which can function as CLK pins will implement this trait
     fn loc(&self) -> u8;
 }
 
@@ -479,6 +485,8 @@ impl_clock_loc!(31, 'A', 1);
 /// Please consult the [Data Sheet - page 85](../../../../../doc/efm32pg1-datasheet.pdf#page=85) (`US0_TX` or `US1_TX` Alternate
 /// Functionality) to see which pins can be used as SPI Tx pins.
 pub trait UsartTxPin {
+    /// Value to be written to USARTn_ROUTELOC0 to select the pin which wil function as the TX pin
+    /// `Pin` types which can function as TX pins will implement this trait
     fn loc(&self) -> u8;
 }
 
@@ -549,6 +557,8 @@ impl_tx_loc!(31, 'F', 7);
 /// Please consult the [Data Sheet - page 86](../../../../../doc/efm32pg1-datasheet.pdf#page=86) (`US0_RX` or `US1_RX` Alternate
 /// Functionality) to see which pins can be used as SPI Rx pins.
 pub trait UsartRxPin {
+    /// Value to be written to USARTn_ROUTELOC0 to select the pin which wil function as the RX pin
+    /// `Pin` types which can function as RX pins will implement this trait
     fn loc(&self) -> u8;
 }
 
@@ -607,6 +617,8 @@ impl_rx_loc!(31, 'A', 0);
 /// Please consult the [Data Sheet - page 85](../../../../../doc/efm32pg1-datasheet.pdf#page=85) (`US0_CS` or `US1_CS` Alternate
 /// Functionality) to see which pins can be used as SPI CS pins.
 pub trait UsartCsPin {
+    /// Value to be written to USARTn_ROUTELOC0 to select the pin which wil function as the CS/SS pin
+    /// `Pin` types which can function as CS/SS pins will implement this trait
     fn loc(&self) -> u8;
 }
 

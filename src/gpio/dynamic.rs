@@ -12,6 +12,7 @@ use crate::{
 use core::fmt;
 use embedded_hal::digital::{ErrorType, InputPin, OutputPin, StatefulOutputPin};
 
+/// Pin which uses no type states for its state
 pub struct DynamicPin {
     /// Most significant nibble is the port id, least significant nibble is the pin id
     port_pin: u8,

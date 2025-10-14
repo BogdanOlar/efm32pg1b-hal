@@ -22,6 +22,7 @@ mod sealed {
 
 pub(crate) use sealed::Sealed;
 
+/// Convenience module which exports the most used types for each module
 pub mod prelude {
     pub use crate::{
         cmu::CmuExt,

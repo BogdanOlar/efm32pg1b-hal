@@ -1,3 +1,6 @@
+//! Low Energy Timer
+//!
+
 use crate::gpio::pin::Pin;
 use core::marker::PhantomData;
 use cortex_m::asm::nop;
@@ -7,8 +10,11 @@ use efm32pg1b_pac::{
 };
 use embedded_hal::digital::OutputPin;
 
+/// Extension trait for Letimer PAC peripheral
 pub trait LeTimerExt {
+    /// Timer type
     type Timer;
+    /// Convert to HAL timer
     fn into_timer(self) -> Self::Timer;
 }
 
@@ -24,6 +30,7 @@ const fn timerx() -> &'static RegisterBlock {
     unsafe { &*Letimer0::ptr() }
 }
 
+/// Low Energy timer
 pub struct LeTimer;
 
 impl LeTimer {
@@ -41,6 +48,7 @@ impl LeTimer {
         LeTimer {}
     }
 
+    /// Convert timer to PWM
     pub fn into_ch0_pwm<PIN>(self, pin: PIN) -> LeTimerPwm<0, PIN>
     where
         PIN: OutputPin + LeTimerPin<0>,
@@ -73,6 +81,7 @@ impl LeTimer {
     }
 }
 
+/// Low Timer PWM
 pub struct LeTimerPwm<const CN: u8, PIN>
 where
     PIN: OutputPin + LeTimerPin<CN>,
@@ -80,7 +89,9 @@ where
     _pwm_pin: PhantomData<PIN>,
 }
 
+/// Trait for each of the LE timer channels and their sets of 32 pins
 pub trait LeTimerPin<const CN: u8> {
+    /// Value to be written to LETIMERn_ROUTELOC0 register for the Pin implementing this trait
     fn loc(&self) -> u8;
 }
 
