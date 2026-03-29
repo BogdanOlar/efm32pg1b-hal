@@ -42,8 +42,7 @@ where
 
     /// Get the port id
     pub fn id(&self) -> PortId {
-        // SAFETY: the `P` generic type parameter is guaranteed to be convertible to a `PortId`
-        P.try_into().unwrap()
+        PortId::from_char_unchecked(P)
     }
 
     /// Get the Drive Strength setting of this port (not in Alternate Mode)
@@ -109,8 +108,9 @@ impl Sealed for Port<'D'> {}
 impl Sealed for Port<'F'> {}
 
 /// Type safe representation of a Port ID
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PortId {
     /// Port A id
     A = 0,
@@ -121,7 +121,31 @@ pub enum PortId {
     /// Port D id
     D = 3,
     /// Port F id
-    F = 4,
+    F = 5,
+}
+
+impl PortId {
+    pub(crate) const fn from_u8_unchecked(u: u8) -> Self {
+        match u & 0b1111 {
+            0 => Self::A,
+            1 => Self::B,
+            2 => Self::C,
+            3 => Self::D,
+            5 => Self::F,
+            _ => unreachable!(),
+        }
+    }
+
+    pub(crate) const fn from_char_unchecked(c: char) -> Self {
+        match (c as u8 - b'A') & 0b1111 {
+            0 => Self::A,
+            1 => Self::B,
+            2 => Self::C,
+            3 => Self::D,
+            5 => Self::F,
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl TryFrom<u8> for PortId {
@@ -133,7 +157,7 @@ impl TryFrom<u8> for PortId {
             1 => Ok(PortId::B),
             2 => Ok(PortId::C),
             3 => Ok(PortId::D),
-            4 => Ok(PortId::F),
+            5 => Ok(PortId::F),
             _ => Err(GpioError::InvalidPortId(value)),
         }
     }
@@ -219,28 +243,12 @@ pub(crate) mod ports {
 
     /// Get the Slew Rate setting of this port (not in Alternate Mode). Higher values represent faster slewrates.
     pub(crate) fn slew_rate(port: PortId) -> DriveSlewRate {
-        // SAFETY: We've read an invalid value from a 3-bit value, which should not happen for `DriveSlewRate` which
-        //         covers all 3-bit values
-        get(port)
-            .ctrl()
-            .read()
-            .slew_rate()
-            .bits()
-            .try_into()
-            .unwrap()
+        DriveSlewRate::from_u8_unchecked(get(port).ctrl().read().slew_rate().bits())
     }
 
     /// Get the Slew Rate setting of this port. Higher values represent faster slewrates.
     pub(crate) fn slew_rate_alt(port: PortId) -> DriveSlewRate {
-        // SAFETY: We've read an invalid value from a 3-bit value, which should not happen for `DriveSlewRate` which
-        //         covers all 3-bit values
-        get(port)
-            .ctrl()
-            .read()
-            .slew_rate_alt()
-            .bits()
-            .try_into()
-            .unwrap()
+        DriveSlewRate::from_u8_unchecked(get(port).ctrl().read().slew_rate_alt().bits())
     }
 
     /// Set the Slew Rate setting of this port (not in Alternate Mode). Higher values represent faster slewrates
@@ -368,7 +376,8 @@ pub enum DriveStrength {
 }
 
 /// Slewrate limit for port pins. Higher values represent faster slewrates.
-#[derive(Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u8)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DriveSlewRate {
     /// Slew rate 0
@@ -387,6 +396,22 @@ pub enum DriveSlewRate {
     SlewRate6,
     /// Slew rate 7
     SlewRate7,
+}
+
+impl DriveSlewRate {
+    pub(crate) const fn from_u8_unchecked(u: u8) -> Self {
+        match u & 0b111 {
+            0 => DriveSlewRate::SlewRate0,
+            1 => DriveSlewRate::SlewRate1,
+            2 => DriveSlewRate::SlewRate2,
+            3 => DriveSlewRate::SlewRate3,
+            4 => DriveSlewRate::SlewRate4,
+            5 => DriveSlewRate::SlewRate5,
+            6 => DriveSlewRate::SlewRate6,
+            7 => DriveSlewRate::SlewRate7,
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl From<DriveSlewRate> for u8 {

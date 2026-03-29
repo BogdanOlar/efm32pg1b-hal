@@ -5,6 +5,7 @@ use crate::{
     gpio::{
         dynamic::DynamicPin,
         erased::ErasedPin,
+        exti::ExtiGroup,
         pin::mode::{InputMode, MultiMode, OutputMode},
         port::{self, PortId},
         GpioError,
@@ -166,17 +167,16 @@ pub trait PinInfo {
     fn port(&self) -> PortId;
 
     /// Pin number
-    fn pin(&self) -> u8;
+    fn pin(&self) -> PinId;
 }
 
 impl<const P: char, const N: u8, MODE> PinInfo for Pin<P, N, MODE> {
     fn port(&self) -> PortId {
-        // SAFETY: the `P` generic type parameter is guaranteed to denote a valid port id
-        P.try_into().unwrap()
+        PortId::from_char_unchecked(P)
     }
 
-    fn pin(&self) -> u8 {
-        N
+    fn pin(&self) -> PinId {
+        PinId::from_u8_unchecked(N)
     }
 }
 
@@ -275,7 +275,7 @@ impl<MODE> Sealed for Pin<'F', 7, MODE> {}
 /// Pin mode types (type state)
 pub(crate) mod mode {
     use crate::gpio::dynamic::DynamicMode;
-    use crate::gpio::pin::pins;
+    use crate::gpio::pin::{pins, PinId};
     use crate::gpio::port::PortId;
     use crate::pac::gpio::port_a::model::MODE0;
     use crate::Sealed;
@@ -432,7 +432,7 @@ pub(crate) mod mode {
     /// Trait for transitioning a pin from one mode to another
     pub trait MultiMode: Sealed {
         /// Set the peripheral registers such that they match the `MODE` of the `pin` in `port`
-        fn set_regs(port: PortId, pin: u8);
+        fn set_regs(port: PortId, pin: PinId);
 
         /// Get the `DynamicMode` variant corresponding to the mode type which implements this trait
         fn dynamic_mode() -> DynamicMode;
@@ -440,7 +440,7 @@ pub(crate) mod mode {
 
     impl MultiMode for Disabled {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Disabled);
             pins::set_dout(port, pin, false);
             pins::set_ovt(port, pin, true);
@@ -453,7 +453,7 @@ pub(crate) mod mode {
 
     impl MultiMode for DisabledPu {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Disabled);
             pins::set_dout(port, pin, true);
             pins::set_ovt(port, pin, true);
@@ -466,7 +466,7 @@ pub(crate) mod mode {
 
     impl MultiMode for Analog {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Disabled);
             pins::set_dout(port, pin, false);
             pins::set_ovt(port, pin, false);
@@ -479,7 +479,7 @@ pub(crate) mod mode {
 
     impl MultiMode for InFloat {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Input);
             pins::set_dout(port, pin, false);
             pins::set_ovt(port, pin, true);
@@ -492,7 +492,7 @@ pub(crate) mod mode {
 
     impl MultiMode for InFilt {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Input);
             pins::set_dout(port, pin, true);
             pins::set_ovt(port, pin, true);
@@ -505,7 +505,7 @@ pub(crate) mod mode {
 
     impl MultiMode for InPu {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Inputpull);
             pins::set_dout(port, pin, true);
             pins::set_ovt(port, pin, true);
@@ -518,7 +518,7 @@ pub(crate) mod mode {
 
     impl MultiMode for InPuFilt {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Inputpullfilter);
             pins::set_dout(port, pin, true);
             pins::set_ovt(port, pin, true);
@@ -531,7 +531,7 @@ pub(crate) mod mode {
 
     impl MultiMode for InPd {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Inputpull);
             pins::set_dout(port, pin, false);
             pins::set_ovt(port, pin, true);
@@ -544,7 +544,7 @@ pub(crate) mod mode {
 
     impl MultiMode for InPdFilt {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Inputpullfilter);
             pins::set_dout(port, pin, false);
             pins::set_ovt(port, pin, true);
@@ -557,7 +557,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutPp {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Pushpull);
             pins::set_ovt(port, pin, true);
         }
@@ -569,7 +569,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutOs {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Wiredor);
             pins::set_ovt(port, pin, true);
         }
@@ -581,7 +581,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutOsPd {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Wiredorpulldown);
             pins::set_ovt(port, pin, true);
         }
@@ -593,7 +593,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutOd {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Wiredand);
             pins::set_ovt(port, pin, true);
         }
@@ -605,7 +605,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutOdFilt {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Wiredandfilter);
             pins::set_ovt(port, pin, true);
         }
@@ -617,7 +617,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutOdPu {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Wiredandpullup);
             pins::set_ovt(port, pin, true);
         }
@@ -629,7 +629,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutOdPuFilt {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Wiredandpullupfilter);
             pins::set_ovt(port, pin, true);
         }
@@ -641,7 +641,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutPpAlt {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Pushpullalt);
             pins::set_ovt(port, pin, true);
         }
@@ -653,7 +653,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutOdAlt {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Wiredandalt);
             pins::set_ovt(port, pin, true);
         }
@@ -665,7 +665,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutOdFiltAlt {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Wiredandaltfilter);
             pins::set_ovt(port, pin, true);
         }
@@ -677,7 +677,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutOdPuAlt {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Wiredandaltpullup);
             pins::set_ovt(port, pin, true);
         }
@@ -689,7 +689,7 @@ pub(crate) mod mode {
 
     impl MultiMode for OutOdPuFiltAlt {
         #[inline(always)]
-        fn set_regs(port: PortId, pin: u8) {
+        fn set_regs(port: PortId, pin: PinId) {
             pins::mode_set(port, pin, MODE0::Wiredandaltpullupfilter);
             pins::set_ovt(port, pin, true);
         }
@@ -700,71 +700,170 @@ pub(crate) mod mode {
     }
 }
 
+/// Port Pin ID
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u8)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum PinId {
+    /// Port Pin 0
+    Pin0,
+    /// Port Pin 1
+    Pin1,
+    /// Port Pin 2
+    Pin2,
+    /// Port Pin 3
+    Pin3,
+    /// Port Pin 4
+    Pin4,
+    /// Port Pin 5
+    Pin5,
+    /// Port Pin 6
+    Pin6,
+    /// Port Pin 7
+    Pin7,
+    /// Port Pin 8
+    Pin8,
+    /// Port Pin 9
+    Pin9,
+    /// Port Pin 10
+    Pin10,
+    /// Port Pin 11
+    Pin11,
+    /// Port Pin 12
+    Pin12,
+    /// Port Pin 13
+    Pin13,
+    /// Port Pin 14
+    Pin14,
+    /// Port Pin 15
+    Pin15,
+}
+
+impl PinId {
+    pub(crate) const fn from_u8_unchecked(u: u8) -> Self {
+        match u & 0b1111 {
+            0 => Self::Pin0,
+            1 => Self::Pin1,
+            2 => Self::Pin2,
+            3 => Self::Pin3,
+            4 => Self::Pin4,
+            5 => Self::Pin5,
+            6 => Self::Pin6,
+            7 => Self::Pin7,
+            8 => Self::Pin8,
+            9 => Self::Pin9,
+            10 => Self::Pin10,
+            11 => Self::Pin11,
+            12 => Self::Pin12,
+            13 => Self::Pin13,
+            14 => Self::Pin14,
+            15 => Self::Pin15,
+            // _ => unreachable!(),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl TryFrom<u8> for PinId {
+    type Error = GpioError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Pin0),
+            1 => Ok(Self::Pin1),
+            2 => Ok(Self::Pin2),
+            3 => Ok(Self::Pin3),
+            4 => Ok(Self::Pin4),
+            5 => Ok(Self::Pin5),
+            6 => Ok(Self::Pin6),
+            7 => Ok(Self::Pin7),
+            8 => Ok(Self::Pin8),
+            9 => Ok(Self::Pin9),
+            10 => Ok(Self::Pin10),
+            11 => Ok(Self::Pin11),
+            12 => Ok(Self::Pin12),
+            13 => Ok(Self::Pin13),
+            14 => Ok(Self::Pin14),
+            15 => Ok(Self::Pin15),
+            _ => Err(GpioError::InvalidPinId(value)),
+        }
+    }
+}
+
+/// FIXME: Is this necessary, since `PinId` is `#[repr(u8)]` ?
+impl From<PinId> for u8 {
+    fn from(value: PinId) -> Self {
+        value as u8
+    }
+}
+
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 0, MODE> {}
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 1, MODE> {}
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 2, MODE> {}
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 3, MODE> {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 4, MODE> {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 5, MODE> {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 6, MODE> {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 7, MODE> {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 8, MODE> {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 9, MODE> {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 10, MODE> {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 11, MODE> {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 12, MODE> {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 13, MODE> {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 14, MODE> {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 15, MODE> {}
+
 /// Configure GPIO peripheral registers values for individual pins
 pub(crate) mod pins {
     use efm32pg1b_pac::gpio::port_a::model::MODE0;
 
-    use crate::gpio::port::{ports, PortId};
+    use crate::gpio::{
+        pin::PinId,
+        port::{ports, PortId},
+    };
 
     /// Set the Mode for a given pin `N` in port `P`
     #[inline(always)]
-    pub(crate) fn mode_set(port: PortId, pin: u8, iomode: MODE0) {
-        match pin {
-            0..=7 => {
-                ports::get(port).model().modify(|_, w| {
-                    match pin {
-                        0 => w.mode0(),
-                        1 => w.mode1(),
-                        2 => w.mode2(),
-                        3 => w.mode3(),
-                        4 => w.mode4(),
-                        5 => w.mode5(),
-                        6 => w.mode6(),
-                        7 => w.mode7(),
-                        _ => unreachable!(),
-                    }
-                    .variant(iomode)
-                });
-            }
-            8..=15 => {
-                ports::get(port).modeh().modify(|_, w| {
-                    match pin {
-                        8 => w.mode8(),
-                        9 => w.mode9(),
-                        10 => w.mode10(),
-                        11 => w.mode11(),
-                        12 => w.mode12(),
-                        13 => w.mode13(),
-                        14 => w.mode14(),
-                        15 => w.mode15(),
-                        _ => unreachable!(),
-                    }
-                    .variant(iomode)
-                });
-            }
-            _ => unreachable!(),
+    pub(crate) fn mode_set(port: PortId, pin: PinId, iomode: MODE0) {
+        const REG_MODE_BITS: u8 = 4;
+        const REG_MODE_MASK: u32 = 0xF;
+        const REG_MODES_PER_REGISTER: u8 = u32::BITS as u8 / REG_MODE_BITS;
+        let pin = pin as u8;
+        let offset = (pin % REG_MODES_PER_REGISTER) * REG_MODE_BITS;
+        let value = ((iomode as u8) as u32) << offset;
+        let mask = REG_MODE_MASK << offset;
+
+        if pin < PinId::Pin8 as u8 {
+            ports::get(port)
+                .model()
+                .modify(|r, w| unsafe { w.bits((r.bits() & !mask) | value) });
+        } else {
+            ports::get(port)
+                .modeh()
+                .modify(|r, w| unsafe { w.bits((r.bits() & !mask) | value) });
         }
     }
 
     /// Get the Data Out for a given `pin` in `port`
     #[inline(always)]
-    pub(crate) fn dout(port: PortId, pin: u8) -> bool {
-        (ports::get(port).dout().read().pins_dout().bits() & (1u16 << pin)) != 0
+    pub(crate) fn dout(port: PortId, pin: PinId) -> bool {
+        (ports::get(port).dout().read().pins_dout().bits() & (1u16 << pin as u8)) != 0
     }
 
     /// Set the Data Out for a given `pin` in `port`
     #[inline(always)]
-    pub(crate) fn set_dout(port: PortId, pin: u8, dout: bool) {
+    pub(crate) fn set_dout(port: PortId, pin: PinId, dout: bool) {
         ports::get(port).dout().modify(|r, w| match dout {
-            true => unsafe { w.pins_dout().bits(r.bits() as u16 | (1u16 << pin)) },
-            false => unsafe { w.pins_dout().bits(r.bits() as u16 & !(1u16 << pin)) },
+            true => unsafe { w.pins_dout().bits(r.bits() as u16 | (1u16 << pin as u8)) },
+            false => unsafe { w.pins_dout().bits(r.bits() as u16 & !(1u16 << pin as u8)) },
         });
     }
 
     /// Get the Data In for a given pin `pin` in `port`
     #[inline(always)]
-    pub(crate) fn din(port: PortId, pin: u8) -> bool {
-        ports::get(port).din().read().pins_din().bits() as u16 & (1u16 << pin) != 0
+    pub(crate) fn din(port: PortId, pin: PinId) -> bool {
+        ports::get(port).din().read().pins_din().bits() as u16 & (1u16 << pin as u8) != 0
     }
 
     /// Return `true` if Over Voltage Tolerance is enabled for a given `pin` in `port`
@@ -772,24 +871,24 @@ pub(crate) mod pins {
     /// OVT is enabled by default for all pins
     #[allow(dead_code)]
     #[inline(always)]
-    pub(crate) fn ovt(port: PortId, pin: u8) -> bool {
-        ports::get(port).ovt_dis().read().pins_ovt_dis().bits() & (1u16 << pin) == 0
+    pub(crate) fn ovt(port: PortId, pin: PinId) -> bool {
+        ports::get(port).ovt_dis().read().pins_ovt_dis().bits() & (1u16 << pin as u8) == 0
     }
 
     /// Set the Over Voltage Tolerance for a given `pin` in `port`
     ///
     /// OVT is enabled by default for all pins
     #[inline(always)]
-    pub(crate) fn set_ovt(port: PortId, pin: u8, enabled: bool) {
+    pub(crate) fn set_ovt(port: PortId, pin: PinId, enabled: bool) {
         // The `GPIO_Px_OVTDIS` register uses raised flags for each pin to signal that OVT is _disabled_
         ports::get(port).ovt_dis().modify(|r, w| match enabled {
             true => unsafe {
                 w.pins_ovt_dis()
-                    .bits(r.pins_ovt_dis().bits() & !(1u16 << pin))
+                    .bits(r.pins_ovt_dis().bits() & !(1u16 << pin as u8))
             },
             false => unsafe {
                 w.pins_ovt_dis()
-                    .bits(r.pins_ovt_dis().bits() | (1u16 << pin))
+                    .bits(r.pins_ovt_dis().bits() | (1u16 << pin as u8))
             },
         });
     }

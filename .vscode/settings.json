@@ -6,7 +6,11 @@
     "rust-analyzer.cargo.features": [
         "defmt",
         "qfn48",
-        "use_debug_pins"
+        "use_debug_pins",
+        "efemb",
+        "efemb-timdrv-letim0-hz-32_768",
+        // "efemb-timdrv-letim0-hz-1_000",
+        // "efemb-timdrv-letim0-dbg-pins"
     ],
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer",

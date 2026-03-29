@@ -7,9 +7,9 @@ runner = [
   "run",
   "--chip",
   "EFM32PG1B200F256IM48",
-#   "--log-format",
-#   "{t} {L} {s}",
+  "--log-format",
+  "{{t}%italic%dimmed} {L:severity:italic} {s}    {{ff}:{l}%italic%dimmed}",
 ]
 
 [env]
-DEFMT_LOG="debug"
+DEFMT_LOG="trace"

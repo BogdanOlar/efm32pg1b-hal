@@ -99,7 +99,12 @@
 
 #[cfg(feature = "use_debug_pins")]
 pub use crate::gpio::debug::DebugPinsEnabled;
-use crate::gpio::dynamic::DynamicMode;
+use crate::gpio::{
+    dynamic::DynamicMode,
+    exti::{ExtiCtrl, ExtiId},
+    pin::PinId,
+    port::PortId,
+};
 pub use crate::gpio::{
     pin::{
         mode::{
@@ -116,6 +121,7 @@ use embedded_hal::digital::{self, ErrorKind};
 pub mod debug;
 pub mod dynamic;
 pub mod erased;
+pub mod exti;
 pub mod pin;
 pub mod port;
 
@@ -205,6 +211,39 @@ pub struct Gpio {
     #[cfg(feature = "qfn48")]
     pub pf7: Pin<'F', 7, Disabled>,
 
+    /// External Interrupt 0 controller
+    pub exti0ctrl: ExtiCtrl<0>,
+    /// External Interrupt 1 controller
+    pub exti1ctrl: ExtiCtrl<1>,
+    /// External Interrupt 2 controller
+    pub exti2ctrl: ExtiCtrl<2>,
+    /// External Interrupt 3 controller
+    pub exti3ctrl: ExtiCtrl<3>,
+    /// External Interrupt 4 controller
+    pub exti4ctrl: ExtiCtrl<4>,
+    /// External Interrupt 5 controller
+    pub exti5ctrl: ExtiCtrl<5>,
+    /// External Interrupt 6 controller
+    pub exti6ctrl: ExtiCtrl<6>,
+    /// External Interrupt 7 controller
+    pub exti7ctrl: ExtiCtrl<7>,
+    /// External Interrupt 8 controller
+    pub exti8ctrl: ExtiCtrl<8>,
+    /// External Interrupt 9 controller
+    pub exti9ctrl: ExtiCtrl<9>,
+    /// External Interrupt 10 controller
+    pub exti10ctrl: ExtiCtrl<10>,
+    /// External Interrupt 11 controller
+    pub exti11ctrl: ExtiCtrl<11>,
+    /// External Interrupt 12 controller
+    pub exti12ctrl: ExtiCtrl<12>,
+    /// External Interrupt 13 controller
+    pub exti13ctrl: ExtiCtrl<13>,
+    /// External Interrupt 14 controller
+    pub exti14ctrl: ExtiCtrl<14>,
+    /// External Interrupt 15 controller
+    pub exti15ctrl: ExtiCtrl<15>,
+
     /// GPIO PAC peripheral
     gpio_p: crate::pac::Gpio,
 }
@@ -261,6 +300,23 @@ impl Gpio {
             pf7: Pin::new(),
             #[cfg(feature = "use_debug_pins")]
             debug_pins: DebugPinsEnabled::new(),
+
+            exti0ctrl: ExtiCtrl::new(),
+            exti1ctrl: ExtiCtrl::new(),
+            exti2ctrl: ExtiCtrl::new(),
+            exti3ctrl: ExtiCtrl::new(),
+            exti4ctrl: ExtiCtrl::new(),
+            exti5ctrl: ExtiCtrl::new(),
+            exti6ctrl: ExtiCtrl::new(),
+            exti7ctrl: ExtiCtrl::new(),
+            exti8ctrl: ExtiCtrl::new(),
+            exti9ctrl: ExtiCtrl::new(),
+            exti10ctrl: ExtiCtrl::new(),
+            exti11ctrl: ExtiCtrl::new(),
+            exti12ctrl: ExtiCtrl::new(),
+            exti13ctrl: ExtiCtrl::new(),
+            exti14ctrl: ExtiCtrl::new(),
+            exti15ctrl: ExtiCtrl::new(),
 
             gpio_p,
         };
@@ -343,6 +399,22 @@ pub enum GpioError {
 
     /// Failed to convert a literal representation of port id to a [`port::PortId`]
     InvalidPortIdLabel(char),
+
+    /// Failed to convert a literal representation of pin id to a [`pin::PinId`]
+    InvalidPinId(u8),
+
+    /// The external interrupt id is invalid
+    InvalidExiValue(u8),
+
+    /// The external interrupt cannot be bound to the given Pin
+    InvalidExiBind {
+        /// External Interrupt ID
+        exti: ExtiId,
+        /// Port ID
+        port: PortId,
+        /// Port Pin ID
+        pin: PinId,
+    },
 }
 
 impl embedded_hal::digital::Error for GpioError {
@@ -355,6 +427,9 @@ impl embedded_hal::digital::Error for GpioError {
             GpioError::DebugPinsEnabled => ErrorKind::Other,
             GpioError::InvalidPortId(_) => ErrorKind::Other,
             GpioError::InvalidPortIdLabel(_) => ErrorKind::Other,
+            GpioError::InvalidPinId(_) => ErrorKind::Other,
+            GpioError::InvalidExiValue(_) => ErrorKind::Other,
+            GpioError::InvalidExiBind { .. } => ErrorKind::Other,
         }
     }
 }

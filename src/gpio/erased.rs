@@ -24,7 +24,7 @@ use crate::{
     gpio::{
         pin::{
             mode::{self, InputMode, MultiMode, OutputMode},
-            pins, PinInfo,
+            pins, PinId, PinInfo,
         },
         port::{self, PortId},
         GpioError,
@@ -47,9 +47,9 @@ where
     MODE: MultiMode + Sealed,
     ErasedPin<MODE>: Sealed,
 {
-    pub(crate) fn new(port: PortId, pin: u8) -> Self {
+    pub(crate) fn new(port: PortId, pin: PinId) -> Self {
         Self {
-            port_pin: ((port as u8) << 4) | pin,
+            port_pin: ((port as u8) << 4) | pin as u8,
             _mode: PhantomData,
         }
     }
@@ -139,12 +139,11 @@ where
 
 impl<MODE> PinInfo for ErasedPin<MODE> {
     fn port(&self) -> PortId {
-        // SAFETY: the `pin_port` value was composed with a valid `PortId` value, so the reverse operation cannot fail
-        (self.port_pin >> 4 & 0x0F).try_into().unwrap()
+        PortId::from_u8_unchecked(self.port_pin >> 4)
     }
 
-    fn pin(&self) -> u8 {
-        self.port_pin & 0x0F
+    fn pin(&self) -> PinId {
+        PinId::from_u8_unchecked(self.port_pin)
     }
 }
 
@@ -216,7 +215,7 @@ macro_rules! impl_fmt_debug_erased_pin {
                 formatter.write_fmt(format_args!(
                     "ErasedPin({}{})<{}>",
                     core::convert::Into::<char>::into(self.port()),
-                    self.pin(),
+                    self.pin() as u8,
                     $mode_name
                 ))
             }
