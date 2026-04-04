@@ -100,7 +100,7 @@
 #[cfg(feature = "use_debug_pins")]
 pub use crate::gpio::debug::DebugPinsEnabled;
 use crate::gpio::{
-    dynamic::DynamicMode,
+    dynamic::PinMode,
     exti::{ExtiCtrl, ExtiId},
     pin::PinId,
     port::PortId,
@@ -120,6 +120,8 @@ use embedded_hal::digital::{self, ErrorKind};
 
 pub mod debug;
 pub mod dynamic;
+#[cfg(feature = "efemb")]
+pub mod efemb;
 pub mod erased;
 pub mod exti;
 pub mod pin;
@@ -386,7 +388,7 @@ pub enum GpioError {
     DataInDisabled,
 
     /// Dynamic Pin mode does not support the operation requested
-    InvalidMode(DynamicMode),
+    InvalidMode(PinMode),
 
     /// Conversion of the given u8 to a [`port::DriveSlewRate`] failed
     InvalidSlewRate(u8),

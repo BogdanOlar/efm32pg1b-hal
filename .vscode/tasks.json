@@ -142,6 +142,27 @@
             }
         },
         {
+            "label": "cargo build example embassy_button",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "embassy_button",
+                "--features='defmt qfn48 efemb efemb-timdrv-letim0-hz-32_768'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "presentation": {
+                "clear": true
+            },
+            "group": {
+                "kind": "build",
+                // "isDefault": true
+            }
+        },
+        {
             "label": "cargo build example embassy_example",
             "type": "shell",
             "command": "cargo",

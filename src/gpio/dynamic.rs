@@ -17,11 +17,11 @@ pub struct DynamicPin {
     /// Most significant nibble is the port id, least significant nibble is the pin id
     port_pin: u8,
     /// Pin mode
-    mode: DynamicMode,
+    mode: PinMode,
 }
 
 impl DynamicPin {
-    pub(crate) fn new(port: PortId, pin: PinId, mode: DynamicMode) -> Self {
+    pub(crate) fn new(port: PortId, pin: PinId, mode: PinMode) -> Self {
         Self {
             port_pin: ((port as u8) << 4) | (pin as u8),
             mode,
@@ -184,7 +184,7 @@ impl ErrorType for DynamicPin {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
-pub enum DynamicMode {
+pub enum PinMode {
     /// Disabled
     Disabled,
     /// Disabled with pull-up
@@ -229,114 +229,114 @@ pub enum DynamicMode {
     OutOdPuFiltAlt,
 }
 
-impl DynamicMode {
+impl PinMode {
     fn set_regs(&self, port: PortId, pin: PinId) {
         match self {
-            DynamicMode::Disabled => pin::mode::Disabled::set_regs(port, pin),
-            DynamicMode::DisabledPu => pin::mode::DisabledPu::set_regs(port, pin),
-            DynamicMode::Analog => pin::mode::Analog::set_regs(port, pin),
-            DynamicMode::InFloat => pin::mode::InFloat::set_regs(port, pin),
-            DynamicMode::InFilt => pin::mode::InFilt::set_regs(port, pin),
-            DynamicMode::InPu => pin::mode::InPu::set_regs(port, pin),
-            DynamicMode::InPuFilt => pin::mode::InPuFilt::set_regs(port, pin),
-            DynamicMode::InPd => pin::mode::InPd::set_regs(port, pin),
-            DynamicMode::InPdFilt => pin::mode::InPdFilt::set_regs(port, pin),
-            DynamicMode::OutPp => pin::mode::OutPp::set_regs(port, pin),
-            DynamicMode::OutOs => pin::mode::OutOs::set_regs(port, pin),
-            DynamicMode::OutOsPd => pin::mode::OutOsPd::set_regs(port, pin),
-            DynamicMode::OutOd => pin::mode::OutOd::set_regs(port, pin),
-            DynamicMode::OutOdFilt => pin::mode::OutOdFilt::set_regs(port, pin),
-            DynamicMode::OutOdPu => pin::mode::OutOdPu::set_regs(port, pin),
-            DynamicMode::OutOdPuFilt => pin::mode::OutOdPuFilt::set_regs(port, pin),
-            DynamicMode::OutPpAlt => pin::mode::OutPpAlt::set_regs(port, pin),
-            DynamicMode::OutOdAlt => pin::mode::OutOdAlt::set_regs(port, pin),
-            DynamicMode::OutOdFiltAlt => pin::mode::OutOdFiltAlt::set_regs(port, pin),
-            DynamicMode::OutOdPuAlt => pin::mode::OutOdPuAlt::set_regs(port, pin),
-            DynamicMode::OutOdPuFiltAlt => pin::mode::OutOdPuFiltAlt::set_regs(port, pin),
+            PinMode::Disabled => pin::mode::Disabled::set_regs(port, pin),
+            PinMode::DisabledPu => pin::mode::DisabledPu::set_regs(port, pin),
+            PinMode::Analog => pin::mode::Analog::set_regs(port, pin),
+            PinMode::InFloat => pin::mode::InFloat::set_regs(port, pin),
+            PinMode::InFilt => pin::mode::InFilt::set_regs(port, pin),
+            PinMode::InPu => pin::mode::InPu::set_regs(port, pin),
+            PinMode::InPuFilt => pin::mode::InPuFilt::set_regs(port, pin),
+            PinMode::InPd => pin::mode::InPd::set_regs(port, pin),
+            PinMode::InPdFilt => pin::mode::InPdFilt::set_regs(port, pin),
+            PinMode::OutPp => pin::mode::OutPp::set_regs(port, pin),
+            PinMode::OutOs => pin::mode::OutOs::set_regs(port, pin),
+            PinMode::OutOsPd => pin::mode::OutOsPd::set_regs(port, pin),
+            PinMode::OutOd => pin::mode::OutOd::set_regs(port, pin),
+            PinMode::OutOdFilt => pin::mode::OutOdFilt::set_regs(port, pin),
+            PinMode::OutOdPu => pin::mode::OutOdPu::set_regs(port, pin),
+            PinMode::OutOdPuFilt => pin::mode::OutOdPuFilt::set_regs(port, pin),
+            PinMode::OutPpAlt => pin::mode::OutPpAlt::set_regs(port, pin),
+            PinMode::OutOdAlt => pin::mode::OutOdAlt::set_regs(port, pin),
+            PinMode::OutOdFiltAlt => pin::mode::OutOdFiltAlt::set_regs(port, pin),
+            PinMode::OutOdPuAlt => pin::mode::OutOdPuAlt::set_regs(port, pin),
+            PinMode::OutOdPuFiltAlt => pin::mode::OutOdPuFiltAlt::set_regs(port, pin),
         }
     }
 
     fn readable(&self) -> bool {
         !matches!(
             self,
-            DynamicMode::Disabled | DynamicMode::DisabledPu | DynamicMode::Analog
+            PinMode::Disabled | PinMode::DisabledPu | PinMode::Analog
         )
     }
 
-    fn readable_input(&self) -> bool {
+    pub(crate) fn readable_input(&self) -> bool {
         matches!(
             self,
-            DynamicMode::InFloat
-                | DynamicMode::InFilt
-                | DynamicMode::InPu
-                | DynamicMode::InPuFilt
-                | DynamicMode::InPd
-                | DynamicMode::InPdFilt
+            PinMode::InFloat
+                | PinMode::InFilt
+                | PinMode::InPu
+                | PinMode::InPuFilt
+                | PinMode::InPd
+                | PinMode::InPdFilt
         )
     }
 
     fn readable_out(&self) -> bool {
         matches!(
             self,
-            DynamicMode::OutPp
-                | DynamicMode::OutOs
-                | DynamicMode::OutOsPd
-                | DynamicMode::OutOd
-                | DynamicMode::OutOdFilt
-                | DynamicMode::OutOdPu
-                | DynamicMode::OutOdPuFilt
+            PinMode::OutPp
+                | PinMode::OutOs
+                | PinMode::OutOsPd
+                | PinMode::OutOd
+                | PinMode::OutOdFilt
+                | PinMode::OutOdPu
+                | PinMode::OutOdPuFilt
         )
     }
 
     fn readable_out_alt(&self) -> bool {
         matches!(
             self,
-            DynamicMode::OutPpAlt
-                | DynamicMode::OutOdAlt
-                | DynamicMode::OutOdFiltAlt
-                | DynamicMode::OutOdPuAlt
-                | DynamicMode::OutOdPuFiltAlt
+            PinMode::OutPpAlt
+                | PinMode::OutOdAlt
+                | PinMode::OutOdFiltAlt
+                | PinMode::OutOdPuAlt
+                | PinMode::OutOdPuFiltAlt
         )
     }
 
     fn writable(&self) -> bool {
         !matches!(
             self,
-            DynamicMode::Disabled
-                | DynamicMode::DisabledPu
-                | DynamicMode::Analog
-                | DynamicMode::InFloat
-                | DynamicMode::InFilt
-                | DynamicMode::InPu
-                | DynamicMode::InPuFilt
-                | DynamicMode::InPd
-                | DynamicMode::InPdFilt
+            PinMode::Disabled
+                | PinMode::DisabledPu
+                | PinMode::Analog
+                | PinMode::InFloat
+                | PinMode::InFilt
+                | PinMode::InPu
+                | PinMode::InPuFilt
+                | PinMode::InPd
+                | PinMode::InPdFilt
         )
     }
 
     const fn name(&self) -> &'static str {
         match self {
-            DynamicMode::Disabled => "Disabled",
-            DynamicMode::DisabledPu => "DisabledPu",
-            DynamicMode::Analog => "Analog",
-            DynamicMode::InFloat => "InFloat",
-            DynamicMode::InFilt => "InFilt",
-            DynamicMode::InPu => "InPu",
-            DynamicMode::InPuFilt => "InPuFilt",
-            DynamicMode::InPd => "InPd",
-            DynamicMode::InPdFilt => "InPdFilt",
-            DynamicMode::OutPp => "OutPp",
-            DynamicMode::OutOs => "OutOs",
-            DynamicMode::OutOsPd => "OutOsPd",
-            DynamicMode::OutOd => "OutOd",
-            DynamicMode::OutOdFilt => "OutOdFilt",
-            DynamicMode::OutOdPu => "OutOdPu",
-            DynamicMode::OutOdPuFilt => "OutOdPuFilt",
-            DynamicMode::OutPpAlt => "OutPpAlt",
-            DynamicMode::OutOdAlt => "OutOdAlt",
-            DynamicMode::OutOdFiltAlt => "OutOdFiltAlt",
-            DynamicMode::OutOdPuAlt => "OutOdPuAlt",
-            DynamicMode::OutOdPuFiltAlt => "OutOdPuFiltAlt",
+            PinMode::Disabled => "Disabled",
+            PinMode::DisabledPu => "DisabledPu",
+            PinMode::Analog => "Analog",
+            PinMode::InFloat => "InFloat",
+            PinMode::InFilt => "InFilt",
+            PinMode::InPu => "InPu",
+            PinMode::InPuFilt => "InPuFilt",
+            PinMode::InPd => "InPd",
+            PinMode::InPdFilt => "InPdFilt",
+            PinMode::OutPp => "OutPp",
+            PinMode::OutOs => "OutOs",
+            PinMode::OutOsPd => "OutOsPd",
+            PinMode::OutOd => "OutOd",
+            PinMode::OutOdFilt => "OutOdFilt",
+            PinMode::OutOdPu => "OutOdPu",
+            PinMode::OutOdPuFilt => "OutOdPuFilt",
+            PinMode::OutPpAlt => "OutPpAlt",
+            PinMode::OutOdAlt => "OutOdAlt",
+            PinMode::OutOdFiltAlt => "OutOdFiltAlt",
+            PinMode::OutOdPuAlt => "OutOdPuAlt",
+            PinMode::OutOdPuFiltAlt => "OutOdPuFiltAlt",
         }
     }
 }
@@ -348,6 +348,10 @@ impl PinInfo for DynamicPin {
 
     fn pin(&self) -> PinId {
         PinId::from_u8_unchecked(self.port_pin)
+    }
+
+    fn mode(&self) -> PinMode {
+        self.mode
     }
 }
 

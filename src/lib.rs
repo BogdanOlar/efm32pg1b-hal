@@ -27,7 +27,7 @@ pub(crate) use sealed::Sealed;
 /// Convenience module which exports the most used types for each module
 pub mod prelude {
     pub use crate::{
-        cmu::CmuExt,
+        cmu::{CmuExt, HfClockPrescaler, HfClockSource, LfClockSource},
         gpio::{
             pin::mode::{
                 Analog, Disabled, DisabledPu, InFilt, InFloat, InPd, InPdFilt, InPu, InPuFilt,

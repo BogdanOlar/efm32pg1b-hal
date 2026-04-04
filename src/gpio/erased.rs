@@ -137,13 +137,20 @@ where
     }
 }
 
-impl<MODE> PinInfo for ErasedPin<MODE> {
+impl<MODE> PinInfo for ErasedPin<MODE>
+where
+    MODE: MultiMode,
+{
     fn port(&self) -> PortId {
         PortId::from_u8_unchecked(self.port_pin >> 4)
     }
 
     fn pin(&self) -> PinId {
         PinId::from_u8_unchecked(self.port_pin)
+    }
+
+    fn mode(&self) -> super::dynamic::PinMode {
+        MODE::dynamic_mode()
     }
 }
 

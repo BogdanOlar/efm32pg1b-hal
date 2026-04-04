@@ -3,6 +3,9 @@
 
 use crate::gpio::{pin::PinInfo, GpioError};
 
+/// Number of External Interrupts
+pub const EXTI_COUNT: usize = 16;
+
 /// Controller for External Interrupt `N`
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -31,6 +34,16 @@ impl<const N: u8> ExtiCtrl<N> {
     pub fn enable(&mut self) {
         mmio::exti_enable(self.id());
     }
+
+    /// Disable interrupts for this Exti
+    pub fn disable(&mut self) {
+        mmio::exti_disable(self.id());
+    }
+
+    /// Clear interrupt flag for this Exti
+    pub fn clear(&mut self) {
+        mmio::exti_clear(self.id());
+    }
 }
 
 /// This trait is implemented for `Pin`s in order to constrain which pins can be bound to which External Interrupt based
@@ -38,6 +51,23 @@ impl<const N: u8> ExtiCtrl<N> {
 ///
 /// See also [`ExtiBind`], [`mmio::exti_bind`]
 pub trait ExtiGroup<const GN: u8> {}
+
+impl ExtiGroup<0> for ExtiCtrl<0> {}
+impl ExtiGroup<0> for ExtiCtrl<1> {}
+impl ExtiGroup<0> for ExtiCtrl<2> {}
+impl ExtiGroup<0> for ExtiCtrl<3> {}
+impl ExtiGroup<1> for ExtiCtrl<4> {}
+impl ExtiGroup<1> for ExtiCtrl<5> {}
+impl ExtiGroup<1> for ExtiCtrl<6> {}
+impl ExtiGroup<1> for ExtiCtrl<7> {}
+impl ExtiGroup<2> for ExtiCtrl<8> {}
+impl ExtiGroup<2> for ExtiCtrl<9> {}
+impl ExtiGroup<2> for ExtiCtrl<10> {}
+impl ExtiGroup<2> for ExtiCtrl<11> {}
+impl ExtiGroup<3> for ExtiCtrl<12> {}
+impl ExtiGroup<3> for ExtiCtrl<13> {}
+impl ExtiGroup<3> for ExtiCtrl<14> {}
+impl ExtiGroup<3> for ExtiCtrl<15> {}
 
 /// Bind an External Interrupt to a `Pin` which satisfied the [`ExtiGroup`] constraint
 pub trait ExtiBind<const GN: u8> {
@@ -285,6 +315,13 @@ pub mod mmio {
         gpio()
             .ien()
             .modify(|r, w| unsafe { w.ext().bits(r.ext().bits() | 1 << exti as u8) });
+    }
+
+    /// Disable given external interrupt
+    pub(crate) fn exti_disable(exti: ExtiId) {
+        gpio()
+            .ien()
+            .modify(|r, w| unsafe { w.ext().bits(r.ext().bits() & !(1 << exti as u8)) });
     }
 
     /// Checl if the interrupt flag is raised for the given external interrupt

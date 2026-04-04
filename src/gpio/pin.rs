@@ -3,7 +3,7 @@
 
 use crate::{
     gpio::{
-        dynamic::DynamicPin,
+        dynamic::{DynamicPin, PinMode},
         erased::ErasedPin,
         exti::ExtiGroup,
         pin::mode::{InputMode, MultiMode, OutputMode},
@@ -168,15 +168,25 @@ pub trait PinInfo {
 
     /// Pin number
     fn pin(&self) -> PinId;
+
+    /// Pin mode
+    fn mode(&self) -> PinMode;
 }
 
-impl<const P: char, const N: u8, MODE> PinInfo for Pin<P, N, MODE> {
+impl<const P: char, const N: u8, MODE> PinInfo for Pin<P, N, MODE>
+where
+    MODE: MultiMode,
+{
     fn port(&self) -> PortId {
         PortId::from_char_unchecked(P)
     }
 
     fn pin(&self) -> PinId {
         PinId::from_u8_unchecked(N)
+    }
+
+    fn mode(&self) -> PinMode {
+        MODE::dynamic_mode()
     }
 }
 
@@ -274,7 +284,7 @@ impl<MODE> Sealed for Pin<'F', 7, MODE> {}
 
 /// Pin mode types (type state)
 pub(crate) mod mode {
-    use crate::gpio::dynamic::DynamicMode;
+    use crate::gpio::dynamic::PinMode;
     use crate::gpio::pin::{pins, PinId};
     use crate::gpio::port::PortId;
     use crate::pac::gpio::port_a::model::MODE0;
@@ -406,7 +416,7 @@ pub(crate) mod mode {
     impl Sealed for OutOdPuFiltAlt {}
 
     /// Marker trait for Input mode pins
-    pub trait InputMode: Sealed {}
+    pub trait InputMode: MultiMode + Sealed {}
     impl InputMode for InFloat {}
     impl InputMode for InFilt {}
     impl InputMode for InPu {}
@@ -415,7 +425,7 @@ pub(crate) mod mode {
     impl InputMode for InPdFilt {}
 
     /// Marker trait for Output mode pins
-    pub trait OutputMode: Sealed {}
+    pub trait OutputMode: MultiMode + Sealed {}
     impl OutputMode for OutPp {}
     impl OutputMode for OutOs {}
     impl OutputMode for OutOsPd {}
@@ -435,7 +445,7 @@ pub(crate) mod mode {
         fn set_regs(port: PortId, pin: PinId);
 
         /// Get the `DynamicMode` variant corresponding to the mode type which implements this trait
-        fn dynamic_mode() -> DynamicMode;
+        fn dynamic_mode() -> PinMode;
     }
 
     impl MultiMode for Disabled {
@@ -446,8 +456,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::Disabled
+        fn dynamic_mode() -> PinMode {
+            PinMode::Disabled
         }
     }
 
@@ -459,8 +469,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::DisabledPu
+        fn dynamic_mode() -> PinMode {
+            PinMode::DisabledPu
         }
     }
 
@@ -472,8 +482,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, false);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::Analog
+        fn dynamic_mode() -> PinMode {
+            PinMode::Analog
         }
     }
 
@@ -485,8 +495,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::InFloat
+        fn dynamic_mode() -> PinMode {
+            PinMode::InFloat
         }
     }
 
@@ -498,8 +508,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::InFilt
+        fn dynamic_mode() -> PinMode {
+            PinMode::InFilt
         }
     }
 
@@ -511,8 +521,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::InPu
+        fn dynamic_mode() -> PinMode {
+            PinMode::InPu
         }
     }
 
@@ -524,8 +534,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::InPuFilt
+        fn dynamic_mode() -> PinMode {
+            PinMode::InPuFilt
         }
     }
 
@@ -537,8 +547,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::InPd
+        fn dynamic_mode() -> PinMode {
+            PinMode::InPd
         }
     }
 
@@ -550,8 +560,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::InPdFilt
+        fn dynamic_mode() -> PinMode {
+            PinMode::InPdFilt
         }
     }
 
@@ -562,8 +572,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutPp
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutPp
         }
     }
 
@@ -574,8 +584,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutOs
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutOs
         }
     }
 
@@ -586,8 +596,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutOsPd
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutOsPd
         }
     }
 
@@ -598,8 +608,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutOd
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutOd
         }
     }
 
@@ -610,8 +620,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutOdFilt
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutOdFilt
         }
     }
 
@@ -622,8 +632,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutOdPu
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutOdPu
         }
     }
 
@@ -634,8 +644,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutOdPuFilt
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutOdPuFilt
         }
     }
 
@@ -646,8 +656,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutPpAlt
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutPpAlt
         }
     }
 
@@ -658,8 +668,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutOdAlt
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutOdAlt
         }
     }
 
@@ -670,8 +680,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutOdFiltAlt
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutOdFiltAlt
         }
     }
 
@@ -682,8 +692,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutOdPuAlt
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutOdPuAlt
         }
     }
 
@@ -694,8 +704,8 @@ pub(crate) mod mode {
             pins::set_ovt(port, pin, true);
         }
 
-        fn dynamic_mode() -> DynamicMode {
-            DynamicMode::OutOdPuFiltAlt
+        fn dynamic_mode() -> PinMode {
+            PinMode::OutOdPuFiltAlt
         }
     }
 }
@@ -797,22 +807,22 @@ impl From<PinId> for u8 {
     }
 }
 
-impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 0, MODE> {}
-impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 1, MODE> {}
-impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 2, MODE> {}
-impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 3, MODE> {}
-impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 4, MODE> {}
-impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 5, MODE> {}
-impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 6, MODE> {}
-impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 7, MODE> {}
-impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 8, MODE> {}
-impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 9, MODE> {}
-impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 10, MODE> {}
-impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 11, MODE> {}
-impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 12, MODE> {}
-impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 13, MODE> {}
-impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 14, MODE> {}
-impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 15, MODE> {}
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 0, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 1, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 2, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 3, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 4, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 5, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 6, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 7, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 8, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 9, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 10, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 11, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 12, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 13, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 14, MODE> where Pin<P, 0, MODE>: InputPin {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 15, MODE> where Pin<P, 0, MODE>: InputPin {}
 
 /// Configure GPIO peripheral registers values for individual pins
 pub(crate) mod pins {
