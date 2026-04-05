@@ -807,23 +807,6 @@ impl From<PinId> for u8 {
     }
 }
 
-impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 0, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 1, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 2, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 3, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 4, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 5, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 6, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 7, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 8, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 9, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 10, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 11, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 12, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 13, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 14, MODE> where Pin<P, 0, MODE>: InputPin {}
-impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 15, MODE> where Pin<P, 0, MODE>: InputPin {}
-
 /// Configure GPIO peripheral registers values for individual pins
 pub(crate) mod pins {
     use efm32pg1b_pac::gpio::port_a::model::MODE0;

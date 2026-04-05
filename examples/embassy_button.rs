@@ -34,41 +34,29 @@ async fn main(spawner: Spawner) {
         NVIC::unmask(Interrupt::GPIO_ODD);
     }
 
+    defmt::info!("press BTN0 (PF6) or BTN1 (PF7)");
+
     // ---- Button 0 ----
-    let mut led0 = gpio.pf4.into_mode::<OutPp>();
-    let mut btn0 = gpio
+    let led0 = gpio.pf4.into_mode::<OutPp>().into_dynamic_pin();
+    let btn0 = gpio
         .pf6
         .into_mode::<InFloat>()
         .into_async_input(gpio.exti4ctrl);
+    spawner.spawn(button_task(btn0, led0).expect("Could not spawn Task"));
 
     // ---- Button 1 ----
     let led1 = gpio.pf5.into_mode::<OutPpAlt>().into_dynamic_pin();
     let btn1 = gpio
         .pf7
         .into_mode::<InFilt>()
-        .into_async_input(gpio.exti5ctrl);
-    // ---- Button 1 Task ----
+        .into_dynamic_pin()
+        .try_into_async_input(gpio.exti5ctrl)
+        .unwrap();
     spawner.spawn(button_task(btn1, led1).expect("Could not spawn Task"));
-
-    // ---- Button 0 is serviced in main task ----
-    defmt::info!("press BTN0 (PF6)");
-    loop {
-        // Wait for button press (active low)
-        let _ = btn0.wait_for_low().await;
-        defmt::info!("{} pressed", &btn0);
-
-        // Toggle LED
-        let _ = led0.toggle();
-
-        // Wait for button release
-        let _ = btn0.wait_for_high().await;
-        defmt::info!("{} released", &btn0);
-    }
 }
 
-#[embassy_executor::task()]
+#[embassy_executor::task(pool_size = 2)]
 async fn button_task(mut btn: AsyncInputPin, mut led: DynamicPin) {
-    defmt::info!("press a button");
     loop {
         // Wait for button press (active low)
         let _ = btn.wait_for_low().await;

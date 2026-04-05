@@ -1,20 +1,245 @@
 //! GPIO External Interrupts
 //!
+//! Bind an External Interrupt to a particular Pin.
+//!
+//! While any Exti can be assigned to any port, only some of the pins of that port can be bound to an Exti.
+//!
+//! |  ExtiId  |  Port  |      Pins      |
+//! |----------|--------|----------------|
+//! |     0    |   any  |  0,  1,  2,  3 |
+//! |     1    |   any  |  0,  1,  2,  3 |
+//! |     2    |   any  |  0,  1,  2,  3 |
+//! |     3    |   any  |  0,  1,  2,  3 |
+//! |     4    |   any  |  4,  5,  6,  7 |
+//! |     5    |   any  |  4,  5,  6,  7 |
+//! |     6    |   any  |  4,  5,  6,  7 |
+//! |     7    |   any  |  4,  5,  6,  7 |
+//! |     8    |   any  |  8,  9, 10, 11 |
+//! |     9    |   any  |  8,  9, 10, 11 |
+//! |    10    |   any  |  8,  9, 10, 11 |
+//! |    11    |   any  |  8,  9, 10, 11 |
+//! |    12    |   any  | 12, 13, 14, 15 |
+//! |    13    |   any  | 12, 13, 14, 15 |
+//! |    14    |   any  | 12, 13, 14, 15 |
+//! |    15    |   any  | 12, 13, 14, 15 |
+//!
+//! In order to ensure that binding an Exti to a Pin is always valid, the user is expected to convert their pin and exti
+//! into an [`ExtiBoundPin`].
+//!
+//! This ensures that:
+//!     - Only enabled pins can be bound to and exti (i.e. that the pin mode is not `Disabled`, `DisabledPu` or `Analog`)
+//!     - The mode of the pin does not change while it's bound to an exti
+//!     - Only valid Pin-Exti bindings are allowed
+//!
+//! When creating an [`ExtiBoundPin`], the interrupt handler for the bound exti has to be provided. The HAL will take
+//! care to call the apropriate handler whenever an Exti flag is raised, and it will also clear the Exti flag before
+//! executing the handler.
+//!
+//! ```rust,norun
+//! fn handler(exti: ExtiId) {
+//!     // ...
+//! }
+//!
+//! // Typestate Pin
+//! let mut btn0 = gpio
+//!     .pf6
+//!     .into_mode::<InFloat>()
+//!     .into_exti_bound_pin(gpio.exti4ctrl, handler);
+//!
+//! // Dynamic Pin
+//! let mut btn1 = gpio
+//!     .pf7
+//!     .into_mode::<InFilt>()
+//!     .into_dynamic_pin()
+//!     .try_into_exti_bound_pin(gpio.exti5ctrl, handler)
+//!     .unwrap();
+//! ```
+//! Or you can also use a closure
+//! ```rust,norun
+//! let mut btn0 = gpio
+//!     .pf6
+//!     .into_mode::<InFloat>()
+//!     .into_exti_bound_pin(gpio.exti4ctrl, |exti| {
+//!         // ...
+//!     });
+//! ```
+//! Unfortunatelly, since the closure in the example above will be constrained to a function pointer, it cannot capture
+//! any variables from its environment.
+//!
+//! Since this module provides a way for the user to run their code on specific external interrupts, both Gpio
+//! interrupt vectors are implemented here, so you don't have to worry about EVEN or ODD external interrupts.
+//!
 
-use crate::gpio::{pin::PinInfo, GpioError};
+use crate::{
+    gpio::{dynamic::DynamicPin, pin::PinInfo, GpioError, Pin},
+    pac::interrupt,
+};
+use core::cell::RefCell;
+use critical_section::{CriticalSection, Mutex};
 
 /// Number of External Interrupts
 pub const EXTI_COUNT: usize = 16;
 
-/// Controller for External Interrupt `N`
+/// External interrupt Handler function.
+/// Gets the ExtiId of the active external interrupt passed in as parameter
+type ExtiHandler = fn(ExtiId);
+
+/// Handler which does nothing
+pub(crate) fn default_handler(_: ExtiId) {}
+
+/// External interrupt handlers
+static EXTI_HANDLERS: Mutex<RefCell<[ExtiHandler; EXTI_COUNT]>> =
+    Mutex::new(RefCell::new([default_handler; _]));
+
+/// Set the handler function for the given external interrupt
+pub(crate) fn set_handler(cs: CriticalSection, exti: ExtiId, handler: ExtiHandler) {
+    EXTI_HANDLERS.borrow(cs).borrow_mut()[exti as usize] = handler;
+}
+
+/// Handler which calls the user provided handlers in `EXTI_HANDLERS`
+fn base_handler(exti: ExtiId) {
+    // Clearing the interrupt flag _before_ executing the handler so that the handler can raise it back if needed
+    mmio::exti_clear(exti);
+    let handle = critical_section::with(|cs| EXTI_HANDLERS.borrow(cs).borrow()[exti as usize]);
+    handle(exti);
+}
+
+#[interrupt]
+fn GPIO_ODD() {
+    for exti in mmio::exti_flags_odd() {
+        base_handler(exti);
+    }
+}
+
+#[interrupt]
+fn GPIO_EVEN() {
+    for exti in mmio::exti_flags_even() {
+        base_handler(exti);
+    }
+}
+
+impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
+    /// Convert the typestate `Pin` into an [`ExtiBoundPin`]
+    pub fn into_exti_bound_pin<const GN: u8, const EN: u8>(
+        self,
+        mut exti_ctrl: ExtiCtrl<EN>,
+        handler: ExtiHandler,
+    ) -> ExtiBoundPin<Pin<P, N, MODE>, EN>
+    where
+        Pin<P, N, MODE>: PinInfo,
+        // Only allow binding the Pin to the Exti if both are part of the same ExtiGroup
+        ExtiCtrl<EN>: ExtiGroup<GN>,
+        Self: ExtiGroup<GN>,
+    {
+        critical_section::with(|cs| {
+            exti_ctrl.disable();
+            exti_ctrl.clear();
+
+            // It's safe to use `exti_bind_unchecked` here since the checks have been done by the type system.
+            // i.e. an `AsyncInputPin` can only be created if both the `Pin` and `ExtiCtrl` implement the same
+            // `ExtiGroup<GN>` trait ... therefore we know the pin can be bound to the external interrupt
+            mmio::exti_bind_unchecked(exti_ctrl.id(), self.port(), self.pin());
+
+            // Set the interrupt handler for async pins
+            set_handler(cs, exti_ctrl.id(), handler);
+        });
+
+        ExtiBoundPin::new(self, exti_ctrl)
+    }
+}
+
+impl DynamicPin {
+    /// Try to convert the `DynamicPin` into an `ExtiBoundPin`
+    ///
+    /// This may fail if the pin is disabled, or if the Exti cannot be bound to this pin
+    ///
+    /// See [`crate::gpio::exti`] for more info on which pins can be bound to which external interrupts
+    pub fn try_into_exti_bound_pin<const EN: u8>(
+        self,
+        mut exti_ctrl: ExtiCtrl<EN>,
+        handler: ExtiHandler,
+    ) -> Result<ExtiBoundPin<DynamicPin, EN>, GpioError> {
+        if !mmio::exti_is_bind_valid(exti_ctrl.id(), self.pin()) {
+            Err(GpioError::InvalidExiBind {
+                exti: exti_ctrl.id(),
+                port: self.port(),
+                pin: self.pin(),
+            })
+        } else if !self.mode().readable() {
+            // Pin is Disabled or in Analog mode
+            Err(GpioError::InvalidMode(self.mode()))
+        } else {
+            critical_section::with(|cs| {
+                exti_ctrl.disable();
+                exti_ctrl.clear();
+                mmio::exti_bind_unchecked(exti_ctrl.id(), self.port(), self.pin());
+                // Set the interrupt handler for async pins
+                set_handler(cs, exti_ctrl.id(), handler);
+            });
+
+            Ok(ExtiBoundPin::new(self, exti_ctrl))
+        }
+    }
+}
+
+/// A `PIN` which is bound to an external interrupt `ExtiCtrl<EN>`
+///
+/// Use the provided methods to get references to the original `PIN` and `ExtiCtrl`
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct ExtiCtrl<const N: u8> {
+pub struct ExtiBoundPin<PIN, const EN: u8> {
+    pin: PIN,
+    exti_ctrl: ExtiCtrl<EN>,
+}
+
+impl<PIN, const EN: u8> ExtiBoundPin<PIN, EN> {
+    pub(crate) fn new(pin: PIN, exti_ctrl: ExtiCtrl<EN>) -> Self {
+        Self { pin, exti_ctrl }
+    }
+
+    /// Get a reference to the original pin
+    pub fn pin_ref(&self) -> &PIN {
+        &self.pin
+    }
+
+    /// Get a mutable reference to the original pin
+    pub fn pin_ref_mut(&mut self) -> &mut PIN {
+        &mut self.pin
+    }
+
+    /// Get a reference to the original external interrupt controller
+    pub fn exti_ctrl_ref(&self) -> &ExtiCtrl<EN> {
+        &self.exti_ctrl
+    }
+
+    /// Get a mutable reference to the original external interrupt controller
+    pub fn exti_ctrl_ref_mut(&mut self) -> &mut ExtiCtrl<EN> {
+        &mut self.exti_ctrl
+    }
+
+    /// Return the PIN and `ExtiCtrl` used to construct this `ExtiBoundPin`
+    pub fn release(self) -> (PIN, ExtiCtrl<EN>) {
+        // cleanup
+        critical_section::with(|cs| {
+            mmio::exti_disable(self.exti_ctrl.id());
+            mmio::exti_clear(self.exti_ctrl.id());
+            mmio::exti_edge_clear(self.exti_ctrl.id(), ExtiEdge::Both);
+            set_handler(cs, self.exti_ctrl.id(), default_handler);
+        });
+
+        (self.pin, self.exti_ctrl)
+    }
+}
+
+/// Controller for External Interrupt `EN`
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct ExtiCtrl<const EN: u8> {
     /// Ensure only this crate can instantiate `ExtiCtrl` (see [`ExtiCtrl::new`])
     _p: (),
 }
 
-impl<const N: u8> ExtiCtrl<N> {
+impl<const EN: u8> ExtiCtrl<EN> {
     /// Create the controller for External Interrupt `N`
     pub(crate) fn new() -> Self {
         Self { _p: () }
@@ -22,7 +247,7 @@ impl<const N: u8> ExtiCtrl<N> {
 
     /// Get the External Interrupt ID from this controller
     pub fn id(&self) -> ExtiId {
-        ExtiId::from_u8_unchecked(N)
+        ExtiId::from_u8_unchecked(EN)
     }
 
     /// Sellect the interrupt edge for this Exti
@@ -46,10 +271,9 @@ impl<const N: u8> ExtiCtrl<N> {
     }
 }
 
-/// This trait is implemented for `Pin`s in order to constrain which pins can be bound to which External Interrupt based
-/// on the Exti group number `GN`.
+/// This trait is used to map which Exti can be bound to which typestate Pin
 ///
-/// See also [`ExtiBind`], [`mmio::exti_bind`]
+/// A pin and an external interrupt can only be bound if they both implement the same ExtiGroup<GN>
 pub trait ExtiGroup<const GN: u8> {}
 
 impl ExtiGroup<0> for ExtiCtrl<0> {}
@@ -69,40 +293,22 @@ impl ExtiGroup<3> for ExtiCtrl<13> {}
 impl ExtiGroup<3> for ExtiCtrl<14> {}
 impl ExtiGroup<3> for ExtiCtrl<15> {}
 
-/// Bind an External Interrupt to a `Pin` which satisfied the [`ExtiGroup`] constraint
-pub trait ExtiBind<const GN: u8> {
-    /// Bind an External Interrupt to a Pin which _can_ be bound to the Exti
-    fn bind<T: PinInfo + ExtiGroup<GN>>(self, pin: &T) -> Self;
-}
-
-/// Implement [`ExtiBind`] for an [`ExtiCtrl<N>`] concrete type
-macro_rules! impl_exti_bind {
-    ($group_number:literal, $exti_number: literal) => {
-        impl ExtiBind<$group_number> for ExtiCtrl<$exti_number> {
-            fn bind<T: PinInfo + ExtiGroup<$group_number>>(self, pin: &T) -> Self {
-                mmio::exti_bind_unchecked(self.id(), pin.port(), pin.pin());
-                self
-            }
-        }
-    };
-}
-
-impl_exti_bind!(0, 0);
-impl_exti_bind!(0, 1);
-impl_exti_bind!(0, 2);
-impl_exti_bind!(0, 3);
-impl_exti_bind!(1, 4);
-impl_exti_bind!(1, 5);
-impl_exti_bind!(1, 6);
-impl_exti_bind!(1, 7);
-impl_exti_bind!(2, 8);
-impl_exti_bind!(2, 9);
-impl_exti_bind!(2, 10);
-impl_exti_bind!(2, 11);
-impl_exti_bind!(3, 12);
-impl_exti_bind!(3, 13);
-impl_exti_bind!(3, 14);
-impl_exti_bind!(3, 15);
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 0, MODE> {}
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 1, MODE> {}
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 2, MODE> {}
+impl<const P: char, MODE> ExtiGroup<0> for Pin<P, 3, MODE> {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 4, MODE> {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 5, MODE> {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 6, MODE> {}
+impl<const P: char, MODE> ExtiGroup<1> for Pin<P, 7, MODE> {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 8, MODE> {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 9, MODE> {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 10, MODE> {}
+impl<const P: char, MODE> ExtiGroup<2> for Pin<P, 11, MODE> {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 12, MODE> {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 13, MODE> {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 14, MODE> {}
+impl<const P: char, MODE> ExtiGroup<3> for Pin<P, 15, MODE> {}
 
 /// External Interrupt ID
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -209,13 +415,11 @@ pub enum ExtiEdge {
 /// Access functions for external interrupts Memory Mapped IO
 /// FIXME: make this and all `pub fn` below `pub(crate)`
 pub mod mmio {
-
     use crate::{
         gpio::{
             exti::{ExtiEdge, ExtiId},
             pin::PinId,
             port::PortId,
-            GpioError,
         },
         pac::Gpio,
     };
@@ -225,41 +429,6 @@ pub mod mmio {
     const SEL_GROUPS: u8 = u32::BITS as u8 / SEL_GROUP_SIZE;
     const SEL_PORT_BIT_MASK: u32 = 0x0F;
     const SEL_PIN_BIT_MASK: u32 = 0b11;
-
-    /// Bind an External Interrupt to a particular port and pin.
-    ///
-    /// While any Exti can be assigned to any port, only some of the pins of that port can be bound to an Exti.
-    ///
-    /// Also, external interrupts with an even number will trigger the `GPIO_EVEN` ISR, and odd will trigger `GPIO_ODD`
-    ///
-    /// | Exti | Port |      Pins      | NVIC Interrupt |
-    /// |------|------|----------------|----------------|
-    /// |   0  |  any |  0,  1,  2,  3 |  `GPIO_EVEN`   |
-    /// |   1  |  any |  0,  1,  2,  3 |  `GPIO_ODD`    |
-    /// |   2  |  any |  0,  1,  2,  3 |  `GPIO_EVEN`   |
-    /// |   3  |  any |  0,  1,  2,  3 |  `GPIO_ODD`    |
-    /// |   4  |  any |  4,  5,  6,  7 |  `GPIO_EVEN`   |
-    /// |   5  |  any |  4,  5,  6,  7 |  `GPIO_ODD`    |
-    /// |   6  |  any |  4,  5,  6,  7 |  `GPIO_EVEN`   |
-    /// |   7  |  any |  4,  5,  6,  7 |  `GPIO_ODD`    |
-    /// |   8  |  any |  8,  9, 10, 11 |  `GPIO_EVEN`   |
-    /// |   9  |  any |  8,  9, 10, 11 |  `GPIO_ODD`    |
-    /// |  10  |  any |  8,  9, 10, 11 |  `GPIO_EVEN`   |
-    /// |  11  |  any |  8,  9, 10, 11 |  `GPIO_ODD`    |
-    /// |  12  |  any | 12, 13, 14, 15 |  `GPIO_EVEN`   |
-    /// |  13  |  any | 12, 13, 14, 15 |  `GPIO_ODD`    |
-    /// |  14  |  any | 12, 13, 14, 15 |  `GPIO_EVEN`   |
-    /// |  15  |  any | 12, 13, 14, 15 |  `GPIO_ODD`    |
-    ///
-    pub fn exti_bind(exti: ExtiId, port: PortId, pin: PinId) -> Result<(), GpioError> {
-        if exti_is_bind_valid(exti, pin) {
-            exti_bind_unchecked(exti, port, pin);
-
-            Ok(())
-        } else {
-            Err(GpioError::InvalidExiBind { exti, port, pin })
-        }
-    }
 
     pub(crate) fn exti_bind_unchecked(exti: ExtiId, port: PortId, pin: PinId) {
         let gpio = gpio();
@@ -317,6 +486,11 @@ pub mod mmio {
             .modify(|r, w| unsafe { w.ext().bits(r.ext().bits() | 1 << exti as u8) });
     }
 
+    /// Check if external interrupt is enabled
+    pub fn exti_is_enabled(exti: ExtiId) -> bool {
+        gpio().ien().read().ext().bits() & 1 << exti as u8 != 0
+    }
+
     /// Disable given external interrupt
     pub(crate) fn exti_disable(exti: ExtiId) {
         gpio()
@@ -330,7 +504,7 @@ pub mod mmio {
     }
 
     /// Iterator over all raised EVEN external interrupt flags
-    pub fn exti_flags_even() -> impl Iterator<Item = ExtiId> {
+    pub(crate) fn exti_flags_even() -> impl Iterator<Item = ExtiId> {
         let exti_cached_flags = gpio().if_().read().ext().bits();
 
         (ExtiId::Exti0 as u8..=ExtiId::Exti14 as u8)
@@ -340,7 +514,7 @@ pub mod mmio {
     }
 
     /// Iterator over all raised ODD external interrupt flags
-    pub fn exti_flags_odd() -> impl Iterator<Item = ExtiId> {
+    pub(crate) fn exti_flags_odd() -> impl Iterator<Item = ExtiId> {
         let exti_cached_flags = gpio().if_().read().ext().bits();
 
         (ExtiId::Exti1 as u8..=ExtiId::Exti15 as u8)
@@ -383,7 +557,7 @@ pub mod mmio {
         };
     }
 
-    /// Get the edge which triggers the external interrupt
+    /// Get the edge(s) which trigger the external interrupt
     pub fn exti_edge_get(exti: ExtiId) -> Option<ExtiEdge> {
         let gpio = gpio();
         let exti_mask = 1 << exti as u8;
@@ -402,7 +576,7 @@ pub mod mmio {
         }
     }
 
-    /// Clear the edge which triggers the external interrupt
+    /// Clear the edge(s) which trigger the external interrupt
     pub fn exti_edge_clear(exti: ExtiId, edge: ExtiEdge) {
         let gpio = gpio();
         let exti_mask = !(1 << exti as u8);
@@ -425,7 +599,8 @@ pub mod mmio {
             .modify(|_, w| unsafe { w.em4wu().bits(1 << exti as u8) });
     }
 
-    const fn exti_is_bind_valid(exti: ExtiId, pin: PinId) -> bool {
+    /// Check if given Pin can be bound to given Exti
+    pub const fn exti_is_bind_valid(exti: ExtiId, pin: PinId) -> bool {
         let exti_group = exti as u8 / SEL_GROUP_SIZE;
         let pin_group = pin as u8 / SEL_GROUP_SIZE;
         exti_group == pin_group

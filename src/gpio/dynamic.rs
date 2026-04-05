@@ -256,7 +256,8 @@ impl PinMode {
         }
     }
 
-    fn readable(&self) -> bool {
+    /// Checks if the mode is **not** Disabled or Analog
+    pub(crate) fn readable(&self) -> bool {
         !matches!(
             self,
             PinMode::Disabled | PinMode::DisabledPu | PinMode::Analog
@@ -275,7 +276,7 @@ impl PinMode {
         )
     }
 
-    fn readable_out(&self) -> bool {
+    pub(crate) fn readable_out(&self) -> bool {
         matches!(
             self,
             PinMode::OutPp

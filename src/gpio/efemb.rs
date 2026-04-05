@@ -3,19 +3,17 @@
 
 use core::{fmt::Debug, future::Future, task::Poll};
 
-use crate::{
-    gpio::{
-        dynamic::{DynamicPin, PinMode},
-        exti::{self, ExtiCtrl, ExtiEdge, ExtiGroup, ExtiId, EXTI_COUNT},
-        pin::{mode::MultiMode, PinId, PinInfo},
-        Pin,
-    },
-    pac::interrupt,
+use crate::gpio::{
+    dynamic::DynamicPin,
+    exti::{self, ExtiCtrl, ExtiEdge, ExtiGroup, ExtiId, EXTI_COUNT},
+    pin::{mode::MultiMode, PinInfo},
+    GpioError, Pin,
 };
 use embassy_sync::waitqueue::AtomicWaker;
-use embedded_hal::digital::{Error, ErrorType, InputPin};
+use embedded_hal::digital::{ErrorType, InputPin};
 use embedded_hal_async::digital::Wait;
 
+/// Embassy task wakers for each external interrupt
 static EXTI_WAKERS: [AtomicWaker; EXTI_COUNT] = [const { AtomicWaker::new() }; EXTI_COUNT];
 
 impl<const P: char, const N: u8, MODE> Pin<P, N, MODE>
@@ -29,17 +27,24 @@ where
     ///          Embassy tasks as parameters, which is not possible with generic types
     pub fn into_async_input<const GN: u8, const EN: u8>(
         self,
-        exti_ctrl: ExtiCtrl<EN>,
+        mut exti_ctrl: ExtiCtrl<EN>,
     ) -> AsyncInputPin
     where
         ExtiCtrl<EN>: ExtiGroup<GN>,
         Self: ExtiGroup<GN>,
     {
-        // It's safe to use `exti_bind_unchecked` here since the checks have been done by the type system.
-        // i.e. an `AsyncInputPin` can only be created if both the `Pin` and `ExtiCtrl` implement the same
-        // `ExtiGroup<GN>` trait
-        exti::mmio::exti_bind_unchecked(exti_ctrl.id(), self.port(), self.pin());
+        critical_section::with(|cs| {
+            exti_ctrl.disable();
+            exti_ctrl.clear();
 
+            // It's safe to use `exti_bind_unchecked` here since the checks have been done by the type system.
+            // i.e. an `AsyncInputPin` can only be created if both the `Pin` and `ExtiCtrl` implement the same
+            // `ExtiGroup<GN>` trait ... therefore we know the pin can be bound to the external interrupt
+            exti::mmio::exti_bind_unchecked(exti_ctrl.id(), self.port(), self.pin());
+
+            // Set the interrupt handler for async pins
+            exti::set_handler(cs, exti_ctrl.id(), on_interrupt);
+        });
         AsyncInputPin::new(
             DynamicPin::new(self.port(), self.pin(), MODE::dynamic_mode()),
             exti_ctrl.id(),
@@ -50,20 +55,31 @@ where
 impl DynamicPin {
     /// Try to Convert the `DynamicPin` into an `AsyncInputPin`
     ///
-    /// This may fail if the pin is not an input pin, or if the Exti cannot be bound to this `DynamicPin`
+    /// This may fail if the pin is not an input pin, or if the Exti cannot be bound to this pin
     ///
-    /// See [`crate::gpio::exti::mmio::exti_bind`] for more info on which pins can be bound to which external interrupts
+    /// See [`crate::gpio::exti`] for more info on which pins can be bound to which external interrupts
     pub fn try_into_async_input<const N: u8>(
         self,
-        exti_ctrl: ExtiCtrl<N>,
-    ) -> Result<AsyncInputPin, AsyncInputError> {
-        exti::mmio::exti_bind(exti_ctrl.id(), self.port(), self.pin())
-            .map_err(|_e| AsyncInputError::InvalidExiBind(self.pin(), exti_ctrl.id()))?;
-
-        if self.mode().readable_input() {
-            Ok(AsyncInputPin::new(self, exti_ctrl.id()))
+        mut exti_ctrl: ExtiCtrl<N>,
+    ) -> Result<AsyncInputPin, GpioError> {
+        if !exti::mmio::exti_is_bind_valid(exti_ctrl.id(), self.pin()) {
+            Err(GpioError::InvalidExiBind {
+                exti: exti_ctrl.id(),
+                port: self.port(),
+                pin: self.pin(),
+            })
+        } else if !self.mode().readable_input() {
+            Err(GpioError::InvalidMode(self.mode()))
         } else {
-            Err(AsyncInputError::InvalidPinMode(self.mode()))
+            critical_section::with(|cs| {
+                exti_ctrl.disable();
+                exti_ctrl.clear();
+                exti::mmio::exti_bind_unchecked(exti_ctrl.id(), self.port(), self.pin());
+                // Set the interrupt handler for async pins
+                exti::set_handler(cs, exti_ctrl.id(), on_interrupt);
+            });
+
+            Ok(AsyncInputPin::new(self, exti_ctrl.id()))
         }
     }
 }
@@ -87,7 +103,14 @@ impl AsyncInputPin {
     ///
     /// FIXME: implement a runtime type for `ExtiCtrl`, since returning the Id is not very useful
     pub fn release(self) -> (DynamicPin, ExtiId) {
-        exti::mmio::exti_disable(self.exti);
+        // cleanup
+        critical_section::with(|cs| {
+            exti::mmio::exti_disable(self.exti);
+            exti::mmio::exti_clear(self.exti);
+            exti::mmio::exti_edge_clear(self.exti, ExtiEdge::Both);
+            exti::set_handler(cs, self.exti, exti::default_handler);
+        });
+
         (self.pin, self.exti)
     }
 }
@@ -139,7 +162,7 @@ impl ExtiFuture {
 }
 
 impl Future for ExtiFuture {
-    type Output = Result<(), AsyncInputError>;
+    type Output = Result<(), GpioError>;
 
     fn poll(
         self: core::pin::Pin<&mut Self>,
@@ -178,40 +201,6 @@ fn on_interrupt(exti: ExtiId) {
     exti::mmio::exti_edge_clear(exti, ExtiEdge::Both);
 }
 
-#[interrupt]
-fn GPIO_ODD() {
-    for exti in exti::mmio::exti_flags_odd() {
-        on_interrupt(exti);
-    }
-}
-
-#[interrupt]
-fn GPIO_EVEN() {
-    for exti in exti::mmio::exti_flags_even() {
-        on_interrupt(exti);
-    }
-}
-
-/// Async Input Errors
-#[derive(Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum AsyncInputError {
-    /// The pin cannot be bound to the external interrupt
-    /// See [`crate::gpio::exti::mmio::exti_bind`] for more info on which pins can be bound to which external interrupts
-    InvalidExiBind(PinId, ExtiId),
-    /// The pin is not an input pin
-    InvalidPinMode(PinMode),
-}
-
-impl Error for AsyncInputError {
-    fn kind(&self) -> embedded_hal::digital::ErrorKind {
-        match self {
-            Self::InvalidExiBind(_, _) => embedded_hal::digital::ErrorKind::Other,
-            Self::InvalidPinMode(..) => embedded_hal::digital::ErrorKind::Other,
-        }
-    }
-}
-
 impl ErrorType for AsyncInputPin {
-    type Error = AsyncInputError;
+    type Error = GpioError;
 }
