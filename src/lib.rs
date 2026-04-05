@@ -6,6 +6,7 @@
 #![no_std]
 #![warn(missing_docs)]
 #![warn(clippy::missing_safety_doc)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 // #![warn(clippy::undocumented_unsafe_blocks)]
 
 pub use efm32pg1b_pac as pac;
@@ -51,10 +52,3 @@ pub mod prelude {
     };
     pub use fugit::RateExtU32;
 }
-
-// fn stripped_type_name<T>() -> &'static str {
-//     let s = core::any::type_name::<T>();
-//     let s = s.split("<").next().unwrap();
-//     let p = s.split("::");
-//     p.last().unwrap()
-// }

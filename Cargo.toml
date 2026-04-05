@@ -10,6 +10,13 @@ readme = "README.md"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/BogdanOlar/efm32pg1b-hal"
 
+[package.metadata.docs.rs]
+# config for `document-features`
+# FIXME: how the heck do you get `cargo doc` to see the `efemb.rs` modules that are only compiled if "efemb" is enabled!?
+# features = ["defmt", "qfn48", "efemb", "efemb-timdrv-letim0-hz-32_768"]
+all-features = true     # enable all features when creating the documentation
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 efm32pg1b-pac = { version = "0.4.2", features = ["critical-section","rt","defmt"] }
 embedded-hal = { version = "1.0" }
@@ -20,7 +27,8 @@ cortex-m-semihosting = "0.5.0"
 critical-section = { version = "1.2.0"}
 panic-halt = "1.0.0"
 fugit = { version = "0.3.9", features = ["defmt"] }
-# dependencies when using the log/defmt feature
+document-features = { version = "0.2", optional = false }
+#! ### Optional dependencies
 log = { version = "0.4.29", optional = true }
 defmt = { version = "1.0", optional = true }
 defmt-rtt = { version = "1.0", optional = true }
@@ -29,10 +37,8 @@ panic-probe = { version = "1.0", features = ["print-defmt"] }
 embassy-time-driver = { version = "0.2.2", optional = true}
 embassy-time-queue-utils = { version = "0.3.0", optional = true }
 embassy-sync = { version = "0.7.2", optional = true}
-document-features = "0.2.12"
 
 [dev-dependencies]
-
 #  Be able to print out types in `embedded-hal` when running the examples
 embedded-hal = { version = "1", features = ["defmt-03"] }
 embedded-graphics = { version = "0.8.1" }
@@ -46,34 +52,32 @@ embassy-time = { version = "0.5.1"}
 
 [features]
 default = []
-# Allow changing the function of the debug pins (Pins 0-3 of port `F`)
+## Allow changing the function of the debug pins (`PF0`, `PF1`,`PF2`,`PF3`)
 use_debug_pins = []
-
 # Controller package options. Pick either *ONE* of the features , or *NONE*.
-## QFN32 without DC-DC GPIO.
+## Controller package QFN32 without DC-DC GPIO.
 qfn32 = []
-## QFN48 with DC-DC GPIO.
+## Controller package QFN48 with DC-DC GPIO.
 qfn48 = []
-
-# Embassy support
+# Embassy
+## Embassy support for `efm32`
 efemb = [
     "dep:embassy-sync",
     "dep:embassy-time-queue-utils",
     "dep:embassy-time-driver",
     "dep:embedded-hal-async"
 ]
-## Embassy time driver
-### Use LeTimer0 as embassy timer base, with 32768 Hz tick rate, and specify the tick rate to the `embassy-time-driver`
+# Embassy time driver
+## Use LeTimer0 as embassy timer base, with 32768 Hz tick rate, and specify the tick rate to the `embassy-time-driver`
 efemb-timdrv-letim0-hz-32_768 = ["embassy-time-driver/tick-hz-32_768"]
-### Use LeTimer0 as embassy timer base, with 1000 Hz tick rate, and specify the tick rate to the `embassy-time-driver`
+## Use LeTimer0 as embassy timer base, with 1000 Hz tick rate, and specify the tick rate to the `embassy-time-driver`
 efemb-timdrv-letim0-hz-1_000 = ["embassy-time-driver/tick-hz-1_000"]
-### Debug pins showing when interrupt and schedule function are executed
+# Debug pins showing when interrupt and schedule function are executed
 efemb-timdrv-letim0-dbg-pins = []
-
 # Debugging options. Pick either *ONE* of the features , or *NONE*.
-## Use LOG
+## Use `log` crate for debugging
 log = ["dep:log", "dep:rtt-target", "rtt-target/log", "embedded-test/log"]
-## Use Defmt
+## Use `defmt` for debugging
 defmt = [
     "dep:defmt",
     "dep:defmt-rtt",

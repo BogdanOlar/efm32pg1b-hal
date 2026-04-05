@@ -35,7 +35,7 @@
 //! care to call the apropriate handler whenever an Exti flag is raised, and it will also clear the Exti flag before
 //! executing the handler.
 //!
-//! ```rust,norun
+//! ```rust,no_run
 //! fn handler(exti: ExtiId) {
 //!     // ...
 //! }
@@ -55,7 +55,7 @@
 //!     .unwrap();
 //! ```
 //! Or you can also use a closure
-//! ```rust,norun
+//! ```rust,no_run
 //! let mut btn0 = gpio
 //!     .pf6
 //!     .into_mode::<InFloat>()
@@ -155,7 +155,7 @@ impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
 }
 
 impl DynamicPin {
-    /// Try to convert the `DynamicPin` into an `ExtiBoundPin`
+    /// Try to convert a [`DynamicPin`] into an [`ExtiBoundPin`]
     ///
     /// This may fail if the pin is disabled, or if the Exti cannot be bound to this pin
     ///
@@ -189,6 +189,10 @@ impl DynamicPin {
 }
 
 /// A `PIN` which is bound to an external interrupt `ExtiCtrl<EN>`
+///
+/// You can construct one from:
+/// - An enabled typestate pin [`Pin::into_exti_bound_pin`]
+/// - An enabled dynamic pin [`DynamicPin::try_into_exti_bound_pin`]
 ///
 /// Use the provided methods to get references to the original `PIN` and `ExtiCtrl`
 #[derive(Debug)]
@@ -279,7 +283,7 @@ impl<const EN: u8> ExtiCtrl<EN> {
 
 /// This trait is used to map which Exti can be bound to which typestate Pin
 ///
-/// A pin and an external interrupt can only be bound if they both implement the same ExtiGroup<GN>
+/// A pin and an external interrupt can only be bound if they both implement the same `ExtiGroup<GN>`
 pub trait ExtiGroup<const GN: u8> {}
 
 impl ExtiGroup<0> for ExtiCtrl<0> {}
