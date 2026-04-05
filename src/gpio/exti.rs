@@ -71,7 +71,11 @@
 //!
 
 use crate::{
-    gpio::{dynamic::DynamicPin, pin::PinInfo, GpioError, Pin},
+    gpio::{
+        dynamic::DynamicPin,
+        pin::{mode::EnabledMode, PinInfo},
+        GpioError, Pin,
+    },
     pac::interrupt,
 };
 use core::cell::RefCell;
@@ -127,6 +131,8 @@ impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
     ) -> ExtiBoundPin<Pin<P, N, MODE>, EN>
     where
         Pin<P, N, MODE>: PinInfo,
+        // Only enabled pins may be bound to an external interrupt
+        MODE: EnabledMode,
         // Only allow binding the Pin to the Exti if both are part of the same ExtiGroup
         ExtiCtrl<EN>: ExtiGroup<GN>,
         Self: ExtiGroup<GN>,
@@ -413,7 +419,6 @@ pub enum ExtiEdge {
 }
 
 /// Access functions for external interrupts Memory Mapped IO
-/// FIXME: make this and all `pub fn` below `pub(crate)`
 pub mod mmio {
     use crate::{
         gpio::{
@@ -492,7 +497,7 @@ pub mod mmio {
     }
 
     /// Disable given external interrupt
-    pub(crate) fn exti_disable(exti: ExtiId) {
+    pub fn exti_disable(exti: ExtiId) {
         gpio()
             .ien()
             .modify(|r, w| unsafe { w.ext().bits(r.ext().bits() & !(1 << exti as u8)) });

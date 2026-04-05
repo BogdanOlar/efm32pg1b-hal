@@ -5,7 +5,6 @@ use crate::{
     gpio::{
         dynamic::{DynamicPin, PinMode},
         erased::ErasedPin,
-        exti::ExtiGroup,
         pin::mode::{InputMode, MultiMode, OutputMode},
         port::{self, PortId},
         GpioError,
@@ -438,6 +437,27 @@ pub(crate) mod mode {
     impl OutputMode for OutOdFiltAlt {}
     impl OutputMode for OutOdPuAlt {}
     impl OutputMode for OutOdPuFiltAlt {}
+
+    /// Marker trait for a pin which is Enabled (i.e. it's not Disabled or Analog)
+    pub trait EnabledMode: MultiMode + Sealed {}
+    impl EnabledMode for InFloat {}
+    impl EnabledMode for InFilt {}
+    impl EnabledMode for InPu {}
+    impl EnabledMode for InPuFilt {}
+    impl EnabledMode for InPd {}
+    impl EnabledMode for InPdFilt {}
+    impl EnabledMode for OutPp {}
+    impl EnabledMode for OutOs {}
+    impl EnabledMode for OutOsPd {}
+    impl EnabledMode for OutOd {}
+    impl EnabledMode for OutOdFilt {}
+    impl EnabledMode for OutOdPu {}
+    impl EnabledMode for OutOdPuFilt {}
+    impl EnabledMode for OutPpAlt {}
+    impl EnabledMode for OutOdAlt {}
+    impl EnabledMode for OutOdFiltAlt {}
+    impl EnabledMode for OutOdPuAlt {}
+    impl EnabledMode for OutOdPuFiltAlt {}
 
     /// Trait for transitioning a pin from one mode to another
     pub trait MultiMode: Sealed {
