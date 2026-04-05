@@ -17,7 +17,7 @@ embedded-hal-async = { version="1.0", optional = true }
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.5"
 cortex-m-semihosting = "0.5.0"
-critical-section = { version = "1.2.0", optional = true }
+critical-section = { version = "1.2.0"}
 panic-halt = "1.0.0"
 fugit = { version = "0.3.9", features = ["defmt"] }
 # dependencies when using the log/defmt feature
@@ -57,7 +57,6 @@ qfn48 = []
 
 # Embassy support
 efemb = [
-    "dep:critical-section",
     "dep:embassy-sync",
     "dep:embassy-time-queue-utils",
     "dep:embassy-time-driver",
