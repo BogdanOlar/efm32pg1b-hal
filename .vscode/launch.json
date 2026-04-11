@@ -207,6 +207,35 @@
             }
         },
         {
+            "name": "probe_rs em_exti",
+            "preLaunchTask": "cargo build example em_exti",
+            "type": "probe-rs-debug",
+            "request": "launch",
+            "flashingConfig": {
+                "fullChipErase": true,
+                "flashingEnabled": true,
+            },
+            "chip": "EFM32PG1B200F256GM48",
+            "coreConfigs": [
+                {
+                    "programBinary": "target/thumbv7em-none-eabihf/debug/examples/em_exti",
+                    "svdFile": "EFM32PG1B.svd",
+                    "rttEnabled": true,
+                    "rttChannelFormats": [
+                        {
+                            "channelNumber": 0,
+                            // Format RTT data as String data
+                            "dataFormat": "String",
+                            // Include host-side timestamps for every line of data transferred from the target RTT output
+                            "showTimestamps": true,
+                            "showLocation": true,
+                            "logFormat": "{{t}%italic%dimmed} {L:severity:italic} {s}    {{ff}:{l}%italic%dimmed}"
+                        }
+                    ]
+                }
+            ],
+        },
+        {
             "name": "probe_rs embassy_button",
             "preLaunchTask": "cargo build example embassy_button",
             "type": "probe-rs-debug",

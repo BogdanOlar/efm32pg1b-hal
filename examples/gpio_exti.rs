@@ -1,5 +1,3 @@
-//! Build with `cargo build --example gpio_exti --features="defmt"`
-
 #![no_main]
 #![no_std]
 

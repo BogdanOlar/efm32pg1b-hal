@@ -22,6 +22,66 @@
             }
         },
         {
+            "label": "cargo build example em_exti",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "em_exti",
+                "--features='defmt qfn48'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": {
+                "kind": "build",
+                // "isDefault": true
+            }
+        },
+        {
+            "label": "cargo build example embassy_button",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "embassy_button",
+                "--features='defmt qfn48 efemb efemb-timdrv-letim0-hz-32_768'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "presentation": {
+                "clear": true
+            },
+            "group": {
+                "kind": "build",
+                // "isDefault": true
+            }
+        },
+        {
+            "label": "cargo build example embassy_example",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "embassy_example",
+                "--features='defmt qfn48 efemb efemb-timdrv-letim0-hz-32_768 efemb-timdrv-letim0-dbg-pins'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "presentation": {
+                "clear": true
+            },
+            "group": {
+                "kind": "build",
+                // "isDefault": true
+            }
+        },
+        {
             "label": "cargo build example gpio",
             "type": "shell",
             "command": "cargo",
@@ -141,47 +201,6 @@
                 // "isDefault": true
             }
         },
-        {
-            "label": "cargo build example embassy_button",
-            "type": "shell",
-            "command": "cargo",
-            "args": [
-                "build",
-                "--example",
-                "embassy_button",
-                "--features='defmt qfn48 efemb efemb-timdrv-letim0-hz-32_768'"
-            ],
-            "problemMatcher": [
-                "$rustc"
-            ],
-            "presentation": {
-                "clear": true
-            },
-            "group": {
-                "kind": "build",
-                // "isDefault": true
-            }
-        },
-        {
-            "label": "cargo build example embassy_example",
-            "type": "shell",
-            "command": "cargo",
-            "args": [
-                "build",
-                "--example",
-                "embassy_example",
-                "--features='defmt qfn48 efemb efemb-timdrv-letim0-hz-32_768 efemb-timdrv-letim0-dbg-pins'"
-            ],
-            "problemMatcher": [
-                "$rustc"
-            ],
-            "presentation": {
-                "clear": true
-            },
-            "group": {
-                "kind": "build",
-                // "isDefault": true
-            }
-        },
+
     ]
 }
