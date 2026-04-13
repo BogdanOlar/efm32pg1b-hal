@@ -22,6 +22,24 @@
             }
         },
         {
+            "label": "cargo build example dma",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "dma",
+                "--features='defmt'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": {
+                "kind": "build",
+                // "isDefault": true
+            }
+        },
+        {
             "label": "cargo build example em_exti",
             "type": "shell",
             "command": "cargo",
