@@ -42,22 +42,12 @@ pub mod mmio {
             .modify(|_, w| unsafe { w.bits(1 << id as u8) });
     }
 
-    pub(crate) fn if_clear(id: ChannelId) {
-        ldma().ch(id as usize).cfg().write(|w| unsafe { w.bits(0) });
-    }
-
     pub fn ch_done(id: ChannelId) -> bool {
         ldma().chdone().read().bits() & (1 << id as u8) != 0
     }
 
-    pub(crate) fn ch_busy(id: ChannelId) -> bool {
+    pub fn ch_busy(id: ChannelId) -> bool {
         ldma().chbusy().read().busy().bits() & (1 << id as u8) != 0
-    }
-
-    pub fn ch_start(id: ChannelId) {
-        ldma()
-            .swreq()
-            .write(|w| unsafe { w.swreq().bits(1 << id as u8) });
     }
 
     pub fn ch_transfer_blocking(id: ChannelId, src: &[u8], dst: &mut [u8]) -> Result<usize, ()> {
@@ -78,6 +68,16 @@ pub mod mmio {
         }
 
         Ok(copy_count)
+    }
+
+    pub(crate) fn if_clear(id: ChannelId) {
+        ldma().ch(id as usize).cfg().write(|w| unsafe { w.bits(0) });
+    }
+
+    pub(crate) fn ch_start(id: ChannelId) {
+        ldma()
+            .swreq()
+            .write(|w| unsafe { w.swreq().bits(1 << id as u8) });
     }
 
     pub(crate) fn ch_req_mode_set(id: ChannelId, all: bool) {
