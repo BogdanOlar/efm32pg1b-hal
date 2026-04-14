@@ -29,7 +29,7 @@
                 "build",
                 "--example",
                 "dma",
-                "--features='defmt'"
+                "--features='defmt qfn48 efemb efemb-timdrv-letim0-hz-32_768'"
             ],
             "problemMatcher": [
                 "$rustc"

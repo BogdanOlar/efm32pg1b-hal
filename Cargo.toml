@@ -104,6 +104,10 @@ name = "cmu"
 required-features = ["defmt"]
 
 [[example]]
+name = "dma"
+required-features = ["defmt"]
+
+[[example]]
 name = "em_exti"
 required-features = ["defmt", "qfn48"]
 

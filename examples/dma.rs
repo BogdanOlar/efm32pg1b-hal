@@ -6,6 +6,7 @@ use cortex_m_rt::entry;
 use defmt::info;
 use defmt_rtt as _;
 use efm32pg1b_hal::{
+    dma,
     pac::{Interrupt, NVIC},
     prelude::*,
     timer_le::efemb::Ticker,
@@ -29,11 +30,27 @@ fn main() -> ! {
     let _clocks = p.cmu.split().with_lfa_clk(LfClockSource::LfRco);
     Ticker::init();
 
-    loop {
-        info!("Thread WAKE");
+    let id = dma::ChannelId::Ch0;
+    let src: [u8; _] = [0, 1, 2, 3, 4, 5, 6, 7];
+    let mut dst: [u8; 10] = [0u8; _];
 
-        info!("Thread SLEEP");
-        asm::dsb();
+    info!("src: {}", src);
+    info!("dst: {}", dst);
+
+    dma::mmio::init();
+    let res = dma::mmio::ch_transfer_blocking(id, &src[2..6], &mut dst[0..10]);
+    info!("Result: {}", res);
+    info!("src: {}", src);
+    info!("dst: {}", dst);
+
+    let copied_count = res.unwrap();
+
+    let res = dma::mmio::ch_transfer_blocking(id, &src[0..], &mut dst[copied_count..]);
+    info!("Result: {}", res);
+    info!("src: {}", src);
+    info!("dst: {}", dst);
+
+    loop {
         asm::wfe();
     }
 }

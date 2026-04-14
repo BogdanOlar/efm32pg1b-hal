@@ -82,39 +82,40 @@ fn main() -> ! {
 }
 
 fn btn0_exti_handler(exti: ExtiId) {
-    let cur_edge = exti::mmio::exti_edge_get(exti).unwrap();
-    let mut event = None;
+    if let Some(cur_edge) = exti::mmio::exti_edge_get(exti) {
+        let mut event = None;
 
-    let new_edge = match cur_edge {
-        ExtiEdge::Falling => {
-            info!("{} Pressed", exti);
-            event = Some(true);
-            ExtiEdge::Rising
-        }
-        ExtiEdge::Rising => {
-            info!("{} Released", exti);
-            event = Some(false);
-            ExtiEdge::Falling
-        }
-        ExtiEdge::Both => {
-            info!("{} Both", exti);
-            cur_edge
-        }
-    };
+        let new_edge = match cur_edge {
+            ExtiEdge::Falling => {
+                info!("{} Pressed", exti);
+                event = Some(true);
+                ExtiEdge::Rising
+            }
+            ExtiEdge::Rising => {
+                info!("{} Released", exti);
+                event = Some(false);
+                ExtiEdge::Falling
+            }
+            ExtiEdge::Both => {
+                info!("{} Both", exti);
+                cur_edge
+            }
+        };
 
-    critical_section::with(|cs| {
-        // create an event for the button channel
-        BTN0_CHANNEL.borrow(cs).replace(event);
+        critical_section::with(|cs| {
+            // create an event for the button channel
+            BTN0_CHANNEL.borrow(cs).replace(event);
 
-        // make sure the main thread will run
-        //
-        // If the SLEEPONEXIT bit of the SCR is set to 1, when the processor completes the execution of all exception
-        // handlers it returns to Thread mode and immediately enters sleep mode. Use this mechanism in applications that
-        // only require the processor to run when an exception occurs.
-        unsafe { cortex_m::Peripherals::steal().SCB.clear_sleeponexit() };
-        info!("sleeponexit OFF");
+            // make sure the main thread will run
+            //
+            // If the SLEEPONEXIT bit of the SCR is set to 1, when the processor completes the execution of all exception
+            // handlers it returns to Thread mode and immediately enters sleep mode. Use this mechanism in applications that
+            // only require the processor to run when an exception occurs.
+            unsafe { cortex_m::Peripherals::steal().SCB.clear_sleeponexit() };
+            info!("sleeponexit OFF");
 
-        // set next edge
-        exti::mmio::exti_edge_select(exti, new_edge);
-    })
+            // set next edge
+            exti::mmio::exti_edge_select(exti, new_edge);
+        })
+    }
 }
