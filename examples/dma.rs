@@ -17,7 +17,7 @@ use embassy_time::Timer as _;
 
 #[entry]
 fn main() -> ! {
-    let mut core_p = cortex_m::Peripherals::take().unwrap();
+    let _core_p = cortex_m::Peripherals::take().unwrap();
     let p = pac::Peripherals::take().unwrap();
 
     // ---- NVIC ----
@@ -38,14 +38,14 @@ fn main() -> ! {
     info!("dst: {}", dst);
 
     dma::mmio::init();
-    let res = dma::mmio::ch_transfer_blocking(id, &src[2..6], &mut dst[0..10]);
+    let res = dma::mmio::ch_transfer_blocking(id, &src[2..6], &mut dst);
     info!("Result: {}", res);
     info!("src: {}", src);
     info!("dst: {}", dst);
 
     let copied_count = res.unwrap();
 
-    let res = dma::mmio::ch_transfer_blocking(id, &src[0..], &mut dst[copied_count..]);
+    let res = dma::mmio::ch_transfer_blocking(id, &src, &mut dst[copied_count..]);
     info!("Result: {}", res);
     info!("src: {}", src);
     info!("dst: {}", dst);

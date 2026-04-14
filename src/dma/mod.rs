@@ -46,11 +46,6 @@ pub mod mmio {
         ldma().ch(id as usize).cfg().write(|w| unsafe { w.bits(0) });
     }
 
-    /// Get a the LDMA pac peripheral
-    fn ldma() -> Ldma {
-        unsafe { crate::pac::Ldma::steal() }
-    }
-
     pub fn ch_done(id: ChannelId) -> bool {
         ldma().chdone().read().bits() & (1 << id as u8) != 0
     }
@@ -92,6 +87,7 @@ pub mod mmio {
             .modify(|_, w| w.reqmode().bit(all));
     }
 
+    /// WARNING: number of words actually transfered will be `cnt + 1`
     pub(crate) fn ch_xfer_cnt_set(id: ChannelId, cnt: u16) {
         ldma()
             .ch(id as usize)
@@ -113,5 +109,10 @@ pub mod mmio {
             .ch(id as usize)
             .dst()
             .write(|w| unsafe { w.dstaddr().bits(addr) });
+    }
+
+    /// Get the DMA (pac) peripheral
+    fn ldma() -> Ldma {
+        unsafe { crate::pac::Ldma::steal() }
     }
 }
