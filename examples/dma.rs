@@ -19,6 +19,79 @@ fn main() -> ! {
     let _clocks = p.cmu.split().with_lfa_clk(LfClockSource::LfRco);
     Ticker::init();
 
+    dma::mmio::init();
+
+    // blocking();
+    non_blocking();
+
+    loop {
+        asm::wfe();
+    }
+}
+
+const BUF_UNIT_SIZE: usize = 1024 * 10;
+const TRANSFER_UNIT_COUNT: usize = 0x800;
+
+fn non_blocking() {
+    info!("Non-blocking \n");
+
+    let id = dma::ChannelId::Ch1;
+
+    // const SRC_U8: [u8; BUF_SIZE] = {
+    //     let mut seq = [0; BUF_SIZE];
+    //     let mut i = 0;
+    //     // Fill the buffer with values from 0 to 255
+    //     while i < BUF_SIZE {
+    //         seq[i] = (i % u8::MAX as usize) as u8;
+    //         i += 1;
+    //     }
+    //     seq
+    // };
+
+    // let mut dst_u8: [u8; BUF_SIZE] = [0u8; _];
+
+    // let res = dma::mmio::transfer_nb(id, &SRC_U8, &mut dst_u8[0..TRANSFER_COUNT]);
+    // let tr = res.unwrap();
+
+    // while !tr.is_done() {
+    //     // info!(".");
+    // }
+
+    // let res = tr.resolve();
+    // info!("Result: {}", res);
+    // info!("src: {}", SRC_U8[0..TRANSFER_COUNT]);
+    // info!("dst: {}", dst_u8[0..TRANSFER_COUNT + 10]);
+
+    const SRC_U16: [u16; BUF_UNIT_SIZE] = {
+        let mut seq = [0; BUF_UNIT_SIZE];
+        let mut i = 0;
+        // Fill the buffer with values from 0 to 255
+        while i < BUF_UNIT_SIZE {
+            seq[i] = 1 + (i % (u16::MAX - 1) as usize) as u16;
+            i += 1;
+        }
+        seq
+    };
+
+    let mut dst_u16: [u16; BUF_UNIT_SIZE] = [0u16; _];
+    let dst = &mut dst_u16[1..TRANSFER_UNIT_COUNT + 1];
+
+    let res = dma::mmio::transfer_nb(id, &SRC_U16, dst);
+    let tr = res.unwrap();
+
+    while !tr.is_done() {
+        // info!(".");
+    }
+
+    // let res = tr.resolve();
+    let res = tr.resolve();
+    info!("Result: {}", res);
+    // info!("src: {}", SRC_U16[0..TRANSFER_UNIT_COUNT]);
+    // info!("dst: {}", dst);
+}
+
+fn blocking() {
+    info!("\n Blocking \n");
     let id = dma::ChannelId::Ch0;
     let src: [u8; _] = [1, 2, 3, 4, 5, 6, 7, 8];
     let mut dst: [u8; 10] = [0u8; _];
@@ -27,9 +100,7 @@ fn main() -> ! {
     info!("src: {}", src);
     info!("dst: {}", dst);
 
-    dma::mmio::init();
-
-    let res = dma::mmio::ch_transfer_blocking(id, &src[2..6], &mut dst);
+    let res = dma::mmio::transfer_blocking(id, &src[2..6], &mut dst);
     info!("Result: {}", res);
     info!("src: {}", src);
     info!("dst: {}", dst);
@@ -38,7 +109,7 @@ fn main() -> ! {
     assert_eq!(4, copied_count);
     assert_eq!(dst, [3, 4, 5, 6, 0, 0, 0, 0, 0, 0]);
 
-    let res = dma::mmio::ch_transfer_blocking(id, &src, &mut dst[copied_count..]);
+    let res = dma::mmio::transfer_blocking(id, &src, &mut dst[copied_count..]);
     info!("Result: {}", res);
     info!("src: {}", src);
     info!("dst: {}", dst);
@@ -48,15 +119,11 @@ fn main() -> ! {
     assert_eq!(dst, [3, 4, 5, 6, 1, 2, 3, 4, 5, 6]);
 
     // this should "copy" 0 bytes
-    let res = dma::mmio::ch_transfer_blocking(id, &src, &mut dst[total_copied..]);
+    let res = dma::mmio::transfer_blocking(id, &src, &mut dst[total_copied..]);
     info!("Result: {}", res);
     info!("src: {}", src);
     info!("dst: {}", dst);
     let copied_count = res.unwrap();
     assert_eq!(0, copied_count);
     assert_eq!(dst, [3, 4, 5, 6, 1, 2, 3, 4, 5, 6]);
-
-    loop {
-        asm::wfe();
-    }
 }
