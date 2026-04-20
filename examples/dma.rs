@@ -30,54 +30,42 @@ fn main() -> ! {
 }
 
 const BUF_UNIT_SIZE: usize = 1024 * 10;
-const TRANSFER_UNIT_COUNT: usize = 0x800;
+const TRANSFER_UNIT_COUNT: usize = 0x800 * 4 + 5;
 
 fn non_blocking() {
     info!("Non-blocking \n");
 
     let id = dma::ChannelId::Ch1;
 
-    // const SRC_U8: [u8; BUF_SIZE] = {
-    //     let mut seq = [0; BUF_SIZE];
-    //     let mut i = 0;
-    //     // Fill the buffer with values from 0 to 255
-    //     while i < BUF_SIZE {
-    //         seq[i] = (i % u8::MAX as usize) as u8;
-    //         i += 1;
-    //     }
-    //     seq
-    // };
-
-    // let mut dst_u8: [u8; BUF_SIZE] = [0u8; _];
-
-    // let res = dma::mmio::transfer_nb(id, &SRC_U8, &mut dst_u8[0..TRANSFER_COUNT]);
-    // let tr = res.unwrap();
-
-    // while !tr.is_done() {
-    //     // info!(".");
-    // }
-
-    // let res = tr.resolve();
-    // info!("Result: {}", res);
-    // info!("src: {}", SRC_U8[0..TRANSFER_COUNT]);
-    // info!("dst: {}", dst_u8[0..TRANSFER_COUNT + 10]);
-
-    const SRC_U16: [u16; BUF_UNIT_SIZE] = {
+    const SRC_U8: [u8; BUF_UNIT_SIZE] = {
         let mut seq = [0; BUF_UNIT_SIZE];
         let mut i = 0;
         // Fill the buffer with values from 0 to 255
         while i < BUF_UNIT_SIZE {
-            seq[i] = 1 + (i % (u16::MAX - 1) as usize) as u16;
+            seq[i] = 1 + (i % (u8::MAX - 1) as usize) as u8;
             i += 1;
         }
         seq
     };
-
-    let mut dst_u16: [u16; BUF_UNIT_SIZE] = [0u16; _];
-    let dst = &mut dst_u16[1..TRANSFER_UNIT_COUNT + 1];
-
-    let res = dma::mmio::transfer_nb(id, &SRC_U16, dst);
+    let mut dst_u8: [u8; BUF_UNIT_SIZE] = [0u8; _];
+    let dst = &mut dst_u8[1..TRANSFER_UNIT_COUNT + 1];
+    let res = dma::mmio::transfer_nb(id, &SRC_U8, dst);
     let tr = res.unwrap();
+
+    // const SRC_U16: [u16; BUF_UNIT_SIZE] = {
+    //     let mut seq = [0; BUF_UNIT_SIZE];
+    //     let mut i = 0;
+    //     // Fill the buffer with values from 0 to 255
+    //     while i < BUF_UNIT_SIZE {
+    //         seq[i] = 1 + (i % (u16::MAX - 1) as usize) as u16;
+    //         i += 1;
+    //     }
+    //     seq
+    // };
+    // let mut dst_u16: [u16; BUF_UNIT_SIZE] = [0u16; _];
+    // let dst = &mut dst_u16[1..TRANSFER_UNIT_COUNT + 1];
+    // let res = dma::mmio::transfer_nb(id, &SRC_U16, dst);
+    // let tr = res.unwrap();
 
     while !tr.is_done() {
         // info!(".");

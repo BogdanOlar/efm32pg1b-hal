@@ -56,8 +56,50 @@ pub enum DmaError {
     InvalidTransferSize(ChannelId),
 }
 
+/// Peripheral single-cycle read-modify-write
+///
+/// The EFM32 Gecko supports bit set and bit clear access to all peripherals except those listed in
+/// Table 4.1 Peripherals that Do Not Support Bit Set and Bit Clear on page 38. The bit set and bit clear functionality
+/// (also called Bit Access) enables modification of bit fields (single bit or multiple bit wide) without the need to
+/// perform a read-modify-write (though it is functionally equivalent). Also, the operation is contained within a single
+/// bus access (for HF peripherals), unlike the Bit-banding operation described in section 4.2.2 Bit-banding which
+/// consumes two bus accesses per operation. All AHB masters can utilize this feature.
+///
+/// See [Documentation](../../doc/efm32pg1-rm.pdf#page919)
+///
+/// FIXME: don't implement this for EMU, RMU, and CRYOTIMER perypherals!
+trait SingleCycleRMW {
+    /// Single cycle bit(s) set
+    fn sc_set(&self, mask: u32);
+    /// Single cycle bit(s) clear
+    fn sc_clear(&self, mask: u32);
+}
+
+impl<R> SingleCycleRMW for crate::pac::generic::Reg<R>
+where
+    R: crate::pac::generic::RegisterSpec,
+{
+    fn sc_set(&self, mask: u32) {
+        const BIT_SET_BASE_ADDR: usize = 0x46000000;
+        const PERIPHERALS_BASE_ADDR: usize = 0x40000000;
+
+        let addr = BIT_SET_BASE_ADDR + (self.as_ptr().addr() - PERIPHERALS_BASE_ADDR);
+
+        unsafe { (addr as *mut u32).write_volatile(mask) };
+    }
+
+    fn sc_clear(&self, mask: u32) {
+        const BIT_CLEAR_BASE_ADDR: usize = 0x44000000;
+        const PERIPHERALS_BASE_ADDR: usize = 0x40000000;
+
+        let addr = BIT_CLEAR_BASE_ADDR + (self.as_ptr().addr() - PERIPHERALS_BASE_ADDR);
+
+        unsafe { (addr as *mut u32).write_volatile(mask) };
+    }
+}
+
 pub mod mmio {
-    use crate::dma::{ChannelId, ChannelTransfer, DmaError};
+    use crate::dma::{ChannelId, ChannelTransfer, DmaError, SingleCycleRMW};
     use crate::pac::{
         ldma::ch::ctrl::{BLOCKSIZE, DSTINC, SIZE, SRCINC, STRUCTTYPE},
         Ldma,
@@ -190,6 +232,16 @@ pub mod mmio {
     #[derive(Clone, Copy, Debug, Default)]
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     struct Link {
+        /// Link Structure Address
+        ///
+        /// **WARNING:** the value of this field needs to be expressed in words, not in bytes
+        ///
+        /// - For `Absolute` addressing, right-shift the byte addres by 2. E.g. if the descriptor is at `0x200056F4`,
+        ///   then this field needs to contain `0x200056F4 >> 2`, which is `0x80015BD`
+        ///
+        /// - For `Relative` addressing, if you need to point to the next descriptor in memory, right-shift the size of
+        ///   the descriptor by 2, so write `4` to point to the next descriptor, `8` to jump to the one after that, etc.
+        ///
         /// [31:2]
         link_addr: usize,
         /// [1]
@@ -291,6 +343,9 @@ pub mod mmio {
         let total_units = dst.len() / unit_byte_size;
         assert_eq!(dst.len() % unit_byte_size, 0);
 
+        ch_disable(id);
+        if_clear(id);
+
         // DEBUG:
         {
             let src_start = src.as_ptr().addr();
@@ -373,8 +428,7 @@ pub mod mmio {
             let fd = Descriptor {
                 ctrl: Ctrl {
                     size: unit,
-                    req_mode: true,
-                    done_if_s_en: false,
+                    struct_req: true,
                     block_size: BLOCKSIZE::All,
                     xfer_cnt: first_descr_units as u16 - 1,
                     ..Default::default()
@@ -383,7 +437,7 @@ pub mod mmio {
                 dst: dst.as_ptr().addr(),
                 link: Link {
                     link: true,
-                    link_addr: descriptor_list.as_ptr().addr(),
+                    link_addr: descriptor_list.as_ptr().addr() / size_of::<u32>(),
                     link_mode: AddrMode::Absolute,
                 },
             };
@@ -408,8 +462,7 @@ pub mod mmio {
                 let descr = Descriptor {
                     ctrl: Ctrl {
                         size: unit,
-                        req_mode: true,
-                        done_if_s_en: is_last,
+                        struct_req: true,
                         block_size: BLOCKSIZE::All,
                         xfer_cnt: descr_units as u16 - 1,
                         ..Default::default()
@@ -417,15 +470,28 @@ pub mod mmio {
                     src: src.as_ptr().addr() + addr_offset,
                     dst: dst.as_ptr().addr() + addr_offset,
                     link: Link {
-                        link_addr: size_of::<SerializedDescriptor>(),
+                        link_addr: if !is_last {
+                            size_of::<SerializedDescriptor>() / size_of::<u32>()
+                        } else {
+                            Default::default()
+                        },
                         link: !is_last,
-                        link_mode: AddrMode::Relative,
+                        link_mode: if !is_last {
+                            AddrMode::Relative
+                        } else {
+                            Default::default()
+                        },
                     },
                 };
                 info!("Linked descriptor [{}]", i);
                 print_desc(&descr);
 
                 *ser_descr = descr.into();
+
+                info!(
+                    "Serialized: [{:X}, {:X}, {:X}, {:X}]",
+                    ser_descr.raw[0], ser_descr.raw[1], ser_descr.raw[2], ser_descr.raw[3]
+                );
 
                 remaining_units -= descr_units;
             }
@@ -457,6 +523,7 @@ pub mod mmio {
             .write(|w| unsafe { w.bits(first_desc.link.into()) });
 
         // start the transfer
+        ch_done_clear(id);
         ch_enable(id);
         ch_start(id);
         // ch_link_load(id);
@@ -488,11 +555,23 @@ pub mod mmio {
     }
 
     pub fn ch_enable(id: ChannelId) {
-        dma().chen().modify(|_, w| unsafe { w.bits(1 << id as u8) });
+        dma().chen().sc_set(1 << id as u8);
+    }
+
+    pub fn ch_disable(id: ChannelId) {
+        dma().chen().sc_clear(1 << id as u8);
     }
 
     pub fn ch_done(id: ChannelId) -> bool {
         dma().chdone().read().bits() & (1 << id as u8) != 0
+    }
+
+    pub fn ch_done_set(id: ChannelId) {
+        dma().chdone().sc_set(1 << id as u8);
+    }
+
+    pub fn ch_done_clear(id: ChannelId) {
+        dma().chdone().sc_clear(1 << id as u8);
     }
 
     pub fn ch_error(id: ChannelId) -> bool {
@@ -503,8 +582,16 @@ pub mod mmio {
         dma().chbusy().read().busy().bits() & (1 << id as u8) != 0
     }
 
+    pub(crate) fn ien(id: ChannelId) {
+        dma()
+            .ien()
+            .modify(|r, w| unsafe { w.done().bits(r.done().bits() | (1 << id as u8)) });
+    }
+
     pub(crate) fn if_clear(id: ChannelId) {
-        dma().ch(id as usize).cfg().write(|w| unsafe { w.bits(0) });
+        dma()
+            .ifc()
+            .write(|w| unsafe { w.done().bits(1 << id as u8) });
     }
 
     pub(crate) fn ch_start(id: ChannelId) {
