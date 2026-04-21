@@ -10,6 +10,14 @@ use panic_probe as _;
 // @note: `use embassy_time` is required in some form in order for defmt timestamps provided by `embassy-time` to work
 use embassy_time::Timer as _;
 
+const BUF_UNIT_SIZE: usize = 1024 * 10;
+
+// const TRANSFER_UNIT_COUNT: usize = 15;
+// const TRANSFER_UNIT_COUNT: usize = 32;
+// const TRANSFER_UNIT_COUNT: usize = 40;
+const TRANSFER_UNIT_COUNT: usize = 70;
+// const TRANSFER_UNIT_COUNT: usize = 0x800 * 4 + 5;
+
 #[entry]
 fn main() -> ! {
     let _core_p = cortex_m::Peripherals::take().unwrap();
@@ -29,9 +37,6 @@ fn main() -> ! {
     }
 }
 
-const BUF_UNIT_SIZE: usize = 1024 * 10;
-const TRANSFER_UNIT_COUNT: usize = 0x800 * 4 + 5;
-
 fn non_blocking() {
     info!("Non-blocking \n");
 
@@ -49,7 +54,7 @@ fn non_blocking() {
     };
     let mut dst_u8: [u8; BUF_UNIT_SIZE] = [0u8; _];
     let dst = &mut dst_u8[1..TRANSFER_UNIT_COUNT + 1];
-    let res = dma::mmio::transfer_nb(id, &SRC_U8, dst);
+    let res = dma::transfer_nb(id, &SRC_U8, dst);
     let tr = res.unwrap();
 
     // const SRC_U16: [u16; BUF_UNIT_SIZE] = {
@@ -75,7 +80,7 @@ fn non_blocking() {
     let res = tr.resolve();
     info!("Result: {}", res);
     // info!("src: {}", SRC_U16[0..TRANSFER_UNIT_COUNT]);
-    // info!("dst: {}", dst);
+    info!("dst: {}", dst);
 }
 
 fn blocking() {
@@ -88,7 +93,7 @@ fn blocking() {
     info!("src: {}", src);
     info!("dst: {}", dst);
 
-    let res = dma::mmio::transfer_blocking(id, &src[2..6], &mut dst);
+    let res = dma::transfer_blocking(id, &src[2..6], &mut dst);
     info!("Result: {}", res);
     info!("src: {}", src);
     info!("dst: {}", dst);
@@ -97,7 +102,7 @@ fn blocking() {
     assert_eq!(4, copied_count);
     assert_eq!(dst, [3, 4, 5, 6, 0, 0, 0, 0, 0, 0]);
 
-    let res = dma::mmio::transfer_blocking(id, &src, &mut dst[copied_count..]);
+    let res = dma::transfer_blocking(id, &src, &mut dst[copied_count..]);
     info!("Result: {}", res);
     info!("src: {}", src);
     info!("dst: {}", dst);
@@ -107,7 +112,7 @@ fn blocking() {
     assert_eq!(dst, [3, 4, 5, 6, 1, 2, 3, 4, 5, 6]);
 
     // this should "copy" 0 bytes
-    let res = dma::mmio::transfer_blocking(id, &src, &mut dst[total_copied..]);
+    let res = dma::transfer_blocking(id, &src, &mut dst[total_copied..]);
     info!("Result: {}", res);
     info!("src: {}", src);
     info!("dst: {}", dst);
