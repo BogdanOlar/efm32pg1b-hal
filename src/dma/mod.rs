@@ -120,13 +120,9 @@ pub mod mmio {
 
     impl Descriptor {
         /// Maximum number of units (byte, half-word, word) which can be transfered in one DMA shot
-        /// (i.e. without the need for a linked descriptor list)
         const MAX_TRANSFER_UNITS: usize = 1 << 12;
         // /// FIXME: remove this before merge
         // const MAX_TRANSFER_UNITS: usize = 1 << 5;
-
-        /// [`Ctrl::xfer_cnt`] bit mask
-        const CTRL_XFER_MASK: usize = Self::MAX_TRANSFER_UNITS - 1;
     }
 
     impl From<Descriptor> for SerializedDescriptor {
@@ -149,6 +145,7 @@ pub mod mmio {
         raw: [u32; 4],
     }
 
+    /// CTRL register
     #[derive(Clone, Copy, Debug)]
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     struct Ctrl {
@@ -189,6 +186,32 @@ pub mod mmio {
         struct_type: STRUCTTYPE,
     }
 
+    impl Ctrl {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn with_size(mut self, unit: SIZE) -> Self {
+            self.size = unit;
+            self
+        }
+
+        fn with_struct_req(mut self) -> Self {
+            self.struct_req = true;
+            self
+        }
+
+        fn with_block_size(mut self, blocksize: BLOCKSIZE) -> Self {
+            self.block_size = blocksize;
+            self
+        }
+
+        fn with_xfer_cnt(mut self, unit_count: TransferCount) -> Ctrl {
+            self.xfer_cnt = unit_count.count - 1;
+            self
+        }
+    }
+
     impl Default for Ctrl {
         fn default() -> Self {
             Self {
@@ -224,10 +247,29 @@ pub mod mmio {
             ret |= (value.done_if_s_en as u32) << 20;
             ret |= (value.block_size as u32) << 16;
             ret |= (value.byte_swap as u32) << 15;
-            ret |= ((value.xfer_cnt as u32) & Descriptor::CTRL_XFER_MASK as u32) << 4;
+            ret |= ((value.xfer_cnt as u32) & 0x3FFFFFFF) << 4;
             ret |= (value.struct_req as u32) << 3;
             ret |= value.struct_type as u32;
             ret
+        }
+    }
+
+    /// Wrapper for the CTRL.XFERCNT which makes sure the value is at most `Descriptor::MAX_TRANSFER_UNITS` (`0x800`)
+    struct TransferCount {
+        count: u16,
+    }
+
+    impl TryFrom<usize> for TransferCount {
+        type Error = ();
+
+        fn try_from(value: usize) -> Result<Self, Self::Error> {
+            if value <= Descriptor::MAX_TRANSFER_UNITS {
+                Ok(Self {
+                    count: value as u16,
+                })
+            } else {
+                Err(())
+            }
         }
     }
 
@@ -368,16 +410,6 @@ pub mod mmio {
         ch_disable(id);
         if_clear(id);
 
-        // DEBUG:
-        {
-            let src_start = src.as_ptr().addr();
-            let src_end = src[src.len()..].as_ptr().addr();
-            let dst_start = dst.as_ptr().addr();
-            let dst_end = dst[dst.len()..].as_ptr().addr();
-            info!("SRC: [0x{:X}, 0x{:X})", src_start, src_end);
-            info!("DST: [0x{:X}, 0x{:X})", dst_start, dst_end);
-        }
-
         let arr_end = dst[dst.len()..].as_ptr().addr();
         let aligned_end_addr = arr_end - (arr_end % align_of::<SerializedDescriptor>());
 
@@ -402,15 +434,6 @@ pub mod mmio {
             )
         };
 
-        // DEBUG:
-        {
-            info!(
-                "Linked list items: {}, starting at 0x{:X}",
-                linked_list_count,
-                descriptor_list.as_ptr().addr()
-            );
-        }
-
         let mut remaining_units = total_units;
 
         // Create first descriptor
@@ -424,13 +447,11 @@ pub mod mmio {
         };
         remaining_units -= first_descr_units;
         let first_descriptor = Descriptor {
-            ctrl: Ctrl {
-                size: unit,
-                struct_req: true,
-                block_size: BLOCKSIZE::All,
-                xfer_cnt: first_descr_units as u16 - 1,
-                ..Default::default()
-            },
+            ctrl: Ctrl::new()
+                .with_size(unit)
+                .with_struct_req()
+                .with_block_size(BLOCKSIZE::All)
+                .with_xfer_cnt(first_descr_units.try_into().unwrap()),
             src: src.as_ptr().addr(),
             dst: dst.as_ptr().addr(),
             link: if remaining_units > 0 {
@@ -439,12 +460,11 @@ pub mod mmio {
                 Link::default()
             },
         };
-        info!("First descriptor:");
-        print_desc(&first_descriptor);
 
         // Fill in the linked descriptors
         for (i, ser_descr) in descriptor_list.iter_mut().enumerate() {
             let is_last = i == (linked_list_count - 1);
+
             let descr_units = if is_last {
                 remaining_units
             } else {
@@ -458,13 +478,11 @@ pub mod mmio {
             let addr_offset = (total_units - remaining_units) * unit_byte_size;
 
             let descr = Descriptor {
-                ctrl: Ctrl {
-                    size: unit,
-                    struct_req: true,
-                    block_size: BLOCKSIZE::All,
-                    xfer_cnt: descr_units as u16 - 1,
-                    ..Default::default()
-                },
+                ctrl: Ctrl::new()
+                    .with_size(unit)
+                    .with_struct_req()
+                    .with_block_size(BLOCKSIZE::All)
+                    .with_xfer_cnt(descr_units.try_into().unwrap()),
                 src: src.as_ptr().addr() + addr_offset,
                 dst: dst.as_ptr().addr() + addr_offset,
                 link: if !is_last {
@@ -473,15 +491,8 @@ pub mod mmio {
                     Link::default()
                 },
             };
-            info!("Linked descriptor [{}]", i);
-            print_desc(&descr);
 
             *ser_descr = descr.into();
-
-            info!(
-                "Serialized: [{:X}, {:X}, {:X}, {:X}]",
-                ser_descr.raw[0], ser_descr.raw[1], ser_descr.raw[2], ser_descr.raw[3]
-            );
 
             remaining_units -= descr_units;
         }
