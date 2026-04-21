@@ -122,6 +122,8 @@ pub mod mmio {
         /// Maximum number of units (byte, half-word, word) which can be transfered in one DMA shot
         /// (i.e. without the need for a linked descriptor list)
         const MAX_TRANSFER_UNITS: usize = 1 << 12;
+        // /// FIXME: remove this before merge
+        // const MAX_TRANSFER_UNITS: usize = 1 << 5;
 
         /// [`Ctrl::xfer_cnt`] bit mask
         const CTRL_XFER_MASK: usize = Self::MAX_TRANSFER_UNITS - 1;
@@ -234,7 +236,7 @@ pub mod mmio {
     struct Link {
         /// Link Structure Address
         ///
-        /// **WARNING:** the value of this field needs to be expressed in words, not in bytes
+        /// **WARNING:** the value of this field needs to be expressed in 32-bit words, not in bytes
         ///
         /// - For `Absolute` addressing, right-shift the byte addres by 2. E.g. if the descriptor is at `0x200056F4`,
         ///   then this field needs to contain `0x200056F4 >> 2`, which is `0x80015BD`
@@ -248,6 +250,25 @@ pub mod mmio {
         link: bool,
         /// [0]
         link_mode: AddrMode,
+    }
+    impl Link {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn with_absolute_addr(mut self, addr: usize) -> Link {
+            self.link_addr = addr >> 2;
+            self.link = true;
+            self.link_mode = AddrMode::Absolute;
+            self
+        }
+
+        fn with_relative_addr(mut self, count: isize) -> Link {
+            self.link_addr = (count * size_of::<SerializedDescriptor>() as isize) as usize >> 2;
+            self.link = true;
+            self.link_mode = AddrMode::Relative;
+            self
+        }
     }
 
     impl From<Link> for u32 {
@@ -339,6 +360,7 @@ pub mod mmio {
         } else {
             SIZE::Byte
         };
+
         let unit_byte_size = 1 << unit as u8;
         let total_units = dst.len() / unit_byte_size;
         assert_eq!(dst.len() % unit_byte_size, 0);
@@ -356,171 +378,121 @@ pub mod mmio {
             info!("DST: [0x{:X}, 0x{:X})", dst_start, dst_end);
         }
 
-        // First descriptor is always written directly to the DMA peripheral in order to support transfers smaller than
-        // the size of a descriptor
-        let first_desc = if total_units <= Descriptor::MAX_TRANSFER_UNITS {
-            // this is a one-chunk transfer, so no linked list necessary
-            let fd = Descriptor {
-                ctrl: Ctrl {
-                    size: unit,
-                    req_mode: true,
-                    done_if_s_en: true,
-                    block_size: BLOCKSIZE::All,
-                    xfer_cnt: total_units as u16 - 1,
-                    ..Default::default()
-                },
-                src: src.as_ptr().addr(),
-                dst: dst.as_ptr().addr(),
-                link: Link {
-                    link: false,
-                    ..Default::default()
-                },
-            };
+        let arr_end = dst[dst.len()..].as_ptr().addr();
+        let aligned_end_addr = arr_end - (arr_end % align_of::<SerializedDescriptor>());
 
-            info!("First descriptor:");
-            print_desc(&fd);
+        let last_descr_addr = aligned_end_addr - size_of::<SerializedDescriptor>();
+        let last_chunk_min_units = (arr_end - last_descr_addr) / unit_byte_size;
+        assert_eq!((arr_end - last_descr_addr) % unit_byte_size, 0);
 
-            fd
+        let descr_count = if total_units.is_multiple_of(Descriptor::MAX_TRANSFER_UNITS) {
+            total_units / Descriptor::MAX_TRANSFER_UNITS
         } else {
-            // this is a multi-chunk transfer, so we need a linked list in addition to the first chunk descriptor
+            (total_units / Descriptor::MAX_TRANSFER_UNITS) + 1
+        };
+        // First descriptor will be written to DMA channel register, not to the descriptor list
+        let linked_list_count = descr_count - 1;
+        let linked_list_start_addr =
+            aligned_end_addr - (linked_list_count * size_of::<SerializedDescriptor>());
+        // Create the descriptor list at the end of the destination buffer
+        let descriptor_list = unsafe {
+            core::slice::from_raw_parts_mut(
+                linked_list_start_addr as *mut SerializedDescriptor,
+                linked_list_count,
+            )
+        };
 
-            let arr_end = dst[dst.len()..].as_ptr().addr();
-            let aligned_end_addr = arr_end - (arr_end % align_of::<SerializedDescriptor>());
+        // DEBUG:
+        {
+            info!(
+                "Linked list items: {}, starting at 0x{:X}",
+                linked_list_count,
+                descriptor_list.as_ptr().addr()
+            );
+        }
 
-            let last_descr_addr = aligned_end_addr - size_of::<SerializedDescriptor>();
-            let last_chunk_min_units = (arr_end - last_descr_addr) / unit_byte_size;
-            assert_eq!((arr_end - last_descr_addr) % unit_byte_size, 0);
+        let mut remaining_units = total_units;
 
-            // Create the descriptor list at the end of the destination buffer
-            let descr_count = if total_units.is_multiple_of(Descriptor::MAX_TRANSFER_UNITS) {
-                total_units / Descriptor::MAX_TRANSFER_UNITS
-            } else {
-                (total_units / Descriptor::MAX_TRANSFER_UNITS) + 1
-            };
-            // First descriptor will be written to DMA channel register, not to the descriptor list
-            let linked_list_size = descr_count - 1;
-            let linked_list_start_addr =
-                aligned_end_addr - (linked_list_size * size_of::<SerializedDescriptor>());
-            let descriptor_list = unsafe {
-                core::slice::from_raw_parts_mut(
-                    linked_list_start_addr as *mut SerializedDescriptor,
-                    linked_list_size,
-                )
-            };
-
-            // DEBUG:
-            {
-                info!(
-                    "Linked list items: {}, starting at 0x{:X}",
-                    linked_list_size,
-                    descriptor_list.as_ptr().addr()
-                );
-            }
-
-            let mut remaining_units = total_units;
-
-            // Create first descriptor
-            let first_descr_units = min(
+        // Create first descriptor
+        let first_descr_units = if remaining_units > Descriptor::MAX_TRANSFER_UNITS {
+            min(
                 Descriptor::MAX_TRANSFER_UNITS,
                 remaining_units - last_chunk_min_units,
-            );
-            remaining_units -= first_descr_units;
-            let fd = Descriptor {
+            )
+        } else {
+            remaining_units
+        };
+        remaining_units -= first_descr_units;
+        let first_descriptor = Descriptor {
+            ctrl: Ctrl {
+                size: unit,
+                struct_req: true,
+                block_size: BLOCKSIZE::All,
+                xfer_cnt: first_descr_units as u16 - 1,
+                ..Default::default()
+            },
+            src: src.as_ptr().addr(),
+            dst: dst.as_ptr().addr(),
+            link: if remaining_units > 0 {
+                Link::new().with_absolute_addr(descriptor_list.as_ptr().addr())
+            } else {
+                Link::default()
+            },
+        };
+        info!("First descriptor:");
+        print_desc(&first_descriptor);
+
+        // Fill in the linked descriptors
+        for (i, ser_descr) in descriptor_list.iter_mut().enumerate() {
+            let is_last = i == (linked_list_count - 1);
+            let descr_units = if is_last {
+                remaining_units
+            } else {
+                min(
+                    Descriptor::MAX_TRANSFER_UNITS,
+                    remaining_units - last_chunk_min_units,
+                )
+            };
+            assert!(descr_units <= Descriptor::MAX_TRANSFER_UNITS);
+
+            let addr_offset = (total_units - remaining_units) * unit_byte_size;
+
+            let descr = Descriptor {
                 ctrl: Ctrl {
                     size: unit,
                     struct_req: true,
                     block_size: BLOCKSIZE::All,
-                    xfer_cnt: first_descr_units as u16 - 1,
+                    xfer_cnt: descr_units as u16 - 1,
                     ..Default::default()
                 },
-                src: src.as_ptr().addr(),
-                dst: dst.as_ptr().addr(),
-                link: Link {
-                    link: true,
-                    link_addr: descriptor_list.as_ptr().addr() / size_of::<u32>(),
-                    link_mode: AddrMode::Absolute,
+                src: src.as_ptr().addr() + addr_offset,
+                dst: dst.as_ptr().addr() + addr_offset,
+                link: if !is_last {
+                    Link::new().with_relative_addr(1)
+                } else {
+                    Link::default()
                 },
             };
-            info!("First descriptor:");
-            print_desc(&fd);
+            info!("Linked descriptor [{}]", i);
+            print_desc(&descr);
 
-            // Fill in the linked descriptors
-            for (i, ser_descr) in descriptor_list.iter_mut().enumerate() {
-                let is_last = i == (linked_list_size - 1);
-                let descr_units = if is_last {
-                    remaining_units
-                } else {
-                    min(
-                        Descriptor::MAX_TRANSFER_UNITS,
-                        remaining_units - last_chunk_min_units,
-                    )
-                };
-                assert!(descr_units <= Descriptor::MAX_TRANSFER_UNITS);
+            *ser_descr = descr.into();
 
-                let addr_offset = (total_units - remaining_units) * unit_byte_size;
+            info!(
+                "Serialized: [{:X}, {:X}, {:X}, {:X}]",
+                ser_descr.raw[0], ser_descr.raw[1], ser_descr.raw[2], ser_descr.raw[3]
+            );
 
-                let descr = Descriptor {
-                    ctrl: Ctrl {
-                        size: unit,
-                        struct_req: true,
-                        block_size: BLOCKSIZE::All,
-                        xfer_cnt: descr_units as u16 - 1,
-                        ..Default::default()
-                    },
-                    src: src.as_ptr().addr() + addr_offset,
-                    dst: dst.as_ptr().addr() + addr_offset,
-                    link: Link {
-                        link_addr: if !is_last {
-                            size_of::<SerializedDescriptor>() / size_of::<u32>()
-                        } else {
-                            Default::default()
-                        },
-                        link: !is_last,
-                        link_mode: if !is_last {
-                            AddrMode::Relative
-                        } else {
-                            Default::default()
-                        },
-                    },
-                };
-                info!("Linked descriptor [{}]", i);
-                print_desc(&descr);
+            remaining_units -= descr_units;
+        }
+        assert_eq!(remaining_units, 0);
 
-                *ser_descr = descr.into();
+        // make sure aly linked descriptors have been written before proceeding
+        asm::dsb();
 
-                info!(
-                    "Serialized: [{:X}, {:X}, {:X}, {:X}]",
-                    ser_descr.raw[0], ser_descr.raw[1], ser_descr.raw[2], ser_descr.raw[3]
-                );
-
-                remaining_units -= descr_units;
-            }
-            assert_eq!(remaining_units, 0);
-
-            // make sure descriptors have been written before proceeding
-            asm::dsb();
-
-            // return the first descriptor
-            fd
-        };
-
-        // Write the first descriptor to the DMA peripheral channel descriptor registers
-        dma()
-            .ch(id as usize)
-            .ctrl()
-            .write(|w| unsafe { w.bits(first_desc.ctrl.into()) });
-        dma()
-            .ch(id as usize)
-            .src()
-            .write(|w| unsafe { w.bits(first_desc.src as u32) });
-        dma()
-            .ch(id as usize)
-            .dst()
-            .write(|w| unsafe { w.bits(first_desc.dst as u32) });
-        dma()
-            .ch(id as usize)
-            .link()
-            .write(|w| unsafe { w.bits(first_desc.link.into()) });
+        // First descriptor is always written directly to the DMA peripheral in order to support transfers smaller than
+        // the size of a descriptor
+        ch_write_descriptor(id, &first_descriptor);
 
         // start the transfer
         ch_done_clear(id);
@@ -554,10 +526,12 @@ pub mod mmio {
         );
     }
 
+    /// Enable channel
     pub fn ch_enable(id: ChannelId) {
         dma().chen().sc_set(1 << id as u8);
     }
 
+    /// Disable channel
     pub fn ch_disable(id: ChannelId) {
         dma().chen().sc_clear(1 << id as u8);
     }
@@ -633,6 +607,25 @@ pub mod mmio {
             .ch(id as usize)
             .dst()
             .write(|w| unsafe { w.dstaddr().bits(addr) });
+    }
+
+    fn ch_write_descriptor(id: ChannelId, descr: &Descriptor) {
+        dma()
+            .ch(id as usize)
+            .ctrl()
+            .write(|w| unsafe { w.bits(descr.ctrl.into()) });
+        dma()
+            .ch(id as usize)
+            .src()
+            .write(|w| unsafe { w.bits(descr.src as u32) });
+        dma()
+            .ch(id as usize)
+            .dst()
+            .write(|w| unsafe { w.bits(descr.dst as u32) });
+        dma()
+            .ch(id as usize)
+            .link()
+            .write(|w| unsafe { w.bits(descr.link.into()) });
     }
 
     /// Get the DMA (pac) peripheral
