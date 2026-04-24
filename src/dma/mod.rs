@@ -2,7 +2,10 @@
 //!
 
 use crate::pac::{
-    ldma::ch::ctrl::{BLOCKSIZE, DSTINC, SIZE, SRCINC, STRUCTTYPE},
+    ldma::ch::ctrl::{
+        BLOCKSIZE as BlockSize, DSTINC as DstInc, SIZE as UnitSize, SRCINC as SrcInc,
+        STRUCTTYPE as StructType,
+    },
     Ldma,
 };
 use core::cmp::min;
@@ -12,17 +15,26 @@ use cortex_m::asm;
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Dma {
+    /// DMA channel 0
     pub ch0: DmaChannel,
+    /// DMA channel 1
     pub ch1: DmaChannel,
+    /// DMA channel 2
     pub ch2: DmaChannel,
+    /// DMA channel 3
     pub ch3: DmaChannel,
+    /// DMA channel 4
     pub ch4: DmaChannel,
+    /// DMA channel 5
     pub ch5: DmaChannel,
+    /// DMA channel 6
     pub ch6: DmaChannel,
+    /// DMA channel 7
     pub ch7: DmaChannel,
 }
 
 impl Dma {
+    /// Initialize DMA
     pub fn init(_dma_p: Ldma) -> Self {
         // Enable DMA clock
         let cmu = unsafe { crate::pac::Cmu::steal() };
@@ -71,6 +83,7 @@ impl DmaChannel {
     }
 }
 
+/// DMA channel identifier
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -93,6 +106,7 @@ pub enum ChannelId {
     Ch7,
 }
 
+/// DMA channel specialised for memory-to-memory transfer
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ChannelTransfer<'a, W: Sized> {
@@ -133,14 +147,14 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             && dst.as_ptr().addr().is_multiple_of(size_of::<u32>())
             && dst.len().is_multiple_of(size_of::<u32>())
         {
-            SIZE::Word
+            UnitSize::Word
         } else if src.as_ptr().addr().is_multiple_of(size_of::<u16>())
             && dst.as_ptr().addr().is_multiple_of(size_of::<u16>())
             && dst.len().is_multiple_of(size_of::<u16>())
         {
-            SIZE::Halfword
+            UnitSize::Halfword
         } else {
-            SIZE::Byte
+            UnitSize::Byte
         };
 
         let unit_byte_size = 1 << unit as u8;
@@ -190,7 +204,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             ctrl: Ctrl::new()
                 .with_size(unit)
                 .with_struct_req()
-                .with_block_size(BLOCKSIZE::All)
+                .with_block_size(BlockSize::All)
                 .with_xfer_cnt(first_descr_units.try_into().unwrap()),
             src: src.as_ptr().addr(),
             dst: dst.as_ptr().addr(),
@@ -221,7 +235,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 ctrl: Ctrl::new()
                     .with_size(unit)
                     .with_struct_req()
-                    .with_block_size(BLOCKSIZE::All)
+                    .with_block_size(BlockSize::All)
                     .with_xfer_cnt(descr_units.try_into().unwrap()),
                 src: src.as_ptr().addr() + addr_offset,
                 dst: dst.as_ptr().addr() + addr_offset,
@@ -281,6 +295,9 @@ pub enum DmaError {
 }
 
 /// DMA Channel Descriptor
+///
+/// Can be written to the DMA peripheral to trigger a transfer, or converted to a `SerializedDescriptor` to create
+/// descriptor linked lists
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub(crate) struct Descriptor {
@@ -292,9 +309,10 @@ pub(crate) struct Descriptor {
 
 impl Descriptor {
     /// Maximum number of units (byte, half-word, word) which can be transfered in one DMA shot
+    #[cfg(not(feature = "dma-debug-max-transfer"))]
     const MAX_TRANSFER_UNITS: usize = 1 << 12;
-    // /// FIXME: remove this before merge
-    // const MAX_TRANSFER_UNITS: usize = 1 << 5;
+    #[cfg(feature = "dma-debug-max-transfer")]
+    const MAX_TRANSFER_UNITS: usize = 1 << 5;
 }
 
 impl From<Descriptor> for SerializedDescriptor {
@@ -313,6 +331,7 @@ impl From<Descriptor> for SerializedDescriptor {
 /// Serialized DMA Descriptor
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[repr(C)]
 struct SerializedDescriptor {
     raw: [u32; 4],
 }
@@ -326,11 +345,11 @@ struct Ctrl {
     /// [30]
     src_mode: AddrMode,
     /// [29:28]
-    dst_inc: DSTINC,
+    dst_inc: DstInc,
     /// [27:26]
-    size: SIZE,
+    size: UnitSize,
     /// [25:24]
-    src_inc: SRCINC,
+    src_inc: SrcInc,
     /// [23]
     ignore_s_req: bool,
     /// [22]
@@ -343,7 +362,7 @@ struct Ctrl {
     /// [20]
     done_if_s_en: bool,
     /// [19:16]
-    block_size: BLOCKSIZE,
+    block_size: BlockSize,
     /// [15]
     byte_swap: bool,
     /// The `XFERCNT` field specifies number of unit data (words, half-words, or bytes) to transfer, as determined
@@ -355,7 +374,7 @@ struct Ctrl {
     /// [3]
     struct_req: bool,
     /// [1:0]
-    struct_type: STRUCTTYPE,
+    struct_type: StructType,
 }
 
 impl Ctrl {
@@ -363,7 +382,7 @@ impl Ctrl {
         Self::default()
     }
 
-    fn with_size(mut self, unit: SIZE) -> Self {
+    fn with_size(mut self, unit: UnitSize) -> Self {
         self.size = unit;
         self
     }
@@ -373,7 +392,7 @@ impl Ctrl {
         self
     }
 
-    fn with_block_size(mut self, blocksize: BLOCKSIZE) -> Self {
+    fn with_block_size(mut self, blocksize: BlockSize) -> Self {
         self.block_size = blocksize;
         self
     }
@@ -394,18 +413,18 @@ impl Ctrl {
 impl Default for Ctrl {
     fn default() -> Self {
         Self {
-            struct_type: STRUCTTYPE::Transfer,
+            struct_type: StructType::Transfer,
             struct_req: Default::default(),
             xfer_cnt: Default::default(),
             byte_swap: Default::default(),
-            block_size: BLOCKSIZE::Unit1,
+            block_size: BlockSize::Unit1,
             done_if_s_en: Default::default(),
             req_mode: Default::default(),
             dec_loop_cnt: Default::default(),
             ignore_s_req: Default::default(),
-            src_inc: SRCINC::One,
-            size: SIZE::Byte,
-            dst_inc: DSTINC::One,
+            src_inc: SrcInc::One,
+            size: UnitSize::Byte,
+            dst_inc: DstInc::One,
             src_mode: Default::default(),
             dst_mode: Default::default(),
         }
@@ -436,14 +455,6 @@ impl From<Ctrl> for u32 {
 /// Wrapper for the CTRL.XFERCNT which makes sure the value is at most `Descriptor::MAX_TRANSFER_UNITS` (`0x800`)
 struct TransferCount {
     count: u16,
-}
-
-impl TryFrom<u32> for TransferCount {
-    type Error = ();
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        (value as usize).try_into()
-    }
 }
 
 impl TryFrom<usize> for TransferCount {
@@ -524,6 +535,7 @@ enum AddrMode {
 pub(crate) mod mmio {
     use crate::dma::{ChannelId, Descriptor};
     use crate::pac::Ldma;
+    use crate::SingleCycleRMW;
 
     /// Enable channel
     pub(crate) fn ch_enable(id: ChannelId) {
@@ -625,48 +637,6 @@ pub(crate) mod mmio {
             .ch(id as usize)
             .link()
             .write(|w| unsafe { w.bits(descr.link.into()) });
-    }
-
-    /// Peripheral single-cycle read-modify-write
-    ///
-    /// The EFM32 Gecko supports bit set and bit clear access to all peripherals except those listed in
-    /// Table 4.1 Peripherals that Do Not Support Bit Set and Bit Clear on page 38. The bit set and bit clear functionality
-    /// (also called Bit Access) enables modification of bit fields (single bit or multiple bit wide) without the need to
-    /// perform a read-modify-write (though it is functionally equivalent). Also, the operation is contained within a single
-    /// bus access (for HF peripherals), unlike the Bit-banding operation described in section 4.2.2 Bit-banding which
-    /// consumes two bus accesses per operation. All AHB masters can utilize this feature.
-    ///
-    /// See [Documentation](../../doc/efm32pg1-rm.pdf#page919)
-    ///
-    /// FIXME: don't implement this for EMU, RMU, and CRYOTIMER perypherals!
-    trait SingleCycleRMW {
-        /// Single cycle bit(s) set
-        fn sc_set(&self, mask: u32);
-        /// Single cycle bit(s) clear
-        fn sc_clear(&self, mask: u32);
-    }
-
-    impl<R> SingleCycleRMW for crate::pac::generic::Reg<R>
-    where
-        R: crate::pac::generic::RegisterSpec,
-    {
-        fn sc_set(&self, mask: u32) {
-            const BIT_SET_BASE_ADDR: usize = 0x46000000;
-            const PERIPHERALS_BASE_ADDR: usize = 0x40000000;
-
-            let addr = BIT_SET_BASE_ADDR + (self.as_ptr().addr() - PERIPHERALS_BASE_ADDR);
-
-            unsafe { (addr as *mut u32).write_volatile(mask) };
-        }
-
-        fn sc_clear(&self, mask: u32) {
-            const BIT_CLEAR_BASE_ADDR: usize = 0x44000000;
-            const PERIPHERALS_BASE_ADDR: usize = 0x40000000;
-
-            let addr = BIT_CLEAR_BASE_ADDR + (self.as_ptr().addr() - PERIPHERALS_BASE_ADDR);
-
-            unsafe { (addr as *mut u32).write_volatile(mask) };
-        }
     }
 
     /// Get the DMA (pac) peripheral
