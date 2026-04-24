@@ -74,6 +74,8 @@ efemb-timdrv-letim0-hz-32_768 = ["embassy-time-driver/tick-hz-32_768"]
 efemb-timdrv-letim0-hz-1_000 = ["embassy-time-driver/tick-hz-1_000"]
 # Debug pins showing when interrupt and schedule function are executed
 efemb-timdrv-letim0-dbg-pins = []
+# Debug option for DMA to set max transfer size to `1<<5` instead of `1<<12`
+dma-debug-max-transfer = []
 # Debugging options. Pick either *ONE* of the features , or *NONE*.
 ## Use `log` crate for debugging
 log = ["dep:log", "dep:rtt-target", "rtt-target/log", "embedded-test/log"]
@@ -105,7 +107,7 @@ required-features = ["defmt"]
 
 [[example]]
 name = "dma"
-required-features = ["defmt"]
+required-features = ["defmt", "dma-debug-max-transfer"]
 
 [[example]]
 name = "em_exti"

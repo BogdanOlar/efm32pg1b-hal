@@ -7,6 +7,7 @@
         "defmt",
         "qfn48",
         "use_debug_pins",
+        // "dma-debug-max-transfer"
         "efemb",
         "efemb-timdrv-letim0-hz-32_768",
         // "efemb-timdrv-letim0-hz-1_000",
