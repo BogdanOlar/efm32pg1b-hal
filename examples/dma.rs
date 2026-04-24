@@ -6,7 +6,7 @@ use cortex_m_rt::entry;
 use defmt::info;
 use defmt_rtt as _;
 use efm32pg1b_hal::{
-    dma::{self, Dma, DmaChannel},
+    dma::{Dma, DmaChannel},
     prelude::*,
     timer_le::efemb::Ticker,
 };
@@ -16,10 +16,11 @@ use embassy_time::Timer as _;
 
 const BUF_UNIT_SIZE: usize = 1024 * 10;
 
-const TRANSFER_UNIT_COUNT: usize = 15;
+// const TRANSFER_UNIT_COUNT: usize = 15;
 // const TRANSFER_UNIT_COUNT: usize = 32;
-// const TRANSFER_UNIT_COUNT: usize = 40;
+const TRANSFER_UNIT_COUNT: usize = 40;
 // const TRANSFER_UNIT_COUNT: usize = 70;
+// const TRANSFER_UNIT_COUNT: usize = 300;
 // const TRANSFER_UNIT_COUNT: usize = 0x800 * 4 + 5;
 
 #[entry]
@@ -32,52 +33,42 @@ fn main() -> ! {
     let _clocks = p.cmu.split().with_lfa_clk(LfClockSource::LfRco);
     Ticker::init();
 
-    non_blocking(dma.ch1);
+    transfer(dma.ch1);
 
     loop {
         asm::wfe();
     }
 }
 
-fn non_blocking(ch: DmaChannel) {
-    info!("Non-blocking \n");
+fn transfer(ch: DmaChannel) {
+    info!("Transfer");
 
     const SRC_U8: [u8; BUF_UNIT_SIZE] = {
         let mut seq = [0; BUF_UNIT_SIZE];
         let mut i = 0;
-        // Fill the buffer with values from 0 to 255
+        // Fill the buffer with values from 1 to 255
         while i < BUF_UNIT_SIZE {
-            seq[i] = 1 + (i % (u8::MAX - 1) as usize) as u8;
+            seq[i] = 1 + (i % u8::MAX as usize) as u8;
             i += 1;
         }
         seq
     };
+    let src = &SRC_U8[0..];
+
     let mut dst_u8: [u8; BUF_UNIT_SIZE] = [0u8; _];
+    // take an unaligned slice of `dst` so that the transfer is done with bytes, not half-words or words
     let dst = &mut dst_u8[1..TRANSFER_UNIT_COUNT + 1];
-    let res = ch.try_into_transfer(&SRC_U8, dst);
-    let tr = res.unwrap();
 
-    // const SRC_U16: [u16; BUF_UNIT_SIZE] = {
-    //     let mut seq = [0; BUF_UNIT_SIZE];
-    //     let mut i = 0;
-    //     // Fill the buffer with values from 0 to 255
-    //     while i < BUF_UNIT_SIZE {
-    //         seq[i] = 1 + (i % (u16::MAX - 1) as usize) as u16;
-    //         i += 1;
-    //     }
-    //     seq
-    // };
-    // let mut dst_u16: [u16; BUF_UNIT_SIZE] = [0u16; _];
-    // let dst = &mut dst_u16[1..TRANSFER_UNIT_COUNT + 1];
-    // let res = dma::mmio::transfer_nb(id, &SRC_U16, dst);
-    // let tr = res.unwrap();
+    info!("src: {} bytes @ 0x{:X}", src.len(), src.as_ptr().addr());
+    info!("dst: {} bytes @ 0x{:X}", dst.len(), dst.as_ptr().addr());
 
-    while !tr.is_done() {
-        // info!(".");
+    let transfer = ch.try_into_transfer(&SRC_U8, dst).unwrap();
+
+    while !transfer.is_done() {
+        info!(".");
     }
 
-    // let res = tr.resolve();
-    let res = tr.resolve();
+    let res = transfer.resolve();
     info!("Result: {}", res);
     // info!("src: {}", SRC_U16[0..TRANSFER_UNIT_COUNT]);
     info!("dst: {}", dst);
