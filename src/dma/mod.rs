@@ -51,6 +51,9 @@
 //!
 //! ```
 
+#[cfg(feature = "efemb")]
+pub mod efemb;
+
 use crate::pac::{
     ldma::ch::ctrl::{BLOCKSIZE, DSTINC, SIZE, SRCINC, STRUCTTYPE},
     Ldma,
@@ -171,7 +174,7 @@ pub enum ChannelId {
 pub struct ChannelTransfer<'a, W: Sized> {
     id: ChannelId,
     src: &'a [W],
-    dst: Option<&'a mut [W]>,
+    dst: &'a mut [W],
     byte_count: usize,
     unit: SIZE,
 }
@@ -196,7 +199,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         let mut transfer = Self {
             id: ch.id,
             src,
-            dst: Some(dst),
+            dst,
             byte_count,
             unit,
         };
@@ -209,10 +212,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
     /// Start the DMA transfer
     fn start(&mut self) {
         let dst: &mut [u8] = unsafe {
-            core::slice::from_raw_parts_mut(
-                self.dst.as_mut().unwrap().as_ptr() as *mut u8,
-                self.byte_count,
-            )
+            core::slice::from_raw_parts_mut(self.dst.as_ptr() as *mut u8, self.byte_count)
         };
 
         assert_eq!(self.byte_count, core::mem::size_of_val(dst));
