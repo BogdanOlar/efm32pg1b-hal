@@ -4,13 +4,16 @@
 //!
 //! Memory-to-memory transfer
 //!
+//! **WARNING**: May panic if the `ChannelTransfer` is dropped while the DMA channel is still active. Make sure you
+//!              `resolve()` the transfer before exiting the scope of the transfer.
+//!
 //! Example:
 //!
 //! ```rust,no_run
-//! let p = pac::Peripherals::take().unwrap();
+//!    let p = pac::Peripherals::take().unwrap();
 //!
-//! let dma = Dma::init(p.ldma);
-//! let ch = dma.ch1;
+//!    let dma = Dma::init(p.ldma);
+//!    let ch = dma.ch1;
 //!
 //!    const SRC_U8: [u8; BUF_UNIT_SIZE] = {
 //!        let mut seq = [0; BUF_UNIT_SIZE];
@@ -25,17 +28,14 @@
 //!    let src = &SRC_U8[0..];
 //!    let mut dst_u8: [u8; BUF_UNIT_SIZE] = [0u8; _];
 //!
-//!    // take an unaligned slice of `dst` so that the transfer is done with bytes, not half-words or words
+//!    // take an unaligned slice of `dst` so that the transfer is done with bytes, not half-words or words for this
+//!    // example
 //!    let dst = &mut dst_u8[1..TRANSFER_UNIT_COUNT + 1];
 //!
 //!    info!("src: {} bytes @ 0x{:X}", src.len(), src.as_ptr().addr());
 //!    info!("dst: {} bytes @ 0x{:X}", dst.len(), dst.as_ptr().addr());
 //!
 //!    let transfer = ch.try_into_transfer(&SRC_U8, dst).unwrap();
-//!
-//!    info!("Using <{}> size unit transfer", transfer.unit());
-//!
-//!    let transfer = transfer.into_started();
 //!
 //!    let result_token = loop {
 //!        match transfer.check_done() {
@@ -55,7 +55,7 @@ use crate::pac::{
     ldma::ch::ctrl::{BLOCKSIZE, DSTINC, SIZE, SRCINC, STRUCTTYPE},
     Ldma,
 };
-use core::{cmp::min, marker::PhantomData};
+use core::cmp::min;
 use cortex_m::asm;
 
 /// DMA driver
@@ -114,12 +114,24 @@ impl DmaChannel {
         self.id
     }
 
+    /// Get channel enabled
+    pub fn enabled(&self) -> bool {
+        mmio::ch_enabled(self.id)
+    }
+
+    /// Get channel busy (if enabled)
+    pub fn busy(&self) -> bool {
+        self.enabled() && mmio::ch_busy(self.id)
+    }
+
     /// Start a memory-to-memory transfer
+    ///
+    /// Fails if the length of `src` or `dest` is `0`
     pub fn try_into_transfer<'a, W: Sized>(
         self,
         src: &'a [W],
         dst: &'a mut [W],
-    ) -> Result<ChannelTransfer<'a, W, Inactive>, DmaError> {
+    ) -> Result<ChannelTransfer<'a, W>, DmaError> {
         let total_byte_cnt = min(core::mem::size_of_val(src), core::mem::size_of_val(dst));
 
         if total_byte_cnt == 0 {
@@ -156,54 +168,15 @@ pub enum ChannelId {
 /// DMA channel specialised for memory-to-memory transfer
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct ChannelTransfer<'a, W: Sized, STATE> {
-    ch: DmaChannel,
+pub struct ChannelTransfer<'a, W: Sized> {
+    id: ChannelId,
     src: &'a [W],
-    dst: &'a mut [W],
+    dst: Option<&'a mut [W]>,
     byte_count: usize,
     unit: SIZE,
-    _state: PhantomData<STATE>,
 }
 
-/// Inactive (type)state for [`ChannelTransfer`]
-#[derive(Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct Inactive {}
-
-/// Started (type)state for [`ChannelTransfer`]
-#[derive(Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct Active {}
-
-/// Transfer result token
-///
-/// Needs to be passed to `ChannelTransfer::resolve()` as proof that the transfer resolved (either sucessfuly, or with
-/// an error), in order to resolve the transfer
-#[derive(Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct ResovledToken {
-    result: TransferResult,
-}
-
-#[derive(Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum TransferResult {
-    Ok,
-    Err,
-}
-
-impl<'a, W: Sized, STATE> ChannelTransfer<'a, W, STATE> {
-    /// Get the Unit size that the transfer is using: byte, half-word (16 bits), word (32 bits)
-    ///
-    /// The unit size is calculated dynamically when the Transfer is created, based on the alignment an length of
-    /// `self.src` and `self.dst`, and it favors the widest bitwidth (word--32 bits), followed by half-word, followed
-    /// by byte size
-    pub fn unit(&self) -> SIZE {
-        self.unit
-    }
-}
-
-impl<'a, W: Sized> ChannelTransfer<'a, W, Inactive> {
+impl<'a, W: Sized> ChannelTransfer<'a, W> {
     fn new(ch: DmaChannel, src: &'a [W], dst: &'a mut [W], byte_count: usize) -> Self {
         // Decide which unit/type the transfer may use
         let unit = if src.as_ptr().addr().is_multiple_of(size_of::<u32>())
@@ -220,33 +193,26 @@ impl<'a, W: Sized> ChannelTransfer<'a, W, Inactive> {
             SIZE::Byte
         };
 
-        Self {
-            ch,
+        let mut transfer = Self {
+            id: ch.id,
             src,
-            dst,
+            dst: Some(dst),
             byte_count,
             unit,
-            _state: PhantomData,
-        }
-    }
+        };
 
-    /// Start the DMA transfer (Advance `ChannelTransfer` state from [`Inactive`] to [`Active`])
-    pub fn into_started(self) -> ChannelTransfer<'a, W, Active> {
-        self.start();
-        ChannelTransfer {
-            ch: self.ch,
-            src: self.src,
-            dst: self.dst,
-            byte_count: self.byte_count,
-            unit: self.unit,
-            _state: PhantomData,
-        }
+        transfer.start();
+
+        transfer
     }
 
     /// Start the DMA transfer
-    fn start(&self) {
+    fn start(&mut self) {
         let dst: &mut [u8] = unsafe {
-            core::slice::from_raw_parts_mut(self.dst.as_ptr() as *mut u8, self.byte_count)
+            core::slice::from_raw_parts_mut(
+                self.dst.as_mut().unwrap().as_ptr() as *mut u8,
+                self.byte_count,
+            )
         };
 
         assert_eq!(self.byte_count, core::mem::size_of_val(dst));
@@ -256,8 +222,9 @@ impl<'a, W: Sized> ChannelTransfer<'a, W, Inactive> {
         let total_units = dst.len() / unit_byte_size;
         assert_eq!(dst.len() % unit_byte_size, 0);
 
-        mmio::ch_enable_clear(self.ch.id());
-        mmio::if_clear(self.ch.id());
+        mmio::ch_enable_clear(self.id);
+        mmio::ien_clear(self.id);
+        mmio::if_clear(self.id);
 
         let arr_end = dst[dst.len()..].as_ptr().addr();
         let aligned_end_addr = arr_end - (arr_end % align_of::<SerializedDescriptor>());
@@ -352,22 +319,20 @@ impl<'a, W: Sized> ChannelTransfer<'a, W, Inactive> {
 
         // First descriptor is always written directly to the DMA peripheral in order to support transfers smaller than
         // the size of a descriptor (in which case we don't use descriptor linked list)
-        mmio::ch_write_descriptor(self.ch.id(), &first_descriptor);
+        mmio::ch_write_descriptor(self.id, &first_descriptor);
 
         // start the transfer
-        mmio::ch_done_clear(self.ch.id());
-        mmio::ch_enable_set(self.ch.id());
-        mmio::ch_start(self.ch.id());
+        mmio::ch_done_clear(self.id);
+        mmio::ch_enable_set(self.id);
+        mmio::ch_start(self.id);
     }
-}
 
-impl<'a, W: Sized> ChannelTransfer<'a, W, Active> {
     /// Check if DMA transfer is done, and obtain a `ResolvedToken` if it is.
     ///
     /// Example:
     ///
     /// ```rust,no_run
-    /// let transfer = ch.try_into_transfer(&src, &mut dst).unwrap().into_started();
+    /// let transfer = ch.try_into_transfer(&src, &mut dst).unwrap();
     /// let result_token: ResovledToken = loop {
     ///     match transfer.check_done() {
     ///         Some(token) => break token,
@@ -379,11 +344,11 @@ impl<'a, W: Sized> ChannelTransfer<'a, W, Active> {
     /// let res: Result<(DmaChannel, usize), DmaChannel> = transfer.resolve(result_token);
     /// ```
     pub fn check_done(&self) -> Option<ResovledToken> {
-        if mmio::ch_error(self.ch.id()) {
+        if mmio::ch_error(self.id) {
             Some(ResovledToken {
                 result: TransferResult::Err,
             })
-        } else if mmio::ch_done(self.ch.id()) {
+        } else if mmio::ch_done(self.id) {
             Some(ResovledToken {
                 result: TransferResult::Ok,
             })
@@ -395,16 +360,54 @@ impl<'a, W: Sized> ChannelTransfer<'a, W, Active> {
     /// Resolve the transfer
     ///
     /// See [`ChannelTransfer::check_done()`] for how to obtain the `ResovledToken`
-    pub fn resolve(self, token: ResovledToken) -> Result<(DmaChannel, usize), DmaChannel> {
-        mmio::ien_clear(self.ch.id());
-        mmio::ch_enable_clear(self.ch.id());
-        mmio::ch_done_clear(self.ch.id());
+    pub fn resolve(self, token: ResovledToken) -> Result<(DmaChannel, usize), DmaError> {
+        mmio::ien_clear(self.id);
+        mmio::if_clear(self.id);
+        mmio::ch_enable_clear(self.id);
+        mmio::ch_done_clear(self.id);
+
+        // Make sure channel is disabled, since Self is going to get dropped, and will panic if the channel is enabled
+        asm::dsb();
 
         match token.result {
-            TransferResult::Ok => Ok((self.ch, self.byte_count)),
-            TransferResult::Err => Err(self.ch),
+            TransferResult::Ok => Ok((DmaChannel { id: self.id }, self.byte_count)),
+            TransferResult::Err => Err(DmaError::Transfer(DmaChannel { id: self.id })),
         }
     }
+
+    /// Get the Unit size that the transfer is using: byte, half-word (16 bits), word (32 bits)
+    ///
+    /// The unit size is calculated dynamically when the Transfer is created, based on the alignment an length of
+    /// `self.src` and `self.dst`, and it favors the widest bitwidth (word--32 bits), followed by half-word, followed
+    /// by byte size
+    pub fn unit(&self) -> SIZE {
+        self.unit
+    }
+}
+
+impl<'a, W: Sized> Drop for ChannelTransfer<'a, W> {
+    fn drop(&mut self) {
+        if mmio::ch_enabled(self.id) {
+            panic!("`ChannelTransfer` was dropped while DMA channel was still active");
+        }
+    }
+}
+
+/// Transfer result token
+///
+/// Needs to be passed to `ChannelTransfer::resolve()` as proof that the transfer resolved (either sucessfuly, or with
+/// an error), in order to resolve the transfer
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct ResovledToken {
+    result: TransferResult,
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+enum TransferResult {
+    Ok,
+    Err,
 }
 
 /// DMA Error
@@ -413,6 +416,8 @@ impl<'a, W: Sized> ChannelTransfer<'a, W, Active> {
 pub enum DmaError {
     /// Invalid transfer size (e.g. transfer size may not be 0)
     InvalidTransferSize(DmaChannel),
+    /// DMA transfer failed
+    Transfer(DmaChannel),
 }
 
 /// DMA Channel Descriptor
@@ -657,6 +662,11 @@ pub(crate) mod mmio {
     use crate::dma::{ChannelId, Descriptor};
     use crate::pac::Ldma;
     use crate::SingleCycleRMW;
+
+    /// Get channel enabled
+    pub(crate) fn ch_enabled(id: ChannelId) -> bool {
+        dma().chen().read().chen().bits() & (1 << id as u8) != 0
+    }
 
     /// Enable channel
     pub(crate) fn ch_enable_set(id: ChannelId) {

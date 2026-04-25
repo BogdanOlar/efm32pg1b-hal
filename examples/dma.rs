@@ -20,8 +20,8 @@ const BUF_UNIT_SIZE: usize = 1024 * 10;
 // const TRANSFER_UNIT_COUNT: usize = 32;
 // const TRANSFER_UNIT_COUNT: usize = 40;
 // const TRANSFER_UNIT_COUNT: usize = 70;
-// const TRANSFER_UNIT_COUNT: usize = 300;
-const TRANSFER_UNIT_COUNT: usize = 0x800 * 4 + 5;
+const TRANSFER_UNIT_COUNT: usize = 300;
+// const TRANSFER_UNIT_COUNT: usize = 0x800 * 4 + 5;
 
 #[entry]
 fn main() -> ! {
@@ -33,6 +33,15 @@ fn main() -> ! {
     Ticker::init();
 
     transfer(dma.ch1);
+
+    // DEBUG: make sure we did not drop the transfer while the DMA channel was not done
+    {
+        let p = unsafe { pac::Peripherals::steal() };
+        let dma = Dma::init(p.ldma);
+        assert!(!dma.ch1.busy());
+    }
+
+    info!("Done.");
 
     loop {
         asm::wfe();
@@ -71,8 +80,6 @@ fn transfer(ch: DmaChannel) {
 
     info!("Using <{}> size unit transfer", transfer.unit());
 
-    let transfer = transfer.into_started();
-
     let result_token = loop {
         match transfer.check_done() {
             Some(token) => break token,
@@ -84,6 +91,6 @@ fn transfer(ch: DmaChannel) {
 
     let res = transfer.resolve(result_token);
     info!("Result: {}", res);
-    // info!("src: {}", SRC_U16[0..TRANSFER_UNIT_COUNT]);
-    // info!("dst: {}", dst);
+
+    info!("dst: {}", dst);
 }
