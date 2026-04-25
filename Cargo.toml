@@ -107,7 +107,10 @@ required-features = ["defmt"]
 
 [[example]]
 name = "dma"
-required-features = ["defmt", "dma-debug-max-transfer"]
+required-features = [
+    "defmt",
+    # "dma-debug-max-transfer"
+]
 
 [[example]]
 name = "em_exti"

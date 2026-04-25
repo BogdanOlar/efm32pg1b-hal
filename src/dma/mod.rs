@@ -1,14 +1,61 @@
 //! Linked Direct Memory Access
 //!
+//! # ChannelTransfer
+//!
+//! Memory-to-memory transfer
+//!
+//! Example:
+//!
+//! ```rust,no_run
+//! let p = pac::Peripherals::take().unwrap();
+//!
+//! let dma = Dma::init(p.ldma);
+//! let ch = dma.ch1;
+//!
+//!    const SRC_U8: [u8; BUF_UNIT_SIZE] = {
+//!        let mut seq = [0; BUF_UNIT_SIZE];
+//!        let mut i = 0;
+//!        // Fill the buffer with values from 1 to 255
+//!        while i < BUF_UNIT_SIZE {
+//!            seq[i] = 1 + (i % u8::MAX as usize) as u8;
+//!            i += 1;
+//!        }
+//!        seq
+//!    };
+//!    let src = &SRC_U8[0..];
+//!    let mut dst_u8: [u8; BUF_UNIT_SIZE] = [0u8; _];
+//!
+//!    // take an unaligned slice of `dst` so that the transfer is done with bytes, not half-words or words
+//!    let dst = &mut dst_u8[1..TRANSFER_UNIT_COUNT + 1];
+//!
+//!    info!("src: {} bytes @ 0x{:X}", src.len(), src.as_ptr().addr());
+//!    info!("dst: {} bytes @ 0x{:X}", dst.len(), dst.as_ptr().addr());
+//!
+//!    let transfer = ch.try_into_transfer(&SRC_U8, dst).unwrap();
+//!
+//!    info!("Using <{}> size unit transfer", transfer.unit());
+//!
+//!    let transfer = transfer.into_started();
+//!
+//!    let result_token = loop {
+//!        match transfer.check_done() {
+//!            Some(token) => break token,
+//!            None => {
+//!                info!(".")
+//!            }
+//!        }
+//!    };
+//!
+//!    let res = transfer.resolve(result_token);
+//!    info!("Result: {}", res);
+//!
+//! ```
 
 use crate::pac::{
-    ldma::ch::ctrl::{
-        BLOCKSIZE as BlockSize, DSTINC as DstInc, SIZE as UnitSize, SRCINC as SrcInc,
-        STRUCTTYPE as StructType,
-    },
+    ldma::ch::ctrl::{BLOCKSIZE, DSTINC, SIZE, SRCINC, STRUCTTYPE},
     Ldma,
 };
-use core::cmp::min;
+use core::{cmp::min, marker::PhantomData};
 use cortex_m::asm;
 
 /// DMA driver
@@ -72,7 +119,7 @@ impl DmaChannel {
         self,
         src: &'a [W],
         dst: &'a mut [W],
-    ) -> Result<ChannelTransfer<'a, W>, DmaError> {
+    ) -> Result<ChannelTransfer<'a, W, Inactive>, DmaError> {
         let total_byte_cnt = min(core::mem::size_of_val(src), core::mem::size_of_val(dst));
 
         if total_byte_cnt == 0 {
@@ -109,60 +156,108 @@ pub enum ChannelId {
 /// DMA channel specialised for memory-to-memory transfer
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct ChannelTransfer<'a, W: Sized> {
+pub struct ChannelTransfer<'a, W: Sized, STATE> {
     ch: DmaChannel,
     src: &'a [W],
     dst: &'a mut [W],
     byte_count: usize,
+    unit: SIZE,
+    _state: PhantomData<STATE>,
 }
 
-impl<'a, W: Sized> ChannelTransfer<'a, W> {
-    fn new(ch: DmaChannel, src: &'a [W], dst: &'a mut [W], byte_count: usize) -> Self {
-        let transfer = Self {
-            ch,
-            src,
-            dst,
-            byte_count,
-        };
+/// Inactive (type)state for [`ChannelTransfer`]
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct Inactive {}
 
-        transfer.start();
-        transfer
+/// Started (type)state for [`ChannelTransfer`]
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct Active {}
+
+/// Transfer result token
+///
+/// Needs to be passed to `ChannelTransfer::resolve()` as proof that the transfer resolved (either sucessfuly, or with
+/// an error), in order to resolve the transfer
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct ResovledToken {
+    result: TransferResult,
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+enum TransferResult {
+    Ok,
+    Err,
+}
+
+impl<'a, W: Sized, STATE> ChannelTransfer<'a, W, STATE> {
+    /// Get the Unit size that the transfer is using: byte, half-word (16 bits), word (32 bits)
+    ///
+    /// The unit size is calculated dynamically when the Transfer is created, based on the alignment an length of
+    /// `self.src` and `self.dst`, and it favors the widest bitwidth (word--32 bits), followed by half-word, followed
+    /// by byte size
+    pub fn unit(&self) -> SIZE {
+        self.unit
     }
+}
 
-    /// Start the DMA transfer
-    fn start(&self) {
-        let src: &[u8] =
-            unsafe { core::slice::from_raw_parts(self.src.as_ptr() as *const u8, self.byte_count) };
-        let dst: &mut [u8] = unsafe {
-            core::slice::from_raw_parts_mut(self.dst.as_ptr() as *mut u8, self.byte_count)
-        };
-
-        assert_eq!(src.len(), dst.len());
-        assert_ne!(dst.len(), 0);
-
-        let id = self.ch.id();
-
+impl<'a, W: Sized> ChannelTransfer<'a, W, Inactive> {
+    fn new(ch: DmaChannel, src: &'a [W], dst: &'a mut [W], byte_count: usize) -> Self {
         // Decide which unit/type the transfer may use
         let unit = if src.as_ptr().addr().is_multiple_of(size_of::<u32>())
             && dst.as_ptr().addr().is_multiple_of(size_of::<u32>())
             && dst.len().is_multiple_of(size_of::<u32>())
         {
-            UnitSize::Word
+            SIZE::Word
         } else if src.as_ptr().addr().is_multiple_of(size_of::<u16>())
             && dst.as_ptr().addr().is_multiple_of(size_of::<u16>())
             && dst.len().is_multiple_of(size_of::<u16>())
         {
-            UnitSize::Halfword
+            SIZE::Halfword
         } else {
-            UnitSize::Byte
+            SIZE::Byte
         };
 
-        let unit_byte_size = 1 << unit as u8;
+        Self {
+            ch,
+            src,
+            dst,
+            byte_count,
+            unit,
+            _state: PhantomData,
+        }
+    }
+
+    /// Start the DMA transfer (Advance `ChannelTransfer` state from [`Inactive`] to [`Active`])
+    pub fn into_started(self) -> ChannelTransfer<'a, W, Active> {
+        self.start();
+        ChannelTransfer {
+            ch: self.ch,
+            src: self.src,
+            dst: self.dst,
+            byte_count: self.byte_count,
+            unit: self.unit,
+            _state: PhantomData,
+        }
+    }
+
+    /// Start the DMA transfer
+    fn start(&self) {
+        let dst: &mut [u8] = unsafe {
+            core::slice::from_raw_parts_mut(self.dst.as_ptr() as *mut u8, self.byte_count)
+        };
+
+        assert_eq!(self.byte_count, core::mem::size_of_val(dst));
+        assert_ne!(dst.len(), 0);
+
+        let unit_byte_size = 1 << self.unit as u8;
         let total_units = dst.len() / unit_byte_size;
         assert_eq!(dst.len() % unit_byte_size, 0);
 
-        mmio::ch_disable(id);
-        mmio::if_clear(id);
+        mmio::ch_enable_clear(self.ch.id());
+        mmio::if_clear(self.ch.id());
 
         let arr_end = dst[dst.len()..].as_ptr().addr();
         let aligned_end_addr = arr_end - (arr_end % align_of::<SerializedDescriptor>());
@@ -202,11 +297,11 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         remaining_units -= first_descr_units;
         let first_descriptor = Descriptor {
             ctrl: Ctrl::new()
-                .with_size(unit)
+                .with_size(self.unit)
                 .with_struct_req()
-                .with_block_size(BlockSize::All)
+                .with_block_size(BLOCKSIZE::All)
                 .with_xfer_cnt(first_descr_units.try_into().unwrap()),
-            src: src.as_ptr().addr(),
+            src: self.src.as_ptr().addr(),
             dst: dst.as_ptr().addr(),
             link: if remaining_units > 0 {
                 Link::new().with_absolute_addr(descriptor_list.as_ptr().addr())
@@ -233,11 +328,11 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
             let descr = Descriptor {
                 ctrl: Ctrl::new()
-                    .with_size(unit)
+                    .with_size(self.unit)
                     .with_struct_req()
-                    .with_block_size(BlockSize::All)
+                    .with_block_size(BLOCKSIZE::All)
                     .with_xfer_cnt(descr_units.try_into().unwrap()),
-                src: src.as_ptr().addr() + addr_offset,
+                src: self.src.as_ptr().addr() + addr_offset,
                 dst: dst.as_ptr().addr() + addr_offset,
                 link: if !is_last {
                     Link::new().with_relative_addr(1)
@@ -252,36 +347,62 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         }
         assert_eq!(remaining_units, 0);
 
-        // make sure aly linked descriptors have been written before proceeding
+        // make sure all linked descriptors have been written before proceeding
         asm::dsb();
 
         // First descriptor is always written directly to the DMA peripheral in order to support transfers smaller than
-        // the size of a descriptor
-        mmio::ch_write_descriptor(id, &first_descriptor);
+        // the size of a descriptor (in which case we don't use descriptor linked list)
+        mmio::ch_write_descriptor(self.ch.id(), &first_descriptor);
 
         // start the transfer
-        mmio::ch_done_clear(id);
-        mmio::ch_enable(id);
-        mmio::ch_start(id);
-        // ch_link_load(id);
+        mmio::ch_done_clear(self.ch.id());
+        mmio::ch_enable_set(self.ch.id());
+        mmio::ch_start(self.ch.id());
     }
+}
 
-    /// Check if DMA transfer is done
-    pub fn is_done(&self) -> bool {
-        mmio::ch_done(self.ch.id()) || mmio::ch_error(self.ch.id())
-    }
-
-    /// FIXME: need to refactor this because it has some problems
-    /// - can ba called twice --> BAD
-    /// - can be called before transfer is complete, in which case the channel may be dropped before the DMA has
-    ///   finished the transfer --> **VERY BAD** because we may write over valid stack frames, for example.
-    pub fn resolve(self) -> Result<(DmaChannel, usize), DmaChannel> {
+impl<'a, W: Sized> ChannelTransfer<'a, W, Active> {
+    /// Check if DMA transfer is done, and obtain a `ResolvedToken` if it is.
+    ///
+    /// Example:
+    ///
+    /// ```rust,no_run
+    /// let transfer = ch.try_into_transfer(&src, &mut dst).unwrap().into_started();
+    /// let result_token: ResovledToken = loop {
+    ///     match transfer.check_done() {
+    ///         Some(token) => break token,
+    ///         None => {
+    ///             info!(".")
+    ///         }
+    ///     }
+    /// };
+    /// let res: Result<(DmaChannel, usize), DmaChannel> = transfer.resolve(result_token);
+    /// ```
+    pub fn check_done(&self) -> Option<ResovledToken> {
         if mmio::ch_error(self.ch.id()) {
-            Err(self.ch)
+            Some(ResovledToken {
+                result: TransferResult::Err,
+            })
         } else if mmio::ch_done(self.ch.id()) {
-            Ok((self.ch, self.byte_count))
+            Some(ResovledToken {
+                result: TransferResult::Ok,
+            })
         } else {
-            Err(self.ch)
+            None
+        }
+    }
+
+    /// Resolve the transfer
+    ///
+    /// See [`ChannelTransfer::check_done()`] for how to obtain the `ResovledToken`
+    pub fn resolve(self, token: ResovledToken) -> Result<(DmaChannel, usize), DmaChannel> {
+        mmio::ien_clear(self.ch.id());
+        mmio::ch_enable_clear(self.ch.id());
+        mmio::ch_done_clear(self.ch.id());
+
+        match token.result {
+            TransferResult::Ok => Ok((self.ch, self.byte_count)),
+            TransferResult::Err => Err(self.ch),
         }
     }
 }
@@ -345,11 +466,11 @@ struct Ctrl {
     /// [30]
     src_mode: AddrMode,
     /// [29:28]
-    dst_inc: DstInc,
+    dst_inc: DSTINC,
     /// [27:26]
-    size: UnitSize,
+    size: SIZE,
     /// [25:24]
-    src_inc: SrcInc,
+    src_inc: SRCINC,
     /// [23]
     ignore_s_req: bool,
     /// [22]
@@ -362,7 +483,7 @@ struct Ctrl {
     /// [20]
     done_if_s_en: bool,
     /// [19:16]
-    block_size: BlockSize,
+    block_size: BLOCKSIZE,
     /// [15]
     byte_swap: bool,
     /// The `XFERCNT` field specifies number of unit data (words, half-words, or bytes) to transfer, as determined
@@ -374,7 +495,7 @@ struct Ctrl {
     /// [3]
     struct_req: bool,
     /// [1:0]
-    struct_type: StructType,
+    struct_type: STRUCTTYPE,
 }
 
 impl Ctrl {
@@ -382,7 +503,7 @@ impl Ctrl {
         Self::default()
     }
 
-    fn with_size(mut self, unit: UnitSize) -> Self {
+    fn with_size(mut self, unit: SIZE) -> Self {
         self.size = unit;
         self
     }
@@ -392,7 +513,7 @@ impl Ctrl {
         self
     }
 
-    fn with_block_size(mut self, blocksize: BlockSize) -> Self {
+    fn with_block_size(mut self, blocksize: BLOCKSIZE) -> Self {
         self.block_size = blocksize;
         self
     }
@@ -413,18 +534,18 @@ impl Ctrl {
 impl Default for Ctrl {
     fn default() -> Self {
         Self {
-            struct_type: StructType::Transfer,
+            struct_type: STRUCTTYPE::Transfer,
             struct_req: Default::default(),
             xfer_cnt: Default::default(),
             byte_swap: Default::default(),
-            block_size: BlockSize::Unit1,
+            block_size: BLOCKSIZE::Unit1,
             done_if_s_en: Default::default(),
             req_mode: Default::default(),
             dec_loop_cnt: Default::default(),
             ignore_s_req: Default::default(),
-            src_inc: SrcInc::One,
-            size: UnitSize::Byte,
-            dst_inc: DstInc::One,
+            src_inc: SRCINC::One,
+            size: SIZE::Byte,
+            dst_inc: DSTINC::One,
             src_mode: Default::default(),
             dst_mode: Default::default(),
         }
@@ -538,12 +659,12 @@ pub(crate) mod mmio {
     use crate::SingleCycleRMW;
 
     /// Enable channel
-    pub(crate) fn ch_enable(id: ChannelId) {
+    pub(crate) fn ch_enable_set(id: ChannelId) {
         dma().chen().sc_set(1 << id as u8);
     }
 
     /// Disable channel
-    pub(crate) fn ch_disable(id: ChannelId) {
+    pub(crate) fn ch_enable_clear(id: ChannelId) {
         dma().chen().sc_clear(1 << id as u8);
     }
 
@@ -567,10 +688,12 @@ pub(crate) mod mmio {
         dma().chbusy().read().busy().bits() & (1 << id as u8) != 0
     }
 
-    pub(crate) fn ien(id: ChannelId) {
-        dma()
-            .ien()
-            .modify(|r, w| unsafe { w.done().bits(r.done().bits() | (1 << id as u8)) });
+    pub(crate) fn ien_set(id: ChannelId) {
+        dma().ien().sc_set(1 << id as u8);
+    }
+
+    pub(crate) fn ien_clear(id: ChannelId) {
+        dma().ien().sc_clear(1 << id as u8);
     }
 
     pub(crate) fn if_clear(id: ChannelId) {
