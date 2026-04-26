@@ -36,7 +36,7 @@ async fn main(spawner: Spawner) {
 
 #[embassy_executor::task(pool_size = 2)]
 async fn transfer(ch: DmaChannel) {
-    const BUF_UNIT_SIZE: usize = 1024 * 10;
+    const BUF_UNIT_SIZE: usize = 0x400 * 10;
 
     // const TRANSFER_UNIT_COUNT: usize = 15;
     // const TRANSFER_UNIT_COUNT: usize = 32;
@@ -67,42 +67,36 @@ async fn transfer(ch: DmaChannel) {
     // // Word-aligned transfer
     // let dst = &mut dst_u8[0..TRANSFER_UNIT_COUNT];
 
-    let res = ch.into_async_transfer(&SRC_U8, dst).await;
+    let transfer_result = ch.into_async_transfer(src, dst).await;
 
-    match res {
-        Ok((ch, byte_count)) => {
+    // Print results
+    match &transfer_result {
+        Ok((params, bytes_count)) => {
             info!(
-                "{} src: {} bytes @ 0x{:X}",
-                &ch,
-                src.len(),
-                src.as_ptr().addr()
+                "Ok: {} {} bytes, src[{} bytes @ 0x{:X}], dst[{} bytes @ 0x{:X}]",
+                params.ch,
+                *bytes_count,
+                params.src.len(),
+                params.src.as_ptr().addr(),
+                params.dst.len(),
+                params.dst.as_ptr().addr(),
             );
-            info!(
-                "{} dst: {} bytes @ 0x{:X}",
-                &ch,
-                dst.len(),
-                dst.as_ptr().addr()
-            );
-            info!("OK: {} bytes", byte_count);
-
-            if byte_count <= 300 {
-                info!("dst: {}", dst);
+            if *bytes_count <= 300 {
+                info!("dst: {}", params.dst[0..*bytes_count]);
             }
         }
-        Err(ch) => {
-            info!(
-                "{} src: {} bytes @ 0x{:X}",
-                &ch,
-                src.len(),
-                src.as_ptr().addr()
+        Err(params) => {
+            error!(
+                "Err: {}, src[{} bytes @ 0x{:X}], dst[{} bytes @ 0x{:X}]",
+                params.ch,
+                params.src.len(),
+                params.src.as_ptr().addr(),
+                params.dst.len(),
+                params.dst.as_ptr().addr(),
             );
-            info!(
-                "{} dst: {} bytes @ 0x{:X}",
-                &ch,
-                dst.len(),
-                dst.as_ptr().addr()
-            );
-            error!("{}", ch)
+            if params.dst.len() <= 300 {
+                error!("dst: {}", params.dst);
+            }
         }
     }
 }

@@ -4,52 +4,9 @@
 //!
 //! Memory-to-memory transfer
 //!
-//! **WARNING**: May panic if the `ChannelTransfer` is dropped while the DMA channel is still active. Make sure you
-//!              `resolve()` the transfer before exiting the scope of the transfer.
+//! **WARNING**: May panic if the `ChannelTransfer` is dropped while the DMA channel is still active.
+//!              Use `ChannelTransfer::check_done()` to determine if the DMA transfer completed.
 //!
-//! Example:
-//!
-//! ```rust,no_run
-//!    let p = pac::Peripherals::take().unwrap();
-//!
-//!    let dma = Dma::init(p.ldma);
-//!    let ch = dma.ch1;
-//!
-//!    const SRC_U8: [u8; BUF_UNIT_SIZE] = {
-//!        let mut seq = [0; BUF_UNIT_SIZE];
-//!        let mut i = 0;
-//!        // Fill the buffer with values from 1 to 255
-//!        while i < BUF_UNIT_SIZE {
-//!            seq[i] = 1 + (i % u8::MAX as usize) as u8;
-//!            i += 1;
-//!        }
-//!        seq
-//!    };
-//!    let src = &SRC_U8[0..];
-//!    let mut dst_u8: [u8; BUF_UNIT_SIZE] = [0u8; _];
-//!
-//!    // take an unaligned slice of `dst` so that the transfer is done with bytes, not half-words or words for this
-//!    // example
-//!    let dst = &mut dst_u8[1..TRANSFER_UNIT_COUNT + 1];
-//!
-//!    info!("src: {} bytes @ 0x{:X}", src.len(), src.as_ptr().addr());
-//!    info!("dst: {} bytes @ 0x{:X}", dst.len(), dst.as_ptr().addr());
-//!
-//!    let transfer = ch.try_into_transfer(&SRC_U8, dst).unwrap();
-//!
-//!    let result_token = loop {
-//!        match transfer.check_done() {
-//!            Some(token) => break token,
-//!            None => {
-//!                info!(".")
-//!            }
-//!        }
-//!    };
-//!
-//!    let res = transfer.resolve(result_token);
-//!    info!("Result: {}", res);
-//!
-//! ```
 
 #[cfg(feature = "efemb")]
 pub mod efemb;
@@ -119,12 +76,6 @@ impl DmaChannel {
     /// Number of DMA channels
     const COUNT: usize = 1 << 3;
 
-    /// Create a new channel from an ID.
-    /// Only used by the HAL
-    pub(crate) fn new(id: ChannelId) -> Self {
-        Self { id }
-    }
-
     /// Get the DMA channel ID
     pub fn id(&self) -> ChannelId {
         self.id
@@ -143,18 +94,17 @@ impl DmaChannel {
     /// Start a memory-to-memory transfer
     ///
     /// Fails if the length of `src` or `dest` is `0`
-    pub fn try_into_transfer<'a, W: Sized>(
+    pub fn into_transfer<'a, W: Sized>(
         self,
         src: &'a [W],
         dst: &'a mut [W],
-    ) -> Result<ChannelTransfer<'a, W>, DmaError> {
-        let total_byte_cnt = min(core::mem::size_of_val(src), core::mem::size_of_val(dst));
-
-        if total_byte_cnt == 0 {
-            return Err(DmaError::InvalidTransferSize(self));
-        }
-
-        Ok(ChannelTransfer::new(self, src, dst, total_byte_cnt))
+    ) -> ChannelTransfer<'a, W> {
+        ChannelTransfer::new(
+            self,
+            src,
+            dst,
+            min(core::mem::size_of_val(src), core::mem::size_of_val(dst)),
+        )
     }
 }
 
@@ -184,7 +134,7 @@ pub enum ChannelId {
 impl ChannelId {
     /// Bitmask for the maximum value of a `ChannelId`
     const MASK_VALUE: u8 = {
-        // we want to avoid using a literal here, since the number of DAM channels may vary between EFM controllers in
+        // we want to avoid using a literal here, since the number of DMA channels may vary between EFM controllers in
         // simmilar families (e.g. GiantGecko and PearlGecko), so that adapting the HAL may be easier
         // So, we're going to compute the MASK at compile-time, based on the value of `DmaChannel::COUNT`
         // We're expecting the `DmaChannel::COUNT` to always be a power of `2`
@@ -219,9 +169,8 @@ impl ChannelId {
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ChannelTransfer<'a, W: Sized> {
+    params: Option<ChannelTransferParams<'a, W>>,
     id: ChannelId,
-    src: &'a [W],
-    dst: &'a mut [W],
     byte_count: usize,
     unit: SIZE,
 }
@@ -243,12 +192,10 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             SIZE::Byte
         };
 
-        // FIXME: handle a `byte_count` of `0` with the help of `irq::IRQ_CHANNELS`
-
+        let id = ch.id;
         let mut transfer = Self {
-            id: ch.id,
-            src,
-            dst,
+            params: Some(ChannelTransferParams { ch, src, dst }),
+            id,
             byte_count,
             unit,
         };
@@ -260,8 +207,30 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
     /// Start the DMA transfer
     fn start(&mut self) {
+        // handle 0 sized transfers
+        if self.byte_count == 0 {
+            // Set a dummy success token in the IRQ channel for this DMA channel
+            critical_section::with(|cs| irq::irq_ch_set(cs, self.id, Some(false)));
+
+            // skip the rest of the init
+            return;
+        }
+
+        mmio::ien_clear(self.id);
+        mmio::if_clear(self.id);
+        mmio::ch_enable_clear(self.id);
+        mmio::ch_done_clear(self.id);
+
+        critical_section::with(|cs| {
+            // Clear any existing content in the IRQ channel of this DMA channel
+            irq::irq_ch_take(cs, self.id);
+        });
+
         let dst: &mut [u8] = unsafe {
-            core::slice::from_raw_parts_mut(self.dst.as_ptr() as *mut u8, self.byte_count)
+            core::slice::from_raw_parts_mut(
+                self.params.as_ref().unwrap().dst.as_ptr() as *mut u8,
+                self.byte_count,
+            )
         };
 
         assert_eq!(self.byte_count, core::mem::size_of_val(dst));
@@ -270,10 +239,6 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         let unit_byte_size = 1 << self.unit as u8;
         let total_units = dst.len() / unit_byte_size;
         assert_eq!(dst.len() % unit_byte_size, 0);
-
-        mmio::ien_clear(self.id);
-        mmio::ch_enable_clear(self.id);
-        mmio::if_clear(self.id);
 
         let arr_end = dst[dst.len()..].as_ptr().addr();
         let aligned_end_addr = arr_end - (arr_end % align_of::<SerializedDescriptor>());
@@ -317,7 +282,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 .with_struct_req()
                 .with_block_size(BLOCKSIZE::All)
                 .with_xfer_cnt(first_descr_units.try_into().unwrap()),
-            src: self.src.as_ptr().addr(),
+            src: self.params.as_ref().unwrap().src.as_ptr().addr(),
             dst: dst.as_ptr().addr(),
             link: if remaining_units > 0 {
                 Link::new().with_absolute_addr(descriptor_list.as_ptr().addr())
@@ -348,7 +313,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                     .with_struct_req()
                     .with_block_size(BLOCKSIZE::All)
                     .with_xfer_cnt(descr_units.try_into().unwrap()),
-                src: self.src.as_ptr().addr() + addr_offset,
+                src: self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
                 dst: dst.as_ptr().addr() + addr_offset,
                 link: if !is_last {
                     Link::new().with_relative_addr(1)
@@ -372,56 +337,61 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
         // start the transfer
         mmio::ien_set(self.id);
-        mmio::ch_done_clear(self.id);
         mmio::ch_enable_set(self.id);
         mmio::ch_start(self.id);
     }
 
-    /// Check if DMA transfer is done, and obtain a `ResolvedToken` if it is.
+    /// Check if DMA transfer is done. Will only return `Some` once, when the transfer is complete.
     ///
     /// Example:
     ///
     /// ```rust,no_run
-    /// let transfer = ch.try_into_transfer(&src, &mut dst).unwrap();
-    /// let result_token: ResovledToken = loop {
-    ///     match transfer.check_done() {
-    ///         Some(token) => break token,
-    ///         None => {
-    ///             info!(".")
+    ///     // start the transfer
+    ///     let mut transfer = ch.into_transfer(src, dst);
+    ///
+    ///     // wait for transfer to complete
+    ///     let transfer_result = loop {
+    ///         match transfer.check_done() {
+    ///             Some(res) => break res,
+    ///             None => {
+    ///                 info!(".")
+    ///             }
+    ///         }
+    ///     };
+    ///
+    ///     // `check_done()` should only return `Some` _once_ (in the loop above)
+    ///     assert!(transfer.check_done().is_none());
+    ///
+    ///     // Print results
+    ///     match &transfer_result {
+    ///         Ok((params, bytes_count)) => {
+    ///             info!("Ok: {}, {} bytes", params.ch, bytes_count);
+    ///         }
+    ///         Err(params) => {
+    ///             error!("Err: {}", params.ch);
     ///         }
     ///     }
-    /// };
-    /// let res: Result<(DmaChannel, usize), DmaChannel> = transfer.resolve(result_token);
     /// ```
-    pub fn check_done(&self) -> Option<ResovledToken> {
-        if mmio::ch_error(self.id) {
-            Some(ResovledToken {
-                result: TransferResult::Err,
-            })
-        } else if mmio::ch_done(self.id) {
-            Some(ResovledToken {
-                result: TransferResult::Ok,
-            })
+    pub fn check_done(&mut self) -> Option<ChannelTransferResult<'a, W>> {
+        if let Some(ch_error) = critical_section::with(|cs| irq::irq_ch_take(cs, self.id)) {
+            if let Some(params) = self.params.take() {
+                // Disable channel
+                mmio::ien_clear(self.id);
+                mmio::if_clear(self.id);
+                mmio::ch_enable_clear(self.id);
+                mmio::ch_done_clear(self.id);
+                // Clear DMA channel handler
+                critical_section::with(|cs| irq::clear_handler(cs, self.id));
+
+                match ch_error {
+                    true => Some(Err(params)),
+                    false => Some(Ok((params, self.byte_count))),
+                }
+            } else {
+                None
+            }
         } else {
             None
-        }
-    }
-
-    /// Resolve the transfer
-    ///
-    /// See [`ChannelTransfer::check_done()`] for how to obtain the `ResovledToken`
-    pub fn resolve(self, token: ResovledToken) -> Result<(DmaChannel, usize), DmaError> {
-        mmio::ien_clear(self.id);
-        mmio::if_clear(self.id);
-        mmio::ch_enable_clear(self.id);
-        mmio::ch_done_clear(self.id);
-
-        // Make sure channel is disabled, since Self is going to get dropped, and will panic if the channel is enabled
-        asm::dsb();
-
-        match token.result {
-            TransferResult::Ok => Ok((DmaChannel::new(self.id), self.byte_count)),
-            TransferResult::Err => Err(DmaError::Transfer(DmaChannel::new(self.id))),
         }
     }
 
@@ -443,22 +413,21 @@ impl<'a, W: Sized> Drop for ChannelTransfer<'a, W> {
     }
 }
 
-/// Transfer result token
-///
-/// Needs to be passed to `ChannelTransfer::resolve()` as proof that the transfer resolved (either sucessfuly, or with
-/// an error), in order to resolve the transfer
+/// Parameters used to create a DMA Transfer (both sync and async)
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct ResovledToken {
-    result: TransferResult,
+pub struct ChannelTransferParams<'a, W: Sized> {
+    /// DMA channel
+    pub ch: DmaChannel,
+    /// Source buffer
+    pub src: &'a [W],
+    /// Destination buffer
+    pub dst: &'a mut [W],
 }
 
-#[derive(Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum TransferResult {
-    Ok,
-    Err,
-}
+/// Result type of a DMA transfer (both sync and async)
+pub type ChannelTransferResult<'a, W> =
+    Result<(ChannelTransferParams<'a, W>, usize), ChannelTransferParams<'a, W>>;
 
 /// DMA Error
 #[derive(Debug)]
@@ -730,8 +699,12 @@ pub mod irq {
     static HANDLERS: Mutex<RefCell<[DmaIrqHandler; DmaChannel::COUNT]>> =
         Mutex::new(RefCell::new([default_handler; _]));
 
-    pub(crate) fn take_irq_ch(cs: CriticalSection, id: ChannelId) -> Option<bool> {
+    pub(crate) fn irq_ch_take(cs: CriticalSection, id: ChannelId) -> Option<bool> {
         IRQ_CHANNELS.borrow(cs).borrow_mut()[id as usize].take()
+    }
+
+    pub(crate) fn irq_ch_set(cs: CriticalSection, id: ChannelId, new: Option<bool>) {
+        IRQ_CHANNELS.borrow(cs).borrow_mut()[id as usize] = new;
     }
 
     /// Set the handler function for the given DMA channel

@@ -1,7 +1,7 @@
 //! Embassy support dor DMA
 //!
 
-use crate::dma::{self, ChannelTransfer, DmaChannel, DmaError};
+use crate::dma::{self, ChannelTransfer, ChannelTransferResult, DmaChannel};
 use core::{cmp::min, future::Future, task::Poll};
 use embassy_sync::waitqueue::AtomicWaker;
 
@@ -33,9 +33,8 @@ pub struct ChannelTransferFuture<'a, W: Sized> {
 impl<'a, W: Sized> ChannelTransferFuture<'a, W> {
     fn new(ch: DmaChannel, src: &'a [W], dst: &'a mut [W], byte_count: usize) -> Self {
         critical_section::with(|cs| {
-            // Clear any existing content in the IRQ channel of this DMA channel
-            let _ = dma::irq::take_irq_ch(cs, ch.id);
             // Set the IRQ handler for this channel to wake the task on interrupt
+            // Will get cleared at the end of the transfer
             dma::irq::set_handler(cs, ch.id(), |id, _| {
                 DMA_WAKERS[id as usize].wake();
             });
@@ -48,21 +47,16 @@ impl<'a, W: Sized> ChannelTransferFuture<'a, W> {
 }
 
 impl<'a, W: Sized> Future for ChannelTransferFuture<'a, W> {
-    type Output = Result<(DmaChannel, usize), DmaError>;
+    type Output = ChannelTransferResult<'a, W>;
 
     fn poll(
-        self: core::pin::Pin<&mut Self>,
+        mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Self::Output> {
         DMA_WAKERS[self.inner.id as usize].register(cx.waker());
 
-        if let Some(ch_error) =
-            critical_section::with(|cs| dma::irq::take_irq_ch(cs, self.inner.id))
-        {
-            Poll::Ready(match ch_error {
-                true => Err(DmaError::Transfer(DmaChannel::new(self.inner.id))),
-                false => Ok((DmaChannel::new(self.inner.id), self.inner.byte_count)),
-            })
+        if let Some(res) = self.inner.check_done() {
+            Poll::Ready(res)
         } else {
             Poll::Pending
         }

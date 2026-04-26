@@ -3,10 +3,10 @@
 
 use cortex_m::asm;
 use cortex_m_rt::entry;
-use defmt::info;
+use defmt::{error, info};
 use defmt_rtt as _;
 use efm32pg1b_hal::{
-    dma::{Dma, DmaChannel},
+    dma::{Dma, DmaChannel, DmaError},
     prelude::*,
     timer_le::efemb::Ticker,
 };
@@ -75,26 +75,48 @@ fn transfer(ch: DmaChannel) -> DmaChannel {
     // // Word-aligned transfer
     // let dst = &mut dst_u8[0..TRANSFER_UNIT_COUNT];
 
+    // // Zero-sized transfer, for some reason
+    // let mut dst_empty: [u8; 0] = [0u8; _];
+    // let dst: &mut [u8; 0] = &mut dst_empty;
+
     info!("src: {} bytes @ 0x{:X}", src.len(), src.as_ptr().addr());
     info!("dst: {} bytes @ 0x{:X}", dst.len(), dst.as_ptr().addr());
 
-    let transfer = ch.try_into_transfer(&SRC_U8, dst).unwrap();
+    let mut transfer = ch.into_transfer(&SRC_U8, dst);
 
     info!("Using <{}> size unit transfer", transfer.unit());
 
-    let result_token = loop {
+    let transfer_result = loop {
         match transfer.check_done() {
-            Some(token) => break token,
+            Some(res) => break res,
             None => {
                 info!(".")
             }
         }
     };
 
-    let res = transfer.resolve(result_token);
-    info!("Result: {}", res);
+    // `check_done()` should only return `Some` _once_ (i.e. in the loop above)
+    assert!(transfer.check_done().is_none());
 
-    // info!("dst: {}", dst);
+    // Print results
+    match &transfer_result {
+        Ok((params, bytes_count)) => {
+            info!("Ok: {}, {} bytes", params.ch, bytes_count);
+            if *bytes_count <= 300 {
+                info!("dst: {}", params.dst[0..*bytes_count]);
+            }
+        }
+        Err(params) => {
+            error!("Err: {}", params.ch);
+            if params.dst.len() <= 300 {
+                error!("dst: {}", params.dst);
+            }
+        }
+    }
 
-    res.unwrap().0
+    // return the original channel
+    match transfer_result {
+        Ok((params, _bytes_count)) => params.ch,
+        Err(params) => params.ch,
+    }
 }
