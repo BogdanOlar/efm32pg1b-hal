@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use defmt::info;
+use defmt::{error, info};
 use defmt_rtt as _;
 use efm32pg1b_hal::{
     dma::{Dma, DmaChannel},
@@ -90,7 +90,19 @@ async fn transfer(ch: DmaChannel) {
             }
         }
         Err(ch) => {
-            info!("Err: {}", ch)
+            info!(
+                "{} src: {} bytes @ 0x{:X}",
+                &ch,
+                src.len(),
+                src.as_ptr().addr()
+            );
+            info!(
+                "{} dst: {} bytes @ 0x{:X}",
+                &ch,
+                dst.len(),
+                dst.as_ptr().addr()
+            );
+            error!("{}", ch)
         }
     }
 }

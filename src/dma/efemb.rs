@@ -1,4 +1,4 @@
-//! Embassy support dor DAM
+//! Embassy support dor DMA
 //!
 
 use crate::dma::{self, ChannelTransfer, DmaChannel, DmaError};
@@ -59,13 +59,10 @@ impl<'a, W: Sized> Future for ChannelTransferFuture<'a, W> {
         if let Some(ch_error) =
             critical_section::with(|cs| dma::irq::take_irq_ch(cs, self.inner.id))
         {
-            match ch_error {
-                true => Poll::Ready(Err(DmaError::Transfer(DmaChannel { id: self.inner.id }))),
-                false => Poll::Ready(Ok((
-                    DmaChannel { id: self.inner.id },
-                    self.inner.byte_count,
-                ))),
-            }
+            Poll::Ready(match ch_error {
+                true => Err(DmaError::Transfer(DmaChannel::new(self.inner.id))),
+                false => Ok((DmaChannel::new(self.inner.id), self.inner.byte_count)),
+            })
         } else {
             Poll::Pending
         }

@@ -119,6 +119,12 @@ impl DmaChannel {
     /// Number of DMA channels
     const COUNT: usize = 1 << 3;
 
+    /// Create a new channel from an ID.
+    /// Only used by the HAL
+    pub(crate) fn new(id: ChannelId) -> Self {
+        Self { id }
+    }
+
     /// Get the DMA channel ID
     pub fn id(&self) -> ChannelId {
         self.id
@@ -414,8 +420,8 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         asm::dsb();
 
         match token.result {
-            TransferResult::Ok => Ok((DmaChannel { id: self.id }, self.byte_count)),
-            TransferResult::Err => Err(DmaError::Transfer(DmaChannel { id: self.id })),
+            TransferResult::Ok => Ok((DmaChannel::new(self.id), self.byte_count)),
+            TransferResult::Err => Err(DmaError::Transfer(DmaChannel::new(self.id))),
         }
     }
 
