@@ -145,6 +145,7 @@ impl Wait for AsyncInputPin {
     }
 }
 
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 struct ExtiFuture {
     exti: ExtiId,
 }

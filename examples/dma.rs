@@ -20,8 +20,8 @@ const BUF_UNIT_SIZE: usize = 1024 * 10;
 // const TRANSFER_UNIT_COUNT: usize = 32;
 // const TRANSFER_UNIT_COUNT: usize = 40;
 // const TRANSFER_UNIT_COUNT: usize = 70;
-const TRANSFER_UNIT_COUNT: usize = 300;
-// const TRANSFER_UNIT_COUNT: usize = 0x800 * 4 + 5;
+// const TRANSFER_UNIT_COUNT: usize = 300;
+const TRANSFER_UNIT_COUNT: usize = 0x800 * 4 + 5;
 
 #[entry]
 fn main() -> ! {
@@ -32,23 +32,25 @@ fn main() -> ! {
     let _clocks = p.cmu.split().with_lfa_clk(LfClockSource::LfRco);
     Ticker::init();
 
-    transfer(dma.ch1);
+    let mut ch = dma.ch1;
+    for i in 0..10 {
+        ch = transfer(ch);
 
-    // DEBUG: make sure we did not drop the transfer while the DMA channel was not done
-    {
-        let p = unsafe { pac::Peripherals::steal() };
-        let dma = Dma::init(p.ldma);
-        assert!(!dma.ch1.busy());
+        // DEBUG: make sure we did not drop the transfer while the DMA channel was not done
+        {
+            let p = unsafe { pac::Peripherals::steal() };
+            let dma = Dma::init(p.ldma);
+            assert!(!dma.ch1.busy());
+        }
+
+        info!("Done. {}", i);
     }
-
-    info!("Done.");
-
     loop {
         asm::wfe();
     }
 }
 
-fn transfer(ch: DmaChannel) {
+fn transfer(ch: DmaChannel) -> DmaChannel {
     info!("Transfer");
 
     const SRC_U8: [u8; BUF_UNIT_SIZE] = {
@@ -92,5 +94,7 @@ fn transfer(ch: DmaChannel) {
     let res = transfer.resolve(result_token);
     info!("Result: {}", res);
 
-    info!("dst: {}", dst);
+    // info!("dst: {}", dst);
+
+    res.unwrap().0
 }

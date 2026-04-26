@@ -56,7 +56,7 @@ pub mod efemb;
 
 use crate::pac::{
     ldma::ch::ctrl::{BLOCKSIZE, DSTINC, SIZE, SRCINC, STRUCTTYPE},
-    Ldma,
+    Interrupt, Ldma, NVIC,
 };
 use core::cmp::min;
 use cortex_m::asm;
@@ -90,6 +90,10 @@ impl Dma {
         let cmu = unsafe { crate::pac::Cmu::steal() };
         cmu.hfbusclken0().modify(|_, w| w.ldma().set_bit());
 
+        unsafe {
+            NVIC::unmask(Interrupt::LDMA);
+        }
+
         Self {
             ch0: DmaChannel { id: ChannelId::Ch0 },
             ch1: DmaChannel { id: ChannelId::Ch1 },
@@ -112,6 +116,9 @@ pub struct DmaChannel {
 }
 
 impl DmaChannel {
+    /// Number of DMA channels
+    const COUNT: usize = 1 << 3;
+
     /// Get the DMA channel ID
     pub fn id(&self) -> ChannelId {
         self.id
@@ -168,6 +175,40 @@ pub enum ChannelId {
     Ch7,
 }
 
+impl ChannelId {
+    /// Bitmask for the maximum value of a `ChannelId`
+    const MASK_VALUE: u8 = {
+        // we want to avoid using a literal here, since the number of DAM channels may vary between EFM controllers in
+        // simmilar families (e.g. GiantGecko and PearlGecko), so that adapting the HAL may be easier
+        // So, we're going to compute the MASK at compile-time, based on the value of `DmaChannel::COUNT`
+        // We're expecting the `DmaChannel::COUNT` to always be a power of `2`
+        let mut b: u8 = 0;
+        let mut i = 0;
+        while i < DmaChannel::COUNT.trailing_zeros() {
+            b = b | (1 << i);
+            i += 1;
+        }
+        b
+    };
+
+    /// Get a `ChannelId` from a u8
+    ///
+    /// The caller must make sure the given `val` is valid.
+    pub(crate) fn from_u8_unchecked(val: u8) -> Self {
+        match val & Self::MASK_VALUE {
+            0 => Self::Ch0,
+            1 => Self::Ch1,
+            2 => Self::Ch2,
+            3 => Self::Ch3,
+            4 => Self::Ch4,
+            5 => Self::Ch5,
+            6 => Self::Ch6,
+            7 => Self::Ch7,
+            _ => unreachable!(),
+        }
+    }
+}
+
 /// DMA channel specialised for memory-to-memory transfer
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -196,6 +237,8 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             SIZE::Byte
         };
 
+        // FIXME: handle a `byte_count` of `0` with the help of `irq::IRQ_CHANNELS`
+
         let mut transfer = Self {
             id: ch.id,
             src,
@@ -222,8 +265,8 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         let total_units = dst.len() / unit_byte_size;
         assert_eq!(dst.len() % unit_byte_size, 0);
 
-        mmio::ch_enable_clear(self.id);
         mmio::ien_clear(self.id);
+        mmio::ch_enable_clear(self.id);
         mmio::if_clear(self.id);
 
         let arr_end = dst[dst.len()..].as_ptr().addr();
@@ -322,6 +365,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         mmio::ch_write_descriptor(self.id, &first_descriptor);
 
         // start the transfer
+        mmio::ien_set(self.id);
         mmio::ch_done_clear(self.id);
         mmio::ch_enable_set(self.id);
         mmio::ch_start(self.id);
@@ -414,7 +458,7 @@ enum TransferResult {
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DmaError {
-    /// Invalid transfer size (e.g. transfer size may not be 0)
+    /// Invalid transfer size (e.g. transfer size is `0`)
     InvalidTransferSize(DmaChannel),
     /// DMA transfer failed
     Transfer(DmaChannel),
@@ -657,9 +701,73 @@ enum AddrMode {
     Relative = 1,
 }
 
+/// DMA interrupt handling
+pub mod irq {
+    use crate::{
+        dma::{mmio, ChannelId, DmaChannel},
+        pac::interrupt,
+    };
+    use core::cell::RefCell;
+    use critical_section::{CriticalSection, Mutex};
+
+    /// Handler function for a DMA interrupt
+    type DmaIrqHandler = fn(ChannelId, bool);
+
+    /// Handler which does nothing
+    const fn default_handler(_: ChannelId, _: bool) {}
+
+    /// Communication channels between DMA IRQ and the main thread. One for each `DmaChannel`
+    static IRQ_CHANNELS: Mutex<RefCell<[Option<bool>; DmaChannel::COUNT]>> =
+        Mutex::new(RefCell::new([None; _]));
+
+    /// Interrupt handlers for each DMA Channel
+    static HANDLERS: Mutex<RefCell<[DmaIrqHandler; DmaChannel::COUNT]>> =
+        Mutex::new(RefCell::new([default_handler; _]));
+
+    pub(crate) fn take_irq_ch(cs: CriticalSection, id: ChannelId) -> Option<bool> {
+        IRQ_CHANNELS.borrow(cs).borrow_mut()[id as usize].take()
+    }
+
+    /// Set the handler function for the given DMA channel
+    pub(crate) fn set_handler(cs: CriticalSection, id: ChannelId, handler: DmaIrqHandler) {
+        HANDLERS.borrow(cs).borrow_mut()[id as usize] = handler;
+    }
+
+    /// Clear the handler function for the given DMA channel
+    pub(crate) fn clear_handler(cs: CriticalSection, id: ChannelId) {
+        HANDLERS.borrow(cs).borrow_mut()[id as usize] = default_handler;
+    }
+
+    #[interrupt]
+    fn LDMA() {
+        let mut channel_error = false;
+
+        // process any channel error
+        if let Some(id) = mmio::if_error() {
+            channel_error = true;
+            mmio::if_error_clear();
+            let handle = critical_section::with(|cs| {
+                IRQ_CHANNELS.borrow(cs).borrow_mut()[id as usize] = Some(channel_error);
+                HANDLERS.borrow(cs).borrow()[id as usize]
+            });
+            handle(id, channel_error);
+        }
+
+        // process channel done flags
+        for id in mmio::if_raised() {
+            mmio::if_clear(id);
+            let handle = critical_section::with(|cs| {
+                IRQ_CHANNELS.borrow(cs).borrow_mut()[id as usize] = Some(channel_error);
+                HANDLERS.borrow(cs).borrow()[id as usize]
+            });
+            handle(id, channel_error);
+        }
+    }
+}
+
 /// Register-level DMA functions
 pub(crate) mod mmio {
-    use crate::dma::{ChannelId, Descriptor};
+    use crate::dma::{ChannelId, Descriptor, DmaChannel};
     use crate::pac::Ldma;
     use crate::SingleCycleRMW;
 
@@ -710,6 +818,20 @@ pub(crate) mod mmio {
         dma()
             .ifc()
             .write(|w| unsafe { w.done().bits(1 << id as u8) });
+    }
+
+    pub(crate) fn if_error() -> Option<ChannelId> {
+        if dma().if_().read().error().bit_is_set() {
+            Some(ChannelId::from_u8_unchecked(
+                dma().status().read().cherror().bits(),
+            ))
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn if_error_clear() {
+        dma().ifc().write(|w| w.error().set_bit());
     }
 
     pub(crate) fn ch_start(id: ChannelId) {
@@ -770,6 +892,15 @@ pub(crate) mod mmio {
             .ch(id as usize)
             .link()
             .write(|w| unsafe { w.bits(descr.link.into()) });
+    }
+
+    /// Iterator over all raised channel DMA done flags
+    pub(crate) fn if_raised() -> impl Iterator<Item = ChannelId> {
+        let cached_flags = dma().if_().read().done().bits();
+
+        (0..DmaChannel::COUNT as u8)
+            .filter(move |i| ((1 << *i) & cached_flags) != 0)
+            .map(ChannelId::from_u8_unchecked)
     }
 
     /// Get the DMA (pac) peripheral

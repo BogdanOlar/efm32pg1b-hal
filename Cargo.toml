@@ -121,6 +121,10 @@ name = "embassy_button"
 required-features = ["efemb"]
 
 [[example]]
+name = "embassy_dma"
+required-features = ["efemb"]
+
+[[example]]
 name = "embassy_example"
 # required-features = ["efemb", "efemb-timdrv-letim0-hz-32_768", "efemb-timdrv-letim0-dbg-pins"]
 required-features = ["efemb", "efemb-timdrv-letim0-hz-32_768"]
