@@ -2,7 +2,7 @@
 //!
 
 use crate::dma::{self, ChannelTransfer, ChannelTransferResult, DmaChannel};
-use core::{cmp::min, future::Future, task::Poll};
+use core::{future::Future, task::Poll};
 use embassy_sync::waitqueue::AtomicWaker;
 
 /// Embassy task wakers for each DMA channel
@@ -15,12 +15,22 @@ impl DmaChannel {
         src: &'a [W],
         dst: &'a mut [W],
     ) -> ChannelTransferFuture<'a, W> {
-        ChannelTransferFuture::new(
-            self,
-            src,
-            dst,
-            min(core::mem::size_of_val(src), core::mem::size_of_val(dst)),
-        )
+        let id = self.id;
+        let mut transfer = ChannelTransfer::new(self, src, dst);
+
+        // Set the IRQ handler for this channel transfer
+        critical_section::with(|cs| {
+            dma::irq::set_handler(cs, id, |id, channel_error| {
+                // signal to the main thread that transfer is resolved
+                critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_error)));
+                // Wake the task awaiting on this transfer
+                DMA_WAKERS[id as usize].wake();
+            })
+        });
+
+        transfer.start();
+
+        ChannelTransferFuture { inner: transfer }
     }
 }
 
@@ -28,22 +38,6 @@ impl DmaChannel {
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct ChannelTransferFuture<'a, W: Sized> {
     inner: ChannelTransfer<'a, W>,
-}
-
-impl<'a, W: Sized> ChannelTransferFuture<'a, W> {
-    fn new(ch: DmaChannel, src: &'a [W], dst: &'a mut [W], byte_count: usize) -> Self {
-        critical_section::with(|cs| {
-            // Set the IRQ handler for this channel to wake the task on interrupt
-            // Will get cleared at the end of the transfer
-            dma::irq::set_handler(cs, ch.id(), |id, _| {
-                DMA_WAKERS[id as usize].wake();
-            });
-        });
-
-        Self {
-            inner: ChannelTransfer::new(ch, src, dst, byte_count),
-        }
-    }
 }
 
 impl<'a, W: Sized> Future for ChannelTransferFuture<'a, W> {

@@ -11,9 +11,12 @@
 #[cfg(feature = "efemb")]
 pub mod efemb;
 
-use crate::pac::{
-    ldma::ch::ctrl::{BLOCKSIZE, DSTINC, SIZE, SRCINC, STRUCTTYPE},
-    Interrupt, Ldma, NVIC,
+use crate::{
+    dma::irq::set_handler,
+    pac::{
+        ldma::ch::ctrl::{BLOCKSIZE, DSTINC, SIZE, SRCINC, STRUCTTYPE},
+        Interrupt, Ldma, NVIC,
+    },
 };
 use core::cmp::min;
 use cortex_m::asm;
@@ -99,12 +102,20 @@ impl DmaChannel {
         src: &'a [W],
         dst: &'a mut [W],
     ) -> ChannelTransfer<'a, W> {
-        ChannelTransfer::new(
-            self,
-            src,
-            dst,
-            min(core::mem::size_of_val(src), core::mem::size_of_val(dst)),
-        )
+        let id = self.id;
+        let mut transfer = ChannelTransfer::new(self, src, dst);
+
+        // Set the IRQ handler for this channel transfer
+        critical_section::with(|cs| {
+            set_handler(cs, id, |id, channel_error| {
+                // signal to the main thread that transfer is resolved
+                critical_section::with(|csd| irq::irq_ch_set(csd, id, Some(channel_error)));
+            })
+        });
+
+        transfer.start();
+
+        transfer
     }
 }
 
@@ -174,7 +185,9 @@ pub struct ChannelTransfer<'a, W: Sized> {
 }
 
 impl<'a, W: Sized> ChannelTransfer<'a, W> {
-    fn new(ch: DmaChannel, src: &'a [W], dst: &'a mut [W], byte_count: usize) -> Self {
+    fn new(ch: DmaChannel, src: &'a [W], dst: &'a mut [W]) -> Self {
+        let byte_count = min(core::mem::size_of_val(src), core::mem::size_of_val(dst));
+
         // Decide which unit/type the transfer may use
         let unit = if src.as_ptr().addr().is_multiple_of(size_of::<u32>())
             && dst.as_ptr().addr().is_multiple_of(size_of::<u32>())
@@ -191,16 +204,12 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         };
 
         let id = ch.id;
-        let mut transfer = Self {
+        Self {
             params: Some(ChannelTransferParams { ch, src, dst }),
             id,
             byte_count,
             unit,
-        };
-
-        transfer.start();
-
-        transfer
+        }
     }
 
     /// Start the DMA transfer
@@ -726,10 +735,7 @@ pub mod irq {
         if let Some(id) = mmio::if_error() {
             channel_error = true;
             mmio::if_error_clear();
-            let handle = critical_section::with(|cs| {
-                IRQ_CHANNELS.borrow(cs).borrow_mut()[id as usize] = Some(channel_error);
-                HANDLERS.borrow(cs).borrow()[id as usize]
-            });
+            let handle = critical_section::with(|cs| HANDLERS.borrow(cs).borrow()[id as usize]);
             handle(id, channel_error);
         }
 
