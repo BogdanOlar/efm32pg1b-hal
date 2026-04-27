@@ -134,8 +134,10 @@ pub enum ChannelId {
 impl ChannelId {
     /// Bitmask for the maximum value of a `ChannelId`
     const MASK_VALUE: u8 = {
-        // DmaChannel::COUNT must be a power of `2` otherwise the subtraction below won't work
-        assert!(DmaChannel::COUNT.count_ones() == 1);
+        assert!(
+            DmaChannel::COUNT.count_ones() == 1,
+            "DmaChannel::COUNT must be a power of `2` otherwise the subtraction below won't work"
+        );
 
         DmaChannel::COUNT as u8 - 1
     };
@@ -162,6 +164,9 @@ impl ChannelId {
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ChannelTransfer<'a, W: Sized> {
+    /// DMA Channel transfer parameters.
+    /// The `Option` is needed because this type implements `Drop`, and we may need to release the params before this
+    /// struct is dropped
     params: Option<ChannelTransferParams<'a, W>>,
     id: ChannelId,
     byte_count: usize,
