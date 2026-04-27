@@ -134,17 +134,10 @@ pub enum ChannelId {
 impl ChannelId {
     /// Bitmask for the maximum value of a `ChannelId`
     const MASK_VALUE: u8 = {
-        // we want to avoid using a literal here, since the number of DMA channels may vary between EFM controllers in
-        // simmilar families (e.g. GiantGecko and PearlGecko), so that adapting the HAL may be easier
-        // So, we're going to compute the MASK at compile-time, based on the value of `DmaChannel::COUNT`
-        // We're expecting the `DmaChannel::COUNT` to always be a power of `2`
-        let mut b: u8 = 0;
-        let mut i = 0;
-        while i < DmaChannel::COUNT.trailing_zeros() {
-            b = b | (1 << i);
-            i += 1;
-        }
-        b
+        // DmaChannel::COUNT must be a power of `2` otherwise the subtraction below won't work
+        assert!(DmaChannel::COUNT.count_ones() == 1);
+
+        DmaChannel::COUNT as u8 - 1
     };
 
     /// Get a `ChannelId` from a u8
@@ -542,7 +535,9 @@ impl Ctrl {
         self
     }
 
-    /// Set the transfer count. Must be `<= Descriptor::MAX_TRANSFER_UNITS` (`0x800` units)
+    /// Set the transfer count.
+    ///
+    /// Must be `0 < value <= Descriptor::MAX_TRANSFER_UNITS` (`0x800` units)
     ///
     /// Example:
     ///
@@ -597,7 +592,8 @@ impl From<Ctrl> for u32 {
     }
 }
 
-/// Wrapper for the CTRL.XFERCNT which makes sure the value is at most `Descriptor::MAX_TRANSFER_UNITS` (`0x800`)
+/// Wrapper for the CTRL.XFERCNT which makes sure the value is at most `Descriptor::MAX_TRANSFER_UNITS` (`0x800`),
+/// and that it's greater than `0`
 struct TransferCount {
     count: u16,
 }
@@ -606,7 +602,7 @@ impl TryFrom<usize> for TransferCount {
     type Error = ();
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value <= Descriptor::MAX_TRANSFER_UNITS {
+        if (value > 0) && (value <= Descriptor::MAX_TRANSFER_UNITS) {
             Ok(Self {
                 count: value as u16,
             })

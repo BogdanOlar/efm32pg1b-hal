@@ -6,7 +6,7 @@ use cortex_m_rt::entry;
 use defmt::{error, info};
 use defmt_rtt as _;
 use efm32pg1b_hal::{
-    dma::{Dma, DmaChannel, DmaError},
+    dma::{Dma, DmaChannel},
     prelude::*,
     timer_le::efemb::Ticker,
 };
