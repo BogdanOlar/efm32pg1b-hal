@@ -103,7 +103,6 @@ impl DmaChannel {
         dst: &'a mut [W],
     ) -> ChannelTransfer<'a, W> {
         let id = self.id;
-        let mut transfer = ChannelTransfer::new(self, src, dst);
 
         // Set the IRQ handler for this channel transfer
         critical_section::with(|cs| {
@@ -113,8 +112,8 @@ impl DmaChannel {
             })
         });
 
+        let mut transfer = ChannelTransfer::new(self, src, dst);
         transfer.start();
-
         transfer
     }
 }

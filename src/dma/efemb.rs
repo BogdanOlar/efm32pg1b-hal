@@ -16,7 +16,6 @@ impl DmaChannel {
         dst: &'a mut [W],
     ) -> ChannelTransferFuture<'a, W> {
         let id = self.id;
-        let mut transfer = ChannelTransfer::new(self, src, dst);
 
         // Set the IRQ handler for this channel transfer
         critical_section::with(|cs| {
@@ -28,16 +27,16 @@ impl DmaChannel {
             })
         });
 
+        let mut transfer = ChannelTransfer::new(self, src, dst);
         transfer.start();
-
-        ChannelTransferFuture { inner: transfer }
+        ChannelTransferFuture { transfer }
     }
 }
 
 /// Async DMA memory-to-memory transfer
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct ChannelTransferFuture<'a, W: Sized> {
-    inner: ChannelTransfer<'a, W>,
+    transfer: ChannelTransfer<'a, W>,
 }
 
 impl<'a, W: Sized> Future for ChannelTransferFuture<'a, W> {
@@ -47,10 +46,10 @@ impl<'a, W: Sized> Future for ChannelTransferFuture<'a, W> {
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Self::Output> {
-        DMA_WAKERS[self.inner.id as usize].register(cx.waker());
+        DMA_WAKERS[self.transfer.id as usize].register(cx.waker());
 
-        if let Some(res) = self.inner.check_done() {
-            Poll::Ready(res)
+        if let Some(transfer_result) = self.transfer.check_done() {
+            Poll::Ready(transfer_result)
         } else {
             Poll::Pending
         }
