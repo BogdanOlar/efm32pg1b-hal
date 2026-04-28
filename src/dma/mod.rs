@@ -95,8 +95,6 @@ impl DmaChannel {
     }
 
     /// Start a memory-to-memory transfer
-    ///
-    /// Fails if the length of `src` or `dest` is `0`
     pub fn into_transfer<'a, W: Sized>(
         self,
         src: &'a [W],
@@ -728,24 +726,18 @@ pub mod irq {
 
     #[interrupt]
     fn LDMA() {
-        let mut channel_error = false;
-
         // process any channel error
         if let Some(id) = mmio::if_error() {
-            channel_error = true;
             mmio::if_error_clear();
             let handle = critical_section::with(|cs| HANDLERS.borrow(cs).borrow()[id as usize]);
-            handle(id, channel_error);
+            handle(id, true);
         }
 
         // process channel done flags
         for id in mmio::if_raised() {
             mmio::if_clear(id);
-            let handle = critical_section::with(|cs| {
-                IRQ_CHANNELS.borrow(cs).borrow_mut()[id as usize] = Some(channel_error);
-                HANDLERS.borrow(cs).borrow()[id as usize]
-            });
-            handle(id, channel_error);
+            let handle = critical_section::with(|cs| HANDLERS.borrow(cs).borrow()[id as usize]);
+            handle(id, false);
         }
     }
 }
