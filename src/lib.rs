@@ -12,6 +12,7 @@
 pub use efm32pg1b_pac as pac;
 
 pub mod cmu;
+pub mod crc;
 pub mod dma;
 pub mod gpio;
 pub mod timer;
