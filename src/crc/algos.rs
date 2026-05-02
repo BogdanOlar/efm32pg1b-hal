@@ -4,8 +4,8 @@
 //!
 //! If the crate feature `crc-lib-compat` is enabled, then a `From` implementation is also available in the `lib_compat`
 //! module which can convert `crc::Algorithm<u16>` into `crate::crc::Algorithm<u16>`. The CRC peripheral of this uC can
-//! only calculate `Algorithm<u32>` with the `0x4c11db7` polynomial, so all algos from `crc` crate have been converted
-//! manually in this module.
+//! only calculate `Algorithm<u32>` with the `0x4c11db7` polynomial, so all suitable 32-bit algos from `crc` crate have
+//! been converted manually in this module.
 //!
 
 use crate::crc::Algorithm;

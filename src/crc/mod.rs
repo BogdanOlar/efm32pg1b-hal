@@ -1,5 +1,38 @@
 //! GPCRC - General Purpose Cyclic Redundancy Check
 //!
+//! # Blocking
+//!
+//! ```rust,no_run
+//!     let p = Peripherals::take().unwrap();
+//!
+//!     let data: &[u8] = "123456789".as_bytes();
+//!
+//!     let driver: Crc = Crc::new(p.gpcrc);
+//!
+//!     // Create a CRC with a particular Algorithm
+//!     let crc_algo: CrcAlgo<u16> = driver.into_algo_16(&efm32pg1b_hal::crc::algos::CRC_16_ARC);
+//!
+//!     // calculate CRC in one go
+//!     crc_algo.update(data);
+//!     let crc = crc_algo.finalize();
+//!     assert_eq!(crc, 0xbb3d);
+//!
+//!     // or calculate CRC in multiple calls (CRC algo was reset to initial state when `finalize()` was called above)
+//!     crc_algo.update(&data[..data.len() / 2]);
+//!     crc_algo.update(&data[data.len() / 2..]);
+//!     let crc = crc_algo.finalize();
+//!     assert_eq!(crc, 0xbb3d);
+//!
+//!     let driver = crc_algo.release();
+//!
+//!     // use another algo (CRC-32)
+//!     let crc_algo: CrcAlgo<u32> = driver.into_algo_32(&efm32pg1b_hal::crc::algos::CRC_32_CKSUM);
+//!     for b in data {
+//!         crc_algo.update(&[*b]);
+//!     }
+//!     let crc = crc_algo.finalize();
+//!     assert_eq!(crc, 0x765e7680);
+//! ```
 
 pub mod algos;
 use crate::pac::Gpcrc;
@@ -48,7 +81,7 @@ impl Crc {
         }
     }
 
-    /// Deastroy the CRC driver and release the GPCRC peripheral
+    /// Destroy the CRC driver and release the GPCRC peripheral
     pub fn release(self) -> Gpcrc {
         // Disable CRC clock
         let cmu = unsafe { crate::pac::Cmu::steal() };

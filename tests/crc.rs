@@ -89,6 +89,29 @@ mod tests {
         }
     }
 
+    /// Same CRC should be calculated even if this is done in multiple calls to `update()`
+    #[test]
+    fn split_blocking(driver: Crc) {
+        let data = "123456789".as_bytes();
+
+        // CRC-16
+        let hal_crc_algo = driver.into_algo_16(&efm32pg1b_hal::crc::algos::CRC_16_ARC);
+        hal_crc_algo.update(&data[..data.len() / 2]);
+        hal_crc_algo.update(&data[data.len() / 2..]);
+        let crc = hal_crc_algo.finalize();
+        assert_eq!(crc, 0xbb3d);
+
+        let driver = hal_crc_algo.release();
+
+        // CRC-32
+        let hal_crc_algo = driver.into_algo_32(&efm32pg1b_hal::crc::algos::CRC_32_CKSUM);
+        for b in data {
+            hal_crc_algo.update(&[*b]);
+        }
+        let crc = hal_crc_algo.finalize();
+        assert_eq!(crc, 0x765e7680);
+    }
+
     const TEST_DATA: &[&str] = &[
             "",
             "1",
