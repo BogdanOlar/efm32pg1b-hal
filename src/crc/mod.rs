@@ -108,6 +108,8 @@ impl<W> Crc<W> {
             core::slice::from_raw_parts_mut(data.as_ptr() as *mut u8, core::mem::size_of_val(data))
         };
 
+        // TODO: use the `GPCRC_INPUTDATA`, `GPCRC_INPUTDATAHWORD` regs when possible, istead of always using the
+        //       byte-sized `GPCRC_INPUTDATABYTE`
         for b in data {
             mmio::input_u8(*b);
         }

@@ -112,6 +112,28 @@ mod tests {
         assert_eq!(crc, 0x765e7680);
     }
 
+    /// Data width mixing
+    #[test]
+    fn data_width_blocking(driver: CrcDriver) {
+        let crc_algo = driver.into_algo_16(&efm32pg1b_hal::crc::algos::CRC_16_ARC);
+
+        // 10 byte u8 array containing ASCII codes: '1' is `0x31`, '2' is `0x32`, etc.
+        let data1_u8: &[u8] = "1234567890".as_bytes();
+
+        crc_algo.update(data1_u8);
+        let crc_u8 = crc_algo.finalize();
+
+        // `data1_u8` is essentially "Big Endian" byte order, so we need to account for that when using u32 and u16
+        let data2_u32: [u32; 2] = [0x31323334u32.to_be(), 0x35363738u32.to_be()];
+        let data2_u16: u16 = 0x3930u16.to_be();
+
+        crc_algo.update(&data2_u32);
+        crc_algo.update(&[data2_u16]);
+        let crc_mixed = crc_algo.finalize();
+
+        assert_eq!(crc_u8, crc_mixed);
+    }
+
     const TEST_DATA: &[&str] = &[
             "",
             "1",
