@@ -103,8 +103,12 @@ pub struct Crc<W> {
 
 impl<W> Crc<W> {
     /// Push new data
-    pub fn update(&self, arr: &[u8]) {
-        for b in arr {
+    pub fn update<DATA: Sized>(&self, data: &[DATA]) {
+        let data: &[u8] = unsafe {
+            core::slice::from_raw_parts_mut(data.as_ptr() as *mut u8, core::mem::size_of_val(data))
+        };
+
+        for b in data {
             mmio::input_u8(*b);
         }
     }
