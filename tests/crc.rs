@@ -7,17 +7,17 @@ mod tests {
 
     use defmt::info;
     use defmt_rtt as _;
-    use efm32pg1b_hal::{crc::Crc, pac::Peripherals};
+    use efm32pg1b_hal::{crc::CrcDriver, pac::Peripherals};
 
     #[init]
-    fn init() -> Crc {
+    fn init() -> CrcDriver {
         let p = Peripherals::take().unwrap();
-        Crc::new(p.gpcrc)
+        CrcDriver::new(p.gpcrc)
     }
 
     /// Test the HAL CRC-16 algos against the `crc` crate algos
     #[test]
-    fn crc16(mut driver: Crc) {
+    fn crc16(mut driver: CrcDriver) {
         for (lib_algo, hal_algo, algo_name) in CRC16_ALGOS {
             info!("{}", algo_name);
 
@@ -42,7 +42,7 @@ mod tests {
     /// Test the compatibility with the `crc` crate Algorithm definitions
     #[test]
     #[cfg(feature = "crc-lib-compat")]
-    fn crc16_compat(mut driver: Crc) {
+    fn crc16_compat(mut driver: CrcDriver) {
         for (lib_algo, _, algo_name) in CRC16_ALGOS {
             info!("{}", algo_name);
 
@@ -67,7 +67,7 @@ mod tests {
 
     /// Test the HAL CRC-32 algos against the `crc` crate algos
     #[test]
-    fn crc32(mut driver: Crc) {
+    fn crc32(mut driver: CrcDriver) {
         for (lib_algo, hal_algo, algo_name) in CRC32_ALGOS {
             info!("{}", algo_name);
 
@@ -91,24 +91,24 @@ mod tests {
 
     /// Same CRC should be calculated even if this is done in multiple calls to `update()`
     #[test]
-    fn split_blocking(driver: Crc) {
+    fn split_blocking(driver: CrcDriver) {
         let data = "123456789".as_bytes();
 
         // CRC-16
-        let hal_crc_algo = driver.into_algo_16(&efm32pg1b_hal::crc::algos::CRC_16_ARC);
-        hal_crc_algo.update(&data[..data.len() / 2]);
-        hal_crc_algo.update(&data[data.len() / 2..]);
-        let crc = hal_crc_algo.finalize();
+        let crc_algo = driver.into_algo_16(&efm32pg1b_hal::crc::algos::CRC_16_ARC);
+        crc_algo.update(&data[..data.len() / 2]);
+        crc_algo.update(&data[data.len() / 2..]);
+        let crc = crc_algo.finalize();
         assert_eq!(crc, 0xbb3d);
 
-        let driver = hal_crc_algo.release();
+        let driver = crc_algo.release();
 
         // CRC-32
-        let hal_crc_algo = driver.into_algo_32(&efm32pg1b_hal::crc::algos::CRC_32_CKSUM);
+        let crc_algo = driver.into_algo_32(&efm32pg1b_hal::crc::algos::CRC_32_CKSUM);
         for b in data {
-            hal_crc_algo.update(&[*b]);
+            crc_algo.update(&[*b]);
         }
-        let crc = hal_crc_algo.finalize();
+        let crc = crc_algo.finalize();
         assert_eq!(crc, 0x765e7680);
     }
 

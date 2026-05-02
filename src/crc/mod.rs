@@ -3,35 +3,36 @@
 //! # Blocking
 //!
 //! ```rust,no_run
-//!     let p = Peripherals::take().unwrap();
+//! let p = Peripherals::take().unwrap();
 //!
-//!     let data: &[u8] = "123456789".as_bytes();
+//! let data: &[u8] = "123456789".as_bytes();
 //!
-//!     let driver: Crc = Crc::new(p.gpcrc);
+//! let driver: crc::Driver = Driver::new(p.gpcrc);
 //!
-//!     // Create a CRC with a particular Algorithm
-//!     let crc_algo: CrcAlgo<u16> = driver.into_algo_16(&efm32pg1b_hal::crc::algos::CRC_16_ARC);
+//! // Create a CRC with a particular Algorithm
+//! let crc_algo = driver.into_algo_16(&crc::algos::CRC_16_ARC);
 //!
-//!     // calculate CRC in one go
-//!     crc_algo.update(data);
-//!     let crc = crc_algo.finalize();
-//!     assert_eq!(crc, 0xbb3d);
+//! // calculate CRC in one go
+//! crc_algo.update(data);
+//! let crc = crc_algo.finalize();
+//! assert_eq!(crc, 0xbb3d);
 //!
-//!     // or calculate CRC in multiple calls (CRC algo was reset to initial state when `finalize()` was called above)
-//!     crc_algo.update(&data[..data.len() / 2]);
-//!     crc_algo.update(&data[data.len() / 2..]);
-//!     let crc = crc_algo.finalize();
-//!     assert_eq!(crc, 0xbb3d);
+//! // or calculate CRC in multiple calls
+//! // (CRC algo is reset to initial state when `finalize()` is called)
+//! crc_algo.update(&data[..data.len()/2]);
+//! crc_algo.update(&data[data.len()/2..]);
+//! let crc = crc_algo.finalize();
+//! assert_eq!(crc, 0xbb3d);
 //!
-//!     let driver = crc_algo.release();
+//! let driver = crc_algo.release();
 //!
-//!     // use another algo (CRC-32)
-//!     let crc_algo: CrcAlgo<u32> = driver.into_algo_32(&efm32pg1b_hal::crc::algos::CRC_32_CKSUM);
-//!     for b in data {
-//!         crc_algo.update(&[*b]);
-//!     }
-//!     let crc = crc_algo.finalize();
-//!     assert_eq!(crc, 0x765e7680);
+//! // use another algo (CRC-32)
+//! let crc_algo = driver.into_algo_32(&crc::algos::CRC_32_CKSUM);
+//! for b in data {
+//!     crc_algo.update(&[*b]);
+//! }
+//! let crc = crc_algo.finalize();
+//! assert_eq!(crc, 0x765e7680);
 //! ```
 
 pub mod algos;
@@ -39,11 +40,11 @@ use crate::pac::Gpcrc;
 
 /// Cyclic Redundancy Check driver
 #[derive(Debug)]
-pub struct Crc {
+pub struct CrcDriver {
     p: Gpcrc,
 }
 
-impl Crc {
+impl CrcDriver {
     /// Create the CRC driver
     pub fn new(p: Gpcrc) -> Self {
         // Enable CRC clock
@@ -54,13 +55,13 @@ impl Crc {
     }
 
     /// Create a CRC-16 algo
-    pub fn into_algo_16(self, algo: &Algorithm<u16>) -> CrcAlgo<u16> {
+    pub fn into_algo_16(self, algo: &Algorithm<u16>) -> Crc<u16> {
         mmio::reset();
         mmio::set_algo_16(algo);
         mmio::auto_init_set();
         mmio::enable();
         mmio::init();
-        CrcAlgo {
+        Crc {
             driver: self,
             xorout: algo.xorout,
             refout: algo.refout,
@@ -68,13 +69,13 @@ impl Crc {
     }
 
     /// Create a CRC-32 algo
-    pub fn into_algo_32(self, algo: &Algorithm<u32>) -> CrcAlgo<u32> {
+    pub fn into_algo_32(self, algo: &Algorithm<u32>) -> Crc<u32> {
         mmio::reset();
         mmio::set_algo_32(algo);
         mmio::auto_init_set();
         mmio::enable();
         mmio::init();
-        CrcAlgo {
+        Crc {
             driver: self,
             xorout: algo.xorout,
             refout: algo.refout,
@@ -94,13 +95,13 @@ impl Crc {
 /// CRC algorithm
 #[derive(Debug)]
 // #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct CrcAlgo<W> {
-    driver: Crc,
+pub struct Crc<W> {
+    driver: CrcDriver,
     xorout: W,
     refout: bool,
 }
 
-impl<W> CrcAlgo<W> {
+impl<W> Crc<W> {
     /// Push new data
     pub fn update(&self, arr: &[u8]) {
         for b in arr {
@@ -109,13 +110,13 @@ impl<W> CrcAlgo<W> {
     }
 
     /// Destroy this Algo and return the CRC driver used to create it
-    pub fn release(self) -> Crc {
+    pub fn release(self) -> CrcDriver {
         mmio::disable();
         self.driver
     }
 }
 
-impl CrcAlgo<u16> {
+impl Crc<u16> {
     /// Finalize the CrcAlgo and return the resulted CRC-16
     ///
     /// After calling this method, the CrcAlgo can be used again to calculate a new CRC with the same [`Algorithm`]
@@ -124,7 +125,7 @@ impl CrcAlgo<u16> {
     }
 }
 
-impl CrcAlgo<u32> {
+impl Crc<u32> {
     /// Finalize the CrcAlgo and return the resulted CRC-32
     ///
     /// After calling this method, the CrcAlgo can be used again to calculate a new CRC with the same [`Algorithm`]
