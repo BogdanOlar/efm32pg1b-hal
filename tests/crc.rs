@@ -47,7 +47,7 @@ mod tests {
 
             let lib_crc_algo = crc::Crc::<u16>::new(lib_algo);
             // Get the HAL algo from the `crc::Algorithm<u16>`
-            let hal_crc_algo = driver.into_algo_16((*lib_algo).into());
+            let hal_crc_algo = driver.into_algo_16(&(*lib_algo).into());
 
             for s in TEST_DATA {
                 let b = s.as_bytes();
@@ -100,194 +100,194 @@ mod tests {
 
     const CRC16_ALGOS: [(
         &crc::Algorithm<u16>,
-        efm32pg1b_hal::crc::Algorithm<u16>,
+        &efm32pg1b_hal::crc::Algorithm<u16>,
         &str,
     ); 31] = [
         (
             &crc::CRC_16_ARC,
-            efm32pg1b_hal::crc::algos::CRC_16_ARC,
+            &efm32pg1b_hal::crc::algos::CRC_16_ARC,
             "CRC_16_ARC",
         ),
         (
             &crc::CRC_16_CDMA2000,
-            efm32pg1b_hal::crc::algos::CRC_16_CDMA2000,
+            &efm32pg1b_hal::crc::algos::CRC_16_CDMA2000,
             "CRC_16_CDMA2000",
         ),
         (
             &crc::CRC_16_CMS,
-            efm32pg1b_hal::crc::algos::CRC_16_CMS,
+            &efm32pg1b_hal::crc::algos::CRC_16_CMS,
             "CRC_16_CMS",
         ),
         (
             &crc::CRC_16_DDS_110,
-            efm32pg1b_hal::crc::algos::CRC_16_DDS_110,
+            &efm32pg1b_hal::crc::algos::CRC_16_DDS_110,
             "CRC_16_DDS_110",
         ),
         (
             &crc::CRC_16_DECT_R,
-            efm32pg1b_hal::crc::algos::CRC_16_DECT_R,
+            &efm32pg1b_hal::crc::algos::CRC_16_DECT_R,
             "CRC_16_DECT_R",
         ),
         (
             &crc::CRC_16_DECT_X,
-            efm32pg1b_hal::crc::algos::CRC_16_DECT_X,
+            &efm32pg1b_hal::crc::algos::CRC_16_DECT_X,
             "CRC_16_DECT_X",
         ),
         (
             &crc::CRC_16_DNP,
-            efm32pg1b_hal::crc::algos::CRC_16_DNP,
+            &efm32pg1b_hal::crc::algos::CRC_16_DNP,
             "CRC_16_DNP",
         ),
         (
             &crc::CRC_16_EN_13757,
-            efm32pg1b_hal::crc::algos::CRC_16_EN_13757,
+            &efm32pg1b_hal::crc::algos::CRC_16_EN_13757,
             "CRC_16_EN_13757",
         ),
         (
             &crc::CRC_16_GENIBUS,
-            efm32pg1b_hal::crc::algos::CRC_16_GENIBUS,
+            &efm32pg1b_hal::crc::algos::CRC_16_GENIBUS,
             "CRC_16_GENIBUS",
         ),
         (
             &crc::CRC_16_GSM,
-            efm32pg1b_hal::crc::algos::CRC_16_GSM,
+            &efm32pg1b_hal::crc::algos::CRC_16_GSM,
             "CRC_16_GSM",
         ),
         (
             &crc::CRC_16_IBM_3740,
-            efm32pg1b_hal::crc::algos::CRC_16_IBM_3740,
+            &efm32pg1b_hal::crc::algos::CRC_16_IBM_3740,
             "CRC_16_IBM_3740",
         ),
         (
             &crc::CRC_16_IBM_SDLC,
-            efm32pg1b_hal::crc::algos::CRC_16_IBM_SDLC,
+            &efm32pg1b_hal::crc::algos::CRC_16_IBM_SDLC,
             "CRC_16_IBM_SDLC",
         ),
         (
             &crc::CRC_16_ISO_IEC_14443_3_A,
-            efm32pg1b_hal::crc::algos::CRC_16_ISO_IEC_14443_3_A,
+            &efm32pg1b_hal::crc::algos::CRC_16_ISO_IEC_14443_3_A,
             "CRC_16_ISO_IEC_14443_3_A",
         ),
         (
             &crc::CRC_16_KERMIT,
-            efm32pg1b_hal::crc::algos::CRC_16_KERMIT,
+            &efm32pg1b_hal::crc::algos::CRC_16_KERMIT,
             "CRC_16_KERMIT",
         ),
         (
             &crc::CRC_16_LJ1200,
-            efm32pg1b_hal::crc::algos::CRC_16_LJ1200,
+            &efm32pg1b_hal::crc::algos::CRC_16_LJ1200,
             "CRC_16_LJ1200",
         ),
         (
             &crc::CRC_16_M17,
-            efm32pg1b_hal::crc::algos::CRC_16_M17,
+            &efm32pg1b_hal::crc::algos::CRC_16_M17,
             "CRC_16_M17",
         ),
         (
             &crc::CRC_16_MAXIM_DOW,
-            efm32pg1b_hal::crc::algos::CRC_16_MAXIM_DOW,
+            &efm32pg1b_hal::crc::algos::CRC_16_MAXIM_DOW,
             "CRC_16_MAXIM_DOW",
         ),
         (
             &crc::CRC_16_MCRF4XX,
-            efm32pg1b_hal::crc::algos::CRC_16_MCRF4XX,
+            &efm32pg1b_hal::crc::algos::CRC_16_MCRF4XX,
             "CRC_16_MCRF4XX",
         ),
         (
             &crc::CRC_16_MODBUS,
-            efm32pg1b_hal::crc::algos::CRC_16_MODBUS,
+            &efm32pg1b_hal::crc::algos::CRC_16_MODBUS,
             "CRC_16_MODBUS",
         ),
         (
             &crc::CRC_16_NRSC_5,
-            efm32pg1b_hal::crc::algos::CRC_16_NRSC_5,
+            &efm32pg1b_hal::crc::algos::CRC_16_NRSC_5,
             "CRC_16_NRSC_5",
         ),
         (
             &crc::CRC_16_OPENSAFETY_A,
-            efm32pg1b_hal::crc::algos::CRC_16_OPENSAFETY_A,
+            &efm32pg1b_hal::crc::algos::CRC_16_OPENSAFETY_A,
             "CRC_16_OPENSAFETY_A",
         ),
         (
             &crc::CRC_16_OPENSAFETY_B,
-            efm32pg1b_hal::crc::algos::CRC_16_OPENSAFETY_B,
+            &efm32pg1b_hal::crc::algos::CRC_16_OPENSAFETY_B,
             "CRC_16_OPENSAFETY_B",
         ),
         (
             &crc::CRC_16_PROFIBUS,
-            efm32pg1b_hal::crc::algos::CRC_16_PROFIBUS,
+            &efm32pg1b_hal::crc::algos::CRC_16_PROFIBUS,
             "CRC_16_PROFIBUS",
         ),
         (
             &crc::CRC_16_RIELLO,
-            efm32pg1b_hal::crc::algos::CRC_16_RIELLO,
+            &efm32pg1b_hal::crc::algos::CRC_16_RIELLO,
             "CRC_16_RIELLO",
         ),
         (
             &crc::CRC_16_SPI_FUJITSU,
-            efm32pg1b_hal::crc::algos::CRC_16_SPI_FUJITSU,
+            &efm32pg1b_hal::crc::algos::CRC_16_SPI_FUJITSU,
             "CRC_16_SPI_FUJITSU",
         ),
         (
             &crc::CRC_16_T10_DIF,
-            efm32pg1b_hal::crc::algos::CRC_16_T10_DIF,
+            &efm32pg1b_hal::crc::algos::CRC_16_T10_DIF,
             "CRC_16_T10_DIF",
         ),
         (
             &crc::CRC_16_TELEDISK,
-            efm32pg1b_hal::crc::algos::CRC_16_TELEDISK,
+            &efm32pg1b_hal::crc::algos::CRC_16_TELEDISK,
             "CRC_16_TELEDISK",
         ),
         (
             &crc::CRC_16_TMS37157,
-            efm32pg1b_hal::crc::algos::CRC_16_TMS37157,
+            &efm32pg1b_hal::crc::algos::CRC_16_TMS37157,
             "CRC_16_TMS37157",
         ),
         (
             &crc::CRC_16_UMTS,
-            efm32pg1b_hal::crc::algos::CRC_16_UMTS,
+            &efm32pg1b_hal::crc::algos::CRC_16_UMTS,
             "CRC_16_UMTS",
         ),
         (
             &crc::CRC_16_USB,
-            efm32pg1b_hal::crc::algos::CRC_16_USB,
+            &efm32pg1b_hal::crc::algos::CRC_16_USB,
             "CRC_16_USB",
         ),
         (
             &crc::CRC_16_XMODEM,
-            efm32pg1b_hal::crc::algos::CRC_16_XMODEM,
+            &efm32pg1b_hal::crc::algos::CRC_16_XMODEM,
             "CRC_16_XMODEM",
         ),
     ];
 
     const CRC32_ALGOS: [(
         &crc::Algorithm<u32>,
-        efm32pg1b_hal::crc::Algorithm<u32>,
+        &efm32pg1b_hal::crc::Algorithm<u32>,
         &str,
     ); 5] = [
         (
             &crc::CRC_32_BZIP2,
-            efm32pg1b_hal::crc::algos::CRC_32_BZIP2,
+            &efm32pg1b_hal::crc::algos::CRC_32_BZIP2,
             "CRC_32_BZIP2",
         ),
         (
             &crc::CRC_32_CKSUM,
-            efm32pg1b_hal::crc::algos::CRC_32_CKSUM,
+            &efm32pg1b_hal::crc::algos::CRC_32_CKSUM,
             "CRC_32_CKSUM",
         ),
         (
             &crc::CRC_32_ISO_HDLC,
-            efm32pg1b_hal::crc::algos::CRC_32_ISO_HDLC,
+            &efm32pg1b_hal::crc::algos::CRC_32_ISO_HDLC,
             "CRC_32_ISO_HDLC",
         ),
         (
             &crc::CRC_32_JAMCRC,
-            efm32pg1b_hal::crc::algos::CRC_32_JAMCRC,
+            &efm32pg1b_hal::crc::algos::CRC_32_JAMCRC,
             "CRC_32_JAMCRC",
         ),
         (
             &crc::CRC_32_MPEG_2,
-            efm32pg1b_hal::crc::algos::CRC_32_MPEG_2,
+            &efm32pg1b_hal::crc::algos::CRC_32_MPEG_2,
             "CRC_32_MPEG_2",
         ),
     ];

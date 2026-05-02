@@ -7,7 +7,7 @@ use crate::pac::Gpcrc;
 /// Cyclic Redundancy Check driver
 #[derive(Debug)]
 pub struct Crc {
-    _p: Gpcrc,
+    p: Gpcrc,
 }
 
 impl Crc {
@@ -17,27 +17,44 @@ impl Crc {
         let cmu = unsafe { crate::pac::Cmu::steal() };
         cmu.hfbusclken0().modify(|_, w| w.gpcrc().set_bit());
 
-        Self { _p: p }
+        Self { p }
     }
 
     /// Create a CRC-16 algo
-    pub fn into_algo_16(self, algo: Algorithm<u16>) -> CrcAlgo<u16> {
+    pub fn into_algo_16(self, algo: &Algorithm<u16>) -> CrcAlgo<u16> {
         mmio::reset();
-        mmio::set_algo_16(&algo);
+        mmio::set_algo_16(algo);
         mmio::auto_init_set();
         mmio::enable();
         mmio::init();
-        CrcAlgo { driver: self, algo }
+        CrcAlgo {
+            driver: self,
+            xorout: algo.xorout,
+            refout: algo.refout,
+        }
     }
 
     /// Create a CRC-32 algo
-    pub fn into_algo_32(self, algo: Algorithm<u32>) -> CrcAlgo<u32> {
+    pub fn into_algo_32(self, algo: &Algorithm<u32>) -> CrcAlgo<u32> {
         mmio::reset();
-        mmio::set_algo_32(&algo);
+        mmio::set_algo_32(algo);
         mmio::auto_init_set();
         mmio::enable();
         mmio::init();
-        CrcAlgo { driver: self, algo }
+        CrcAlgo {
+            driver: self,
+            xorout: algo.xorout,
+            refout: algo.refout,
+        }
+    }
+
+    /// Deastroy the CRC driver and release the GPCRC peripheral
+    pub fn release(self) -> Gpcrc {
+        // Disable CRC clock
+        let cmu = unsafe { crate::pac::Cmu::steal() };
+        cmu.hfbusclken0().modify(|_, w| w.gpcrc().clear_bit());
+
+        self.p
     }
 }
 
@@ -46,7 +63,8 @@ impl Crc {
 // #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct CrcAlgo<W> {
     driver: Crc,
-    algo: Algorithm<W>,
+    xorout: W,
+    refout: bool,
 }
 
 impl<W> CrcAlgo<W> {
@@ -65,20 +83,20 @@ impl<W> CrcAlgo<W> {
 }
 
 impl CrcAlgo<u16> {
-    /// Finalize the CrcAlgo and return the resulted CRC
+    /// Finalize the CrcAlgo and return the resulted CRC-16
     ///
     /// After calling this method, the CrcAlgo can be used again to calculate a new CRC with the same [`Algorithm`]
     pub fn finalize(&self) -> u16 {
-        mmio::data_u16(!self.algo.refout) ^ self.algo.xorout
+        mmio::data_u16(!self.refout) ^ self.xorout
     }
 }
 
 impl CrcAlgo<u32> {
-    /// Finalize the CrcAlgo and return the resulted CRC
+    /// Finalize the CrcAlgo and return the resulted CRC-32
     ///
     /// After calling this method, the CrcAlgo can be used again to calculate a new CRC with the same [`Algorithm`]
     pub fn finalize(&self) -> u32 {
-        mmio::data_u32(!self.algo.refout) ^ self.algo.xorout
+        mmio::data_u32(!self.refout) ^ self.xorout
     }
 }
 
