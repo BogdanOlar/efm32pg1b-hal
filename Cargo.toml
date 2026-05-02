@@ -106,6 +106,18 @@ debug = true                  # symbols are nice and they don't increase the siz
 lto = true
 required-features = ["defmt", "qfn48"]
 
+# ==== Integration Tests ===============================================================================================
+
+[[test]]
+name = "crc"
+harness = false
+required-features = ["defmt", "crc-lib-compat"]
+
+[[test]]
+name = "dma"
+harness = false
+required-features = ["defmt"]
+
 # ==== Examples ========================================================================================================
 
 [[example]]
@@ -162,10 +174,4 @@ required-features = ["defmt"]
 name = "timer_le"
 required-features = ["defmt"]
 
-# ==== Tests ===========================================================================================================
-
-[[test]]
-name = "crc"
-harness = false
-required-features = ["defmt", "crc-lib-compat"]
 
