@@ -41,6 +41,7 @@ mod tests {
 
     /// Test the compatibility with the `crc` crate Algorithm definitions
     #[test]
+    #[cfg(feature = "crc-lib-compat")]
     fn crc16_compat(mut driver: Crc) {
         for (lib_algo, _, algo_name) in CRC16_ALGOS {
             info!("{}", algo_name);
