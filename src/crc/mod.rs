@@ -1,8 +1,5 @@
 //! GPCRC - General Purpose Cyclic Redundancy Check
 //!
-//! FIXME: expand on this (how crc-rs was used, testing against it, etc)
-//! [Source](https://github.com/mrhooray/crc-rs)
-//! [Source](https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.legend)
 
 pub mod algos;
 use crate::pac::Gpcrc;
@@ -88,6 +85,8 @@ impl CrcAlgo<u32> {
 /// CRC algorithm
 ///
 /// Can be either 16-bit CRC with any polynomial, or a 32-bit CRC with the fixed `0x04C11DB7` polynomial
+///
+/// [See the crc-catalogue](https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.legend)
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Algorithm<W> {
