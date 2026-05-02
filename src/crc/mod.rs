@@ -123,18 +123,18 @@ impl<W> Crc<W> {
 }
 
 impl Crc<u16> {
-    /// Finalize the CrcAlgo and return the resulted CRC-16
+    /// Finalize the Crc algorithm and return the resulted CRC-16
     ///
-    /// After calling this method, the CrcAlgo can be used again to calculate a new CRC with the same [`Algorithm`]
+    /// After calling this method, the Crc can be used again to calculate a new CRC with the same [`Algorithm`]
     pub fn finalize(&self) -> u16 {
         mmio::data_u16(!self.refout) ^ self.xorout
     }
 }
 
 impl Crc<u32> {
-    /// Finalize the CrcAlgo and return the resulted CRC-32
+    /// Finalize the Crc algorithm and return the resulted CRC-32
     ///
-    /// After calling this method, the CrcAlgo can be used again to calculate a new CRC with the same [`Algorithm`]
+    /// After calling this method, the Crc can be used again to calculate a new CRC with the same [`Algorithm`]
     pub fn finalize(&self) -> u32 {
         mmio::data_u32(!self.refout) ^ self.xorout
     }
