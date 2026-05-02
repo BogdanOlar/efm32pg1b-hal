@@ -105,7 +105,7 @@ impl<W> Crc<W> {
     /// Push new data
     pub fn update<DATA: Sized>(&self, data: &[DATA]) {
         let data: &[u8] = unsafe {
-            core::slice::from_raw_parts_mut(data.as_ptr() as *mut u8, core::mem::size_of_val(data))
+            core::slice::from_raw_parts(data.as_ptr() as *const u8, core::mem::size_of_val(data))
         };
 
         // TODO: use the `GPCRC_INPUTDATA`, `GPCRC_INPUTDATAHWORD` regs when possible, istead of always using the
