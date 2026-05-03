@@ -5,14 +5,13 @@
 #[embedded_test::tests]
 mod tests {
     use core::cmp::min;
-
     use cortex_m::asm::nop;
     use defmt::error;
     use defmt_rtt as _;
     use efm32pg1b_hal::{
         crc::{algos::CRC_32_CKSUM, Crc, CrcDriver},
         dma::Dma,
-        pac::Peripherals,
+        pac::{ldma::ch::ctrl::SIZE, Peripherals},
     };
 
     struct TestInit {
@@ -61,6 +60,7 @@ mod tests {
         let dst: &mut [u8; _] = &mut dst_buf;
 
         let mut transfer = dma.ch0.into_transfer(src, dst);
+        assert_eq!(transfer.unit(), SIZE::Byte);
 
         let transfer_result = loop {
             match transfer.check_done() {
@@ -110,6 +110,7 @@ mod tests {
         let dst = &mut dst_buf;
 
         let mut transfer = dma.ch0.into_transfer(src, dst);
+        assert_eq!(transfer.unit(), SIZE::Halfword);
 
         let transfer_result = loop {
             match transfer.check_done() {
@@ -146,6 +147,7 @@ mod tests {
         let dst = &mut dst_buf;
 
         let mut transfer = dma.ch0.into_transfer(src, dst);
+        assert_eq!(transfer.unit(), SIZE::Word);
 
         let transfer_result = loop {
             match transfer.check_done() {

@@ -486,34 +486,36 @@ impl Descriptor {
     const MAX_TRANSFER_UNITS: usize = 1 << 5;
 }
 
-// /// Debug function to pretty-print a descriptor
-// fn print_desc(desc: &Descriptor) {
-//     let link_addr = match desc.link.link_mode {
-//         AddrMode::Absolute => desc.link.link_addr << 2,
-//         AddrMode::Relative => desc.link.link_addr,
-//     };
-//     info!("\nDescriptor:\n\tCtrl:\n\t\tdst_mode: {}\n\t\tsrc_mode: {}\n\t\tdst_inc: {}\n\t\tsize: {}\n\t\tsrc_inc: {}\n\t\tignore_s_req: {}\n\t\tdec_loop_cnt: {}\n\t\treq_mode: {}\n\t\tdone_if_s_en: {}\n\t\tblock_size: {}\n\t\tbyte_swap: {}\n\t\txfer_cnt: {}\n\t\tstruct_req: {}\n\t\tstruct_type: {}\n\tSrc: 0x{:X}\n\tDst: 0x{:X}\n\tLink:\n\t\tlink: {}\n\t\tlink_mode: {}\n\t\tlink_addr: 0x{:X}\n",
-//             desc.ctrl.dst_mode,
-//             desc.ctrl.src_mode,
-//             desc.ctrl.dst_inc,
-//             desc.ctrl.size,
-//             desc.ctrl.src_inc,
-//             desc.ctrl.ignore_s_req,
-//             desc.ctrl.dec_loop_cnt,
-//             desc.ctrl.req_mode,
-//             desc.ctrl.done_if_s_en,
-//             desc.ctrl.block_size,
-//             desc.ctrl.byte_swap,
-//             desc.ctrl.xfer_cnt + 1,
-//             desc.ctrl.struct_req,
-//             desc.ctrl.struct_type,
-//             desc.src,
-//             desc.dst,
-//             desc.link.link,
-//             desc.link.link_mode,
-//             link_addr
-//         );
-// }
+/// Debug function to pretty-print a descriptor
+#[allow(dead_code)]
+fn print_desc(desc: &Descriptor) {
+    use defmt::info;
+    let link_addr = match desc.link.link_mode {
+        AddrMode::Absolute => desc.link.link_addr << 2,
+        AddrMode::Relative => desc.link.link_addr,
+    };
+    info!("\nDescriptor:\n\tCtrl:\n\t\tdst_mode: {}\n\t\tsrc_mode: {}\n\t\tdst_inc: {}\n\t\tsize: {}\n\t\tsrc_inc: {}\n\t\tignore_s_req: {}\n\t\tdec_loop_cnt: {}\n\t\treq_mode: {}\n\t\tdone_if_s_en: {}\n\t\tblock_size: {}\n\t\tbyte_swap: {}\n\t\txfer_cnt: {}\n\t\tstruct_req: {}\n\t\tstruct_type: {}\n\tSrc: 0x{:X}\n\tDst: 0x{:X}\n\tLink:\n\t\tlink: {}\n\t\tlink_mode: {}\n\t\tlink_addr: 0x{:X}\n",
+            desc.ctrl.dst_mode,
+            desc.ctrl.src_mode,
+            desc.ctrl.dst_inc,
+            desc.ctrl.size,
+            desc.ctrl.src_inc,
+            desc.ctrl.ignore_s_req,
+            desc.ctrl.dec_loop_cnt,
+            desc.ctrl.req_mode,
+            desc.ctrl.done_if_s_en,
+            desc.ctrl.block_size,
+            desc.ctrl.byte_swap,
+            desc.ctrl.xfer_cnt + 1,
+            desc.ctrl.struct_req,
+            desc.ctrl.struct_type,
+            desc.src,
+            desc.dst,
+            desc.link.link,
+            desc.link.link_mode,
+            link_addr
+        );
+}
 
 impl From<Descriptor> for SerializedDescriptor {
     fn from(value: Descriptor) -> Self {
