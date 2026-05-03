@@ -295,6 +295,23 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             },
         };
 
+        // // DEBUG:
+        // {
+        //     let src = self.params.as_ref().unwrap().src;
+        //     let src_start = src.as_ptr().addr();
+        //     let src_end = src[src.len()..].as_ptr().addr();
+        //     let dst_start = dst.as_ptr().addr();
+        //     let dst_end = dst[dst.len()..].as_ptr().addr();
+        //     info!("SRC: [0x{:X}, 0x{:X})", src_start, src_end);
+        //     info!("DST: [0x{:X}, 0x{:X})", dst_start, dst_end);
+        //     info!(
+        //         "Linked list items: {}, starting at 0x{:X}",
+        //         linked_list_count,
+        //         descriptor_list.as_ptr().addr()
+        //     );
+        //     print_desc(&first_descriptor);
+        // }
+
         // Fill in the linked descriptors
         for (i, ser_descr) in descriptor_list.iter_mut().enumerate() {
             let is_last = i == (linked_list_count - 1);
@@ -325,6 +342,11 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                     Link::default()
                 },
             };
+
+            // // DEBUG:
+            // {
+            //     print_desc(&descr);
+            // }
 
             *ser_descr = descr.into();
 
@@ -459,10 +481,39 @@ pub(crate) struct Descriptor {
 impl Descriptor {
     /// Maximum number of units (byte, half-word, word) which can be transfered in one DMA shot
     #[cfg(not(feature = "dma-debug-max-transfer"))]
-    const MAX_TRANSFER_UNITS: usize = 1 << 12;
+    const MAX_TRANSFER_UNITS: usize = 1 << 11;
     #[cfg(feature = "dma-debug-max-transfer")]
     const MAX_TRANSFER_UNITS: usize = 1 << 5;
 }
+
+// /// Debug function to pretty-print a descriptor
+// fn print_desc(desc: &Descriptor) {
+//     let link_addr = match desc.link.link_mode {
+//         AddrMode::Absolute => desc.link.link_addr << 2,
+//         AddrMode::Relative => desc.link.link_addr,
+//     };
+//     info!("\nDescriptor:\n\tCtrl:\n\t\tdst_mode: {}\n\t\tsrc_mode: {}\n\t\tdst_inc: {}\n\t\tsize: {}\n\t\tsrc_inc: {}\n\t\tignore_s_req: {}\n\t\tdec_loop_cnt: {}\n\t\treq_mode: {}\n\t\tdone_if_s_en: {}\n\t\tblock_size: {}\n\t\tbyte_swap: {}\n\t\txfer_cnt: {}\n\t\tstruct_req: {}\n\t\tstruct_type: {}\n\tSrc: 0x{:X}\n\tDst: 0x{:X}\n\tLink:\n\t\tlink: {}\n\t\tlink_mode: {}\n\t\tlink_addr: 0x{:X}\n",
+//             desc.ctrl.dst_mode,
+//             desc.ctrl.src_mode,
+//             desc.ctrl.dst_inc,
+//             desc.ctrl.size,
+//             desc.ctrl.src_inc,
+//             desc.ctrl.ignore_s_req,
+//             desc.ctrl.dec_loop_cnt,
+//             desc.ctrl.req_mode,
+//             desc.ctrl.done_if_s_en,
+//             desc.ctrl.block_size,
+//             desc.ctrl.byte_swap,
+//             desc.ctrl.xfer_cnt + 1,
+//             desc.ctrl.struct_req,
+//             desc.ctrl.struct_type,
+//             desc.src,
+//             desc.dst,
+//             desc.link.link,
+//             desc.link.link_mode,
+//             link_addr
+//         );
+// }
 
 impl From<Descriptor> for SerializedDescriptor {
     fn from(value: Descriptor) -> Self {
@@ -596,7 +647,7 @@ impl From<Ctrl> for u32 {
         ret |= (value.done_if_s_en as u32) << 20;
         ret |= (value.block_size as u32) << 16;
         ret |= (value.byte_swap as u32) << 15;
-        ret |= ((value.xfer_cnt as u32) & 0x3FFFFFFF) << 4;
+        ret |= ((value.xfer_cnt as u32) & 0x7FF) << 4;
         ret |= (value.struct_req as u32) << 3;
         ret |= value.struct_type as u32;
         ret
