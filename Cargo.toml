@@ -118,6 +118,11 @@ name = "dma"
 harness = false
 required-features = ["defmt"]
 
+[[test]]
+name = "spi"
+harness = false
+required-features = ["defmt"]
+
 # ==== Examples ========================================================================================================
 
 [[example]]
