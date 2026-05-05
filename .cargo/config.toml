@@ -8,7 +8,7 @@ runner = [
   "--chip",
   "EFM32PG1B200F256IM48",
   "--log-format",
-  "{{t}%italic%dimmed} {L:severity:italic} {s}    {{ff}:{l}%italic%dimmed}",
+  "{{t}%italic%dimmed} {L:severity:italic} {s}\n{╰╴{m} @ {ff}:{l}%italic%dimmed}"
 ]
 
 [env]
