@@ -68,7 +68,7 @@ impl CrcDriver {
         }
     }
 
-    /// Create a CRC-32 algo
+    /// Create a CRC-32 algo (with a fixed `0x04C11DB7` polynomial supported by the peripheral)
     pub fn into_algo_32(self, algo: &Algorithm<u32>) -> Crc<u32> {
         mmio::reset();
         mmio::set_algo_32(algo);

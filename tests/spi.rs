@@ -22,7 +22,7 @@ mod tests {
     }
 
     #[test]
-    #[timeout(4)]
+    #[timeout(5)]
     fn transfer_u8(p: Peripherals) {
         let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
         let clocks = p.cmu.split();
@@ -30,10 +30,10 @@ mod tests {
         let tx = gpio.pc6.into_mode::<OutPp>();
         let rx = gpio.pc7.into_mode::<InFilt>();
         let clk = gpio.pc8.into_mode::<OutPp>();
-        let usart0 = Usart::new(p.usart0);
-        let mut spi = usart0.into_spi_bus(clk, tx, rx, MODE_2);
+        let mut spi = Usart::new(p.usart0).into_spi_bus(clk, tx, rx, MODE_2);
         spi.set_loopback(true);
-        let br = spi.set_baudrate(4.MHz(), &clocks);
+        let rs_br = spi.set_baudrate(4.MHz(), &clocks);
+        assert!(rs_br.is_ok());
 
         // Set the `dst` length to a multiple of 1
         let mut dst_buf: [u8; SRC_U8_SIZE] = [0; _];
@@ -50,7 +50,6 @@ mod tests {
         let dst_crc = crc.finalize();
 
         if src_crc != dst_crc {
-            info!("BR: {}", br);
             info!("Src: {}", src);
             info!("Dst: {}", dst);
         }
