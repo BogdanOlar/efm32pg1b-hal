@@ -49,11 +49,6 @@ mod tests {
         crc.update(dst);
         let dst_crc = crc.finalize();
 
-        if src_crc != dst_crc {
-            info!("Src: {}", src);
-            info!("Dst: {}", dst);
-        }
-
         assert_eq!(src_crc, dst_crc);
     }
 
