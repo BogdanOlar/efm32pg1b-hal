@@ -487,6 +487,7 @@ impl Descriptor {
 }
 
 /// Debug function to pretty-print a descriptor
+#[cfg(feature = "defmt")]
 #[allow(dead_code)]
 fn print_desc(desc: &Descriptor) {
     use defmt::info;
