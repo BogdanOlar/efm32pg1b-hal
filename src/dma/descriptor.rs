@@ -4,7 +4,10 @@
 use crate::Sealed;
 use core::marker::PhantomData;
 
-/// DMA Transfer Descriptor builder
+/// XFER Descriptor builder
+///
+/// This descriptor defines a typical data transfer which may be a Normal, Link, or Loop transfer.
+/// Only this structure type can be written directly into LDMA's registers by the CPU.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TransferDescBuilder<UNIT> {
     descr: Descriptor,
@@ -12,6 +15,7 @@ pub struct TransferDescBuilder<UNIT> {
 }
 
 impl<UNIT: UnitTs> TransferDescBuilder<UNIT> {
+    /// Build a new Transfer Descriptor
     pub const unsafe fn new(src: Addr, dst: Addr, count: TransferCount) -> Self {
         let mut descr = Descriptor::default();
         descr.struct_type_set(StructType::Transfer);
@@ -117,40 +121,54 @@ impl<UNIT: MultiByte> TransferDescBuilder<UNIT> {
     }
 }
 
+/// DMA transfer Unit is 8-bit (typestate)
 pub struct UnitByte;
+/// DMA transfer Unit is 16-bit (typestate)
 pub struct UnitHalfWord;
+/// DMA transfer Unit is 32-bit (typestate)
 pub struct UnitWord;
 
 impl Sealed for UnitByte {}
 impl Sealed for UnitHalfWord {}
 impl Sealed for UnitWord {}
 
-/// Unit (typestate)
+/// DMA transfer Unit (typestate)
 pub trait UnitTs: Sealed {
+    /// Unit size of DMA Transfer
     const U: UnitSize;
+    /// Size of the unit, in bytes
+    const BYTES: usize;
 }
 
 impl UnitTs for UnitByte {
     const U: UnitSize = UnitSize::Byte;
+    const BYTES: usize = 1;
 }
 
 impl UnitTs for UnitHalfWord {
     const U: UnitSize = UnitSize::Halfword;
+    const BYTES: usize = 2;
 }
 
 impl UnitTs for UnitWord {
     const U: UnitSize = UnitSize::Word;
+    const BYTES: usize = 4;
 }
 
+/// DMA transfer descriptor is using HalfWord or Word unit size (marker trait)
 pub trait MultiByte: Sealed {}
 impl MultiByte for UnitHalfWord {}
 impl MultiByte for UnitWord {}
 
+/// SYNC Descriptor builder
+///
+/// This descriptor defines an intra-channel synchronizing structure.
 pub struct SyncDescBuilder {
     descr: Descriptor,
 }
 
 impl SyncDescBuilder {
+    /// Build a new Synchronization Descriptor
     pub const fn new() -> Self {
         let mut descr = Descriptor::default();
 
@@ -206,11 +224,15 @@ impl SyncDescBuilder {
     }
 }
 
+/// WRI Descriptor builder
+///
+/// This descriptor defines a write-immediate structure.
 pub struct ImmediateDescBuilder {
     descr: Descriptor,
 }
 
 impl ImmediateDescBuilder {
+    /// Build a new Immediate Write Descriptor
     pub const unsafe fn new(val: u32, dst: usize) -> Self {
         let mut descr = Descriptor::default();
 
@@ -561,8 +583,11 @@ pub enum StructType {
     Write = 2,
 }
 
-/// Wrapper for the CTRL.XFERCNT which makes sure the value is at most `Descriptor::MAX_TRANSFER_UNITS` (`0x800`),
-/// and that it's greater than `0`
+/// Number of units (byte, half-word, or word) which can be transfered with a Transfer Descriptor.
+///
+/// Ensures the value is at most `Descriptor::MAX_TRANSFER_UNITS`, and not `0`
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TransferCount {
     count: u16,
 }

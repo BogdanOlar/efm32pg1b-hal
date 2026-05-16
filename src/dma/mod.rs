@@ -16,7 +16,8 @@ pub mod efemb;
 use crate::{
     dma::{
         descriptor::{
-            Addr, Descriptor, TransferDescBuilder, UnitByte, UnitHalfWord, UnitSize, UnitWord,
+            Addr, Descriptor, TransferDescBuilder, UnitByte, UnitHalfWord, UnitSize, UnitTs,
+            UnitWord,
         },
         irq::set_handler,
     },
@@ -271,160 +272,23 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 linked_list_count,
             )
         };
-
-        let mut remaining_units = total_units;
-
-        // Create first descriptor
-        let first_descr_units = if remaining_units > Descriptor::MAX_TRANSFER_UNITS {
-            min(
-                Descriptor::MAX_TRANSFER_UNITS,
-                remaining_units - last_chunk_min_units,
-            )
-        } else {
-            remaining_units
-        };
-        remaining_units -= first_descr_units;
-
         let first_descriptor = match self.unit {
-            UnitSize::Byte => {
-                let mut descr_builder = unsafe {
-                    TransferDescBuilder::<UnitByte>::new(
-                        Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
-                        Addr::Absolute(dst.as_ptr().addr()),
-                        first_descr_units.try_into().unwrap(),
-                    )
-                }
-                .with_struct_req()
-                .with_block_size(descriptor::BlockSize::All);
-
-                if remaining_units > 0 {
-                    descr_builder =
-                        descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()));
-                }
-
-                descr_builder.build()
-            }
-            UnitSize::Halfword => {
-                let mut descr_builder = unsafe {
-                    TransferDescBuilder::<UnitHalfWord>::new(
-                        Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
-                        Addr::Absolute(dst.as_ptr().addr()),
-                        first_descr_units.try_into().unwrap(),
-                    )
-                }
-                .with_struct_req()
-                .with_block_size(descriptor::BlockSize::All);
-
-                if remaining_units > 0 {
-                    descr_builder =
-                        descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()));
-                }
-
-                descr_builder.build()
-            }
-            UnitSize::Word => {
-                let mut descr_builder = unsafe {
-                    TransferDescBuilder::<UnitWord>::new(
-                        Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
-                        Addr::Absolute(dst.as_ptr().addr()),
-                        first_descr_units.try_into().unwrap(),
-                    )
-                }
-                .with_struct_req()
-                .with_block_size(descriptor::BlockSize::All);
-
-                if remaining_units > 0 {
-                    descr_builder =
-                        descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()));
-                }
-
-                descr_builder.build()
-            }
+            UnitSize::Byte => self.build_descriptors::<UnitByte>(
+                total_units,
+                last_chunk_min_units,
+                descriptor_list,
+            ),
+            UnitSize::Halfword => self.build_descriptors::<UnitHalfWord>(
+                total_units,
+                last_chunk_min_units,
+                descriptor_list,
+            ),
+            UnitSize::Word => self.build_descriptors::<UnitWord>(
+                total_units,
+                last_chunk_min_units,
+                descriptor_list,
+            ),
         };
-
-        // Fill in the linked descriptors
-        for (i, ser_descr) in descriptor_list.iter_mut().enumerate() {
-            let is_last = i == (linked_list_count - 1);
-
-            let descr_units = if is_last {
-                remaining_units
-            } else {
-                min(
-                    Descriptor::MAX_TRANSFER_UNITS,
-                    remaining_units - last_chunk_min_units,
-                )
-            };
-            assert!(descr_units <= Descriptor::MAX_TRANSFER_UNITS);
-
-            let addr_offset = (total_units - remaining_units) * unit_byte_size;
-
-            let descr = match self.unit {
-                UnitSize::Byte => {
-                    let mut descr_builder = unsafe {
-                        TransferDescBuilder::<UnitByte>::new(
-                            Addr::Absolute(
-                                self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
-                            ),
-                            Addr::Absolute(dst.as_ptr().addr() + addr_offset),
-                            descr_units.try_into().unwrap(),
-                        )
-                    }
-                    .with_struct_req()
-                    .with_block_size(descriptor::BlockSize::All);
-
-                    if !is_last {
-                        descr_builder = descr_builder.with_link(Addr::Relative(1));
-                    }
-
-                    descr_builder.build()
-                }
-                UnitSize::Halfword => {
-                    let mut descr_builder = unsafe {
-                        TransferDescBuilder::<UnitHalfWord>::new(
-                            Addr::Absolute(
-                                self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
-                            ),
-                            Addr::Absolute(dst.as_ptr().addr() + addr_offset),
-                            descr_units.try_into().unwrap(),
-                        )
-                    }
-                    .with_struct_req()
-                    .with_block_size(descriptor::BlockSize::All);
-
-                    if !is_last {
-                        descr_builder = descr_builder.with_link(Addr::Relative(1));
-                    }
-
-                    descr_builder.build()
-                }
-                UnitSize::Word => {
-                    let mut descr_builder = unsafe {
-                        TransferDescBuilder::<UnitWord>::new(
-                            Addr::Absolute(
-                                self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
-                            ),
-                            Addr::Absolute(dst.as_ptr().addr() + addr_offset),
-                            descr_units.try_into().unwrap(),
-                        )
-                    }
-                    .with_struct_req()
-                    .with_block_size(descriptor::BlockSize::All);
-
-                    if !is_last {
-                        descr_builder = descr_builder.with_link(Addr::Relative(1));
-                    }
-
-                    descr_builder.build()
-                }
-            };
-
-            *ser_descr = descr;
-            remaining_units -= descr_units;
-        }
-        assert_eq!(remaining_units, 0);
-
-        // make sure all linked descriptors have been written before proceeding
-        asm::dsb();
 
         // First descriptor is always written directly to the DMA peripheral in order to support transfers smaller than
         // the size of a descriptor (in which case we don't use descriptor linked list)
@@ -497,6 +361,95 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
     /// by byte size
     pub fn unit(&self) -> UnitSize {
         self.unit
+    }
+
+    /// Build the first transfer descriptor, and any necessary linked descriptors
+    fn build_descriptors<UNIT: UnitTs>(
+        &mut self,
+        total_units: usize,
+        last_chunk_min_units: usize,
+        descriptor_list: &mut [Descriptor],
+    ) -> Descriptor {
+        let mut remaining_units = total_units;
+
+        // Create first descriptor
+        let first_descr_units = if remaining_units > Descriptor::MAX_TRANSFER_UNITS {
+            min(
+                Descriptor::MAX_TRANSFER_UNITS,
+                remaining_units - last_chunk_min_units,
+            )
+        } else {
+            remaining_units
+        };
+        remaining_units -= first_descr_units;
+
+        let first_descriptor = {
+            let mut descr_builder = unsafe {
+                TransferDescBuilder::<UNIT>::new(
+                    Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
+                    Addr::Absolute(self.params.as_ref().unwrap().dst.as_ptr().addr()),
+                    first_descr_units.try_into().unwrap(),
+                )
+            }
+            .with_struct_req()
+            .with_block_size(descriptor::BlockSize::All);
+
+            if remaining_units > 0 {
+                descr_builder =
+                    descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()));
+            }
+
+            descr_builder.build()
+        };
+
+        // Fill in the linked descriptors
+        let descriptor_list_count = descriptor_list.len();
+        for (i, ser_descr) in descriptor_list.iter_mut().enumerate() {
+            let is_last = i == (descriptor_list_count - 1);
+
+            let descr_units = if is_last {
+                remaining_units
+            } else {
+                min(
+                    Descriptor::MAX_TRANSFER_UNITS,
+                    remaining_units - last_chunk_min_units,
+                )
+            };
+            assert!(descr_units <= Descriptor::MAX_TRANSFER_UNITS);
+
+            let addr_offset = (total_units - remaining_units) * UNIT::BYTES;
+
+            let descr = {
+                let mut descr_builder = unsafe {
+                    TransferDescBuilder::<UNIT>::new(
+                        Addr::Absolute(
+                            self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
+                        ),
+                        Addr::Absolute(
+                            self.params.as_ref().unwrap().dst.as_ptr().addr() + addr_offset,
+                        ),
+                        descr_units.try_into().unwrap(),
+                    )
+                }
+                .with_struct_req()
+                .with_block_size(descriptor::BlockSize::All);
+
+                if !is_last {
+                    descr_builder = descr_builder.with_link(Addr::Relative(1));
+                }
+
+                descr_builder.build()
+            };
+
+            *ser_descr = descr;
+            remaining_units -= descr_units;
+        }
+        assert_eq!(remaining_units, 0);
+
+        // make sure all linked descriptors have been written before proceeding
+        asm::dsb();
+
+        first_descriptor
     }
 }
 
