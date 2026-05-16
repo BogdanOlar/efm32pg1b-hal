@@ -526,7 +526,7 @@ pub(crate) enum AddrMode {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
-pub enum UnitSize {
+pub(crate) enum UnitSize {
     /// 8-bit transfer unit
     Byte = 0,
     /// 16-bit transfer unit
@@ -570,11 +570,11 @@ pub enum BlockSize {
     All = 15,
 }
 
-///DMA Structure Type
+/// DMA Structure Type
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
-pub enum StructType {
+pub(crate) enum StructType {
     ///0: DMA transfer structure type selected.
     Transfer = 0,
     ///1: Synchronization structure type selected.
