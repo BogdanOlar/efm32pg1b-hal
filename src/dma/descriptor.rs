@@ -1,6 +1,7 @@
 //! DMA Descriptors
 //!
 
+use crate::Sealed;
 use core::marker::PhantomData;
 
 /// DMA Transfer Descriptor builder
@@ -10,48 +11,11 @@ pub struct TransferDescBuilder<UNIT> {
     _unit: PhantomData<UNIT>,
 }
 
-impl TransferDescBuilder<u8> {
+impl<UNIT: UnitTs> TransferDescBuilder<UNIT> {
     pub const unsafe fn new(src: Addr, dst: Addr, count: TransferCount) -> Self {
         let mut descr = Descriptor::default();
         descr.struct_type_set(StructType::Transfer);
-        descr.unit_size_set(UnitSize::Byte);
-
-        match src {
-            Addr::Absolute(addr) => {
-                descr.src_mode_set(AddrMode::Absolute);
-                descr.src_set(addr);
-            }
-            Addr::Relative(offset) => {
-                descr.src_mode_set(AddrMode::Relative);
-                descr.src_set(offset as usize);
-            }
-        }
-
-        match dst {
-            Addr::Absolute(addr) => {
-                descr.dst_mode_set(AddrMode::Absolute);
-                descr.dst_set(addr);
-            }
-            Addr::Relative(offset) => {
-                descr.dst_mode_set(AddrMode::Relative);
-                descr.dst_set(offset as usize);
-            }
-        }
-
-        descr.xfer_count_set(count.count - 1);
-
-        Self {
-            descr,
-            _unit: PhantomData,
-        }
-    }
-}
-
-impl TransferDescBuilder<u16> {
-    pub const unsafe fn new(src: Addr, dst: Addr, count: TransferCount) -> Self {
-        let mut descr = Descriptor::default();
-        descr.struct_type_set(StructType::Transfer);
-        descr.unit_size_set(UnitSize::Halfword);
+        descr.unit_size_set(UNIT::U);
 
         match src {
             Addr::Absolute(addr) => {
@@ -83,55 +47,6 @@ impl TransferDescBuilder<u16> {
         }
     }
 
-    pub const fn with_byte_swap(mut self) -> Self {
-        self.descr.byte_swap_set(true);
-        self
-    }
-}
-
-impl TransferDescBuilder<u32> {
-    pub const unsafe fn new(src: Addr, dst: Addr, count: TransferCount) -> Self {
-        let mut descr = Descriptor::default();
-        descr.struct_type_set(StructType::Transfer);
-        descr.unit_size_set(UnitSize::Word);
-
-        match src {
-            Addr::Absolute(addr) => {
-                descr.src_mode_set(AddrMode::Absolute);
-                descr.src_set(addr);
-            }
-            Addr::Relative(offset) => {
-                descr.src_mode_set(AddrMode::Relative);
-                descr.src_set(offset as usize);
-            }
-        }
-
-        match dst {
-            Addr::Absolute(addr) => {
-                descr.dst_mode_set(AddrMode::Absolute);
-                descr.dst_set(addr);
-            }
-            Addr::Relative(offset) => {
-                descr.dst_mode_set(AddrMode::Relative);
-                descr.dst_set(offset as usize);
-            }
-        }
-
-        descr.xfer_count_set(count.count - 1);
-
-        Self {
-            descr,
-            _unit: PhantomData,
-        }
-    }
-
-    pub const fn with_byte_swap(mut self) -> Self {
-        self.descr.byte_swap_set(true);
-        self
-    }
-}
-
-impl<UNIT> TransferDescBuilder<UNIT> {
     pub const fn with_struct_req(mut self) -> Self {
         self.descr.struct_req_set(true);
         self
@@ -194,6 +109,42 @@ impl<UNIT> TransferDescBuilder<UNIT> {
         self.descr
     }
 }
+
+impl<UNIT: MultiByte> TransferDescBuilder<UNIT> {
+    pub const fn with_byte_swap(mut self) -> Self {
+        self.descr.byte_swap_set(true);
+        self
+    }
+}
+
+pub struct UnitByte;
+pub struct UnitHalfWord;
+pub struct UnitWord;
+
+impl Sealed for UnitByte {}
+impl Sealed for UnitHalfWord {}
+impl Sealed for UnitWord {}
+
+/// Unit (typestate)
+pub trait UnitTs: Sealed {
+    const U: UnitSize;
+}
+
+impl UnitTs for UnitByte {
+    const U: UnitSize = UnitSize::Byte;
+}
+
+impl UnitTs for UnitHalfWord {
+    const U: UnitSize = UnitSize::Halfword;
+}
+
+impl UnitTs for UnitWord {
+    const U: UnitSize = UnitSize::Word;
+}
+
+pub trait MultiByte: Sealed {}
+impl MultiByte for UnitHalfWord {}
+impl MultiByte for UnitWord {}
 
 pub struct SyncDescBuilder {
     descr: Descriptor,

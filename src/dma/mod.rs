@@ -15,7 +15,9 @@ pub mod efemb;
 
 use crate::{
     dma::{
-        descriptor::{Addr, Descriptor, TransferDescBuilder, UnitSize},
+        descriptor::{
+            Addr, Descriptor, TransferDescBuilder, UnitByte, UnitHalfWord, UnitSize, UnitWord,
+        },
         irq::set_handler,
     },
     pac::{Interrupt, Ldma, NVIC},
@@ -286,7 +288,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         let first_descriptor = match self.unit {
             UnitSize::Byte => {
                 let mut descr_builder = unsafe {
-                    TransferDescBuilder::<u8>::new(
+                    TransferDescBuilder::<UnitByte>::new(
                         Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
                         Addr::Absolute(dst.as_ptr().addr()),
                         first_descr_units.try_into().unwrap(),
@@ -304,7 +306,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             }
             UnitSize::Halfword => {
                 let mut descr_builder = unsafe {
-                    TransferDescBuilder::<u16>::new(
+                    TransferDescBuilder::<UnitHalfWord>::new(
                         Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
                         Addr::Absolute(dst.as_ptr().addr()),
                         first_descr_units.try_into().unwrap(),
@@ -322,7 +324,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             }
             UnitSize::Word => {
                 let mut descr_builder = unsafe {
-                    TransferDescBuilder::<u32>::new(
+                    TransferDescBuilder::<UnitWord>::new(
                         Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
                         Addr::Absolute(dst.as_ptr().addr()),
                         first_descr_units.try_into().unwrap(),
@@ -359,7 +361,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             let descr = match self.unit {
                 UnitSize::Byte => {
                     let mut descr_builder = unsafe {
-                        TransferDescBuilder::<u8>::new(
+                        TransferDescBuilder::<UnitByte>::new(
                             Addr::Absolute(
                                 self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
                             ),
@@ -378,7 +380,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 }
                 UnitSize::Halfword => {
                     let mut descr_builder = unsafe {
-                        TransferDescBuilder::<u16>::new(
+                        TransferDescBuilder::<UnitHalfWord>::new(
                             Addr::Absolute(
                                 self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
                             ),
@@ -397,7 +399,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 }
                 UnitSize::Word => {
                     let mut descr_builder = unsafe {
-                        TransferDescBuilder::<u32>::new(
+                        TransferDescBuilder::<UnitWord>::new(
                             Addr::Absolute(
                                 self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
                             ),
