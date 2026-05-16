@@ -10,8 +10,11 @@ mod tests {
     use defmt_rtt as _;
     use efm32pg1b_hal::{
         crc::{algos::CRC_32_CKSUM, Crc, CrcDriver},
-        dma::Dma,
-        pac::{ldma::ch::ctrl::SIZE, Peripherals},
+        dma::{
+            descriptor::{Descriptor, UnitSize},
+            Dma,
+        },
+        pac::Peripherals,
     };
 
     struct TestInit {
@@ -50,6 +53,56 @@ mod tests {
 
     #[test]
     #[timeout(2)]
+    fn transfer_u8_short(init: TestInit) {
+        let dma = init.dma;
+        let crc = init.crc;
+
+        // Set the `dst` length to a multiple of 1
+        let mut dst_buf: [u8; Descriptor::MAX_TRANSFER_UNITS] = [0; _];
+        let src = &SRC_U8[1..];
+        let dst: &mut [u8; _] = &mut dst_buf;
+
+        let mut transfer = dma.ch0.into_transfer(src, dst);
+        assert_eq!(transfer.unit(), UnitSize::Byte);
+
+        let transfer_result = loop {
+            match transfer.check_done() {
+                Some(res) => break res,
+                None => {
+                    nop();
+                }
+            }
+        };
+
+        assert!(transfer_result.is_ok());
+        let (params, copy_count) = transfer_result.unwrap();
+        let _ch = params.ch;
+        let src = params.src;
+        let dst = params.dst;
+        assert_eq!(copy_count, min(src.len(), dst.len()));
+
+        crc.update(&src[..copy_count]);
+        let src_crc = crc.finalize();
+        crc.update(&dst[..copy_count]);
+        let dst_crc = crc.finalize();
+
+        // DEBUG
+        if src_crc != dst_crc {
+            error!(
+                "{} bytes (0x{:X}), with unit {}",
+                core::mem::size_of_val(dst),
+                core::mem::size_of_val(dst),
+                transfer.unit()
+            );
+            error!("src: {}", src[src.len() - 100..]);
+            error!("dst: {}", dst[dst.len() - 100..]);
+        }
+
+        assert_eq!(src_crc, dst_crc);
+    }
+
+    #[test]
+    #[timeout(2)]
     fn transfer_u8(init: TestInit) {
         let dma = init.dma;
         let crc = init.crc;
@@ -60,7 +113,7 @@ mod tests {
         let dst: &mut [u8; _] = &mut dst_buf;
 
         let mut transfer = dma.ch0.into_transfer(src, dst);
-        assert_eq!(transfer.unit(), SIZE::Byte);
+        assert_eq!(transfer.unit(), UnitSize::Byte);
 
         let transfer_result = loop {
             match transfer.check_done() {
@@ -110,7 +163,7 @@ mod tests {
         let dst = &mut dst_buf;
 
         let mut transfer = dma.ch0.into_transfer(src, dst);
-        assert_eq!(transfer.unit(), SIZE::Halfword);
+        assert_eq!(transfer.unit(), UnitSize::Halfword);
 
         let transfer_result = loop {
             match transfer.check_done() {
@@ -147,7 +200,7 @@ mod tests {
         let dst = &mut dst_buf;
 
         let mut transfer = dma.ch0.into_transfer(src, dst);
-        assert_eq!(transfer.unit(), SIZE::Word);
+        assert_eq!(transfer.unit(), UnitSize::Word);
 
         let transfer_result = loop {
             match transfer.check_done() {

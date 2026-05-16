@@ -8,15 +8,17 @@
 //!              Use `ChannelTransfer::check_done()` to determine if the DMA transfer completed.
 //!
 
+pub mod descriptor;
+
 #[cfg(feature = "efemb")]
 pub mod efemb;
 
 use crate::{
-    dma::irq::set_handler,
-    pac::{
-        ldma::ch::ctrl::{BLOCKSIZE, DSTINC, SIZE, SRCINC, STRUCTTYPE},
-        Interrupt, Ldma, NVIC,
+    dma::{
+        descriptor::{Addr, Descriptor, TransferDescBuilder, UnitSize},
+        irq::set_handler,
     },
+    pac::{Interrupt, Ldma, NVIC},
 };
 use core::cmp::min;
 use cortex_m::asm;
@@ -178,7 +180,7 @@ pub struct ChannelTransfer<'a, W: Sized> {
     params: Option<ChannelTransferParams<'a, W>>,
     id: ChannelId,
     byte_count: usize,
-    unit: SIZE,
+    unit: UnitSize,
 }
 
 impl<'a, W: Sized> ChannelTransfer<'a, W> {
@@ -190,14 +192,14 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             && dst.as_ptr().addr().is_multiple_of(size_of::<u32>())
             && dst.len().is_multiple_of(size_of::<u32>())
         {
-            SIZE::Word
+            UnitSize::Word
         } else if src.as_ptr().addr().is_multiple_of(size_of::<u16>())
             && dst.as_ptr().addr().is_multiple_of(size_of::<u16>())
             && dst.len().is_multiple_of(size_of::<u16>())
         {
-            SIZE::Halfword
+            UnitSize::Halfword
         } else {
-            SIZE::Byte
+            UnitSize::Byte
         };
 
         let id = ch.id;
@@ -245,9 +247,9 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         assert_eq!(dst.len() % unit_byte_size, 0);
 
         let arr_end = dst[dst.len()..].as_ptr().addr();
-        let aligned_end_addr = arr_end - (arr_end % align_of::<SerializedDescriptor>());
+        let aligned_end_addr = arr_end - (arr_end % align_of::<Descriptor>());
 
-        let last_descr_addr = aligned_end_addr - size_of::<SerializedDescriptor>();
+        let last_descr_addr = aligned_end_addr - size_of::<Descriptor>();
         let last_chunk_min_units = (arr_end - last_descr_addr) / unit_byte_size;
         assert_eq!((arr_end - last_descr_addr) % unit_byte_size, 0);
 
@@ -259,11 +261,11 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         // First descriptor will be written to DMA channel register, not to the descriptor list
         let linked_list_count = descr_count - 1;
         let linked_list_start_addr =
-            aligned_end_addr - (linked_list_count * size_of::<SerializedDescriptor>());
+            aligned_end_addr - (linked_list_count * size_of::<Descriptor>());
         // Create the descriptor list at the end of the destination buffer
         let descriptor_list = unsafe {
             core::slice::from_raw_parts_mut(
-                linked_list_start_addr as *mut SerializedDescriptor,
+                linked_list_start_addr as *mut Descriptor,
                 linked_list_count,
             )
         };
@@ -280,37 +282,63 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             remaining_units
         };
         remaining_units -= first_descr_units;
-        let first_descriptor = Descriptor {
-            ctrl: Ctrl::new()
-                .with_size(self.unit)
-                .with_struct_req()
-                .with_block_size(BLOCKSIZE::All)
-                .with_xfer_cnt(first_descr_units.try_into().unwrap()),
-            src: self.params.as_ref().unwrap().src.as_ptr().addr(),
-            dst: dst.as_ptr().addr(),
-            link: if remaining_units > 0 {
-                Link::new().with_absolute_addr(descriptor_list.as_ptr().addr())
-            } else {
-                Link::default()
-            },
-        };
 
-        // // DEBUG:
-        // {
-        //     let src = self.params.as_ref().unwrap().src;
-        //     let src_start = src.as_ptr().addr();
-        //     let src_end = src[src.len()..].as_ptr().addr();
-        //     let dst_start = dst.as_ptr().addr();
-        //     let dst_end = dst[dst.len()..].as_ptr().addr();
-        //     info!("SRC: [0x{:X}, 0x{:X})", src_start, src_end);
-        //     info!("DST: [0x{:X}, 0x{:X})", dst_start, dst_end);
-        //     info!(
-        //         "Linked list items: {}, starting at 0x{:X}",
-        //         linked_list_count,
-        //         descriptor_list.as_ptr().addr()
-        //     );
-        //     print_desc(&first_descriptor);
-        // }
+        let first_descriptor = match self.unit {
+            UnitSize::Byte => {
+                let mut descr_builder = unsafe {
+                    TransferDescBuilder::<u8>::new(
+                        Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
+                        Addr::Absolute(dst.as_ptr().addr()),
+                        first_descr_units.try_into().unwrap(),
+                    )
+                }
+                .with_struct_req()
+                .with_block_size(descriptor::BlockSize::All);
+
+                if remaining_units > 0 {
+                    descr_builder =
+                        descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()));
+                }
+
+                descr_builder.build()
+            }
+            UnitSize::Halfword => {
+                let mut descr_builder = unsafe {
+                    TransferDescBuilder::<u16>::new(
+                        Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
+                        Addr::Absolute(dst.as_ptr().addr()),
+                        first_descr_units.try_into().unwrap(),
+                    )
+                }
+                .with_struct_req()
+                .with_block_size(descriptor::BlockSize::All);
+
+                if remaining_units > 0 {
+                    descr_builder =
+                        descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()));
+                }
+
+                descr_builder.build()
+            }
+            UnitSize::Word => {
+                let mut descr_builder = unsafe {
+                    TransferDescBuilder::<u32>::new(
+                        Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
+                        Addr::Absolute(dst.as_ptr().addr()),
+                        first_descr_units.try_into().unwrap(),
+                    )
+                }
+                .with_struct_req()
+                .with_block_size(descriptor::BlockSize::All);
+
+                if remaining_units > 0 {
+                    descr_builder =
+                        descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()));
+                }
+
+                descr_builder.build()
+            }
+        };
 
         // Fill in the linked descriptors
         for (i, ser_descr) in descriptor_list.iter_mut().enumerate() {
@@ -328,28 +356,67 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
             let addr_offset = (total_units - remaining_units) * unit_byte_size;
 
-            let descr = Descriptor {
-                ctrl: Ctrl::new()
-                    .with_size(self.unit)
+            let descr = match self.unit {
+                UnitSize::Byte => {
+                    let mut descr_builder = unsafe {
+                        TransferDescBuilder::<u8>::new(
+                            Addr::Absolute(
+                                self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
+                            ),
+                            Addr::Absolute(dst.as_ptr().addr() + addr_offset),
+                            descr_units.try_into().unwrap(),
+                        )
+                    }
                     .with_struct_req()
-                    .with_block_size(BLOCKSIZE::All)
-                    .with_xfer_cnt(descr_units.try_into().unwrap()),
-                src: self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
-                dst: dst.as_ptr().addr() + addr_offset,
-                link: if !is_last {
-                    Link::new().with_relative_addr(1)
-                } else {
-                    Link::default()
-                },
+                    .with_block_size(descriptor::BlockSize::All);
+
+                    if !is_last {
+                        descr_builder = descr_builder.with_link(Addr::Relative(1));
+                    }
+
+                    descr_builder.build()
+                }
+                UnitSize::Halfword => {
+                    let mut descr_builder = unsafe {
+                        TransferDescBuilder::<u16>::new(
+                            Addr::Absolute(
+                                self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
+                            ),
+                            Addr::Absolute(dst.as_ptr().addr() + addr_offset),
+                            descr_units.try_into().unwrap(),
+                        )
+                    }
+                    .with_struct_req()
+                    .with_block_size(descriptor::BlockSize::All);
+
+                    if !is_last {
+                        descr_builder = descr_builder.with_link(Addr::Relative(1));
+                    }
+
+                    descr_builder.build()
+                }
+                UnitSize::Word => {
+                    let mut descr_builder = unsafe {
+                        TransferDescBuilder::<u32>::new(
+                            Addr::Absolute(
+                                self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
+                            ),
+                            Addr::Absolute(dst.as_ptr().addr() + addr_offset),
+                            descr_units.try_into().unwrap(),
+                        )
+                    }
+                    .with_struct_req()
+                    .with_block_size(descriptor::BlockSize::All);
+
+                    if !is_last {
+                        descr_builder = descr_builder.with_link(Addr::Relative(1));
+                    }
+
+                    descr_builder.build()
+                }
             };
 
-            // // DEBUG:
-            // {
-            //     print_desc(&descr);
-            // }
-
-            *ser_descr = descr.into();
-
+            *ser_descr = descr;
             remaining_units -= descr_units;
         }
         assert_eq!(remaining_units, 0);
@@ -426,7 +493,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
     /// The unit size is calculated dynamically when the Transfer is created, based on the alignment an length of
     /// `self.src` and `self.dst`, and it favors the widest bitwidth (word--32 bits), followed by half-word, followed
     /// by byte size
-    pub fn unit(&self) -> SIZE {
+    pub fn unit(&self) -> UnitSize {
         self.unit
     }
 }
@@ -463,278 +530,6 @@ pub enum DmaError {
     InvalidTransferSize(DmaChannel),
     /// DMA transfer failed
     Transfer(DmaChannel),
-}
-
-/// DMA Channel Descriptor
-///
-/// Can be written to the DMA peripheral to trigger a transfer, or converted to a `SerializedDescriptor` to create
-/// descriptor linked lists
-#[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub(crate) struct Descriptor {
-    ctrl: Ctrl,
-    src: usize,
-    dst: usize,
-    link: Link,
-}
-
-impl Descriptor {
-    /// Maximum number of units (byte, half-word, word) which can be transfered in one DMA shot
-    #[cfg(not(feature = "dma-debug-max-transfer"))]
-    const MAX_TRANSFER_UNITS: usize = 1 << 11;
-    #[cfg(feature = "dma-debug-max-transfer")]
-    const MAX_TRANSFER_UNITS: usize = 1 << 5;
-}
-
-/// Debug function to pretty-print a descriptor
-#[cfg(feature = "defmt")]
-#[allow(dead_code)]
-fn print_desc(desc: &Descriptor) {
-    use defmt::info;
-    let link_addr = match desc.link.link_mode {
-        AddrMode::Absolute => desc.link.link_addr << 2,
-        AddrMode::Relative => desc.link.link_addr,
-    };
-    info!("\nDescriptor:\n\tCtrl:\n\t\tdst_mode: {}\n\t\tsrc_mode: {}\n\t\tdst_inc: {}\n\t\tsize: {}\n\t\tsrc_inc: {}\n\t\tignore_s_req: {}\n\t\tdec_loop_cnt: {}\n\t\treq_mode: {}\n\t\tdone_if_s_en: {}\n\t\tblock_size: {}\n\t\tbyte_swap: {}\n\t\txfer_cnt: {}\n\t\tstruct_req: {}\n\t\tstruct_type: {}\n\tSrc: 0x{:X}\n\tDst: 0x{:X}\n\tLink:\n\t\tlink: {}\n\t\tlink_mode: {}\n\t\tlink_addr: 0x{:X}\n",
-            desc.ctrl.dst_mode,
-            desc.ctrl.src_mode,
-            desc.ctrl.dst_inc,
-            desc.ctrl.size,
-            desc.ctrl.src_inc,
-            desc.ctrl.ignore_s_req,
-            desc.ctrl.dec_loop_cnt,
-            desc.ctrl.req_mode,
-            desc.ctrl.done_if_s_en,
-            desc.ctrl.block_size,
-            desc.ctrl.byte_swap,
-            desc.ctrl.xfer_cnt + 1,
-            desc.ctrl.struct_req,
-            desc.ctrl.struct_type,
-            desc.src,
-            desc.dst,
-            desc.link.link,
-            desc.link.link_mode,
-            link_addr
-        );
-}
-
-impl From<Descriptor> for SerializedDescriptor {
-    fn from(value: Descriptor) -> Self {
-        Self {
-            raw: [
-                value.ctrl.into(),
-                value.src as u32,
-                value.dst as u32,
-                value.link.into(),
-            ],
-        }
-    }
-}
-
-/// Serialized DMA Descriptor
-#[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[repr(C)]
-struct SerializedDescriptor {
-    raw: [u32; 4],
-}
-
-/// CTRL register
-#[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-struct Ctrl {
-    /// [31]
-    dst_mode: AddrMode,
-    /// [30]
-    src_mode: AddrMode,
-    /// [29:28]
-    dst_inc: DSTINC,
-    /// [27:26]
-    size: SIZE,
-    /// [25:24]
-    src_inc: SRCINC,
-    /// [23]
-    ignore_s_req: bool,
-    /// [22]
-    dec_loop_cnt: bool,
-    /// [21]
-    req_mode: bool,
-    /// Setting this bit will set the interrupt flag when the transfer is done, or linked in the case where the LINK
-    /// bit is set, or synchronized in the case of a SYNC transfer.
-    ///
-    /// [20]
-    done_if_s_en: bool,
-    /// [19:16]
-    block_size: BLOCKSIZE,
-    /// [15]
-    byte_swap: bool,
-    /// The `XFERCNT` field specifies number of unit data (words, half-words, or bytes) to transfer, as determined
-    /// by the SIZE field.
-    /// **The value written should be one less than the desired transfer count**
-    ///
-    /// [14:4]
-    xfer_cnt: u16,
-    /// [3]
-    struct_req: bool,
-    /// [1:0]
-    struct_type: STRUCTTYPE,
-}
-
-impl Ctrl {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn with_size(mut self, unit: SIZE) -> Self {
-        self.size = unit;
-        self
-    }
-
-    fn with_struct_req(mut self) -> Self {
-        self.struct_req = true;
-        self
-    }
-
-    fn with_block_size(mut self, blocksize: BLOCKSIZE) -> Self {
-        self.block_size = blocksize;
-        self
-    }
-
-    /// Set the transfer count.
-    ///
-    /// Must be `0 < value <= Descriptor::MAX_TRANSFER_UNITS` (`0x800` units)
-    ///
-    /// Example:
-    ///
-    /// ```rust,no_run
-    ///     Ctrl::new().with_xfer_cnt(0x800usize.try_into().unwrap())
-    /// ```
-    fn with_xfer_cnt(mut self, units: TransferCount) -> Ctrl {
-        self.xfer_cnt = units.count - 1;
-        self
-    }
-}
-
-impl Default for Ctrl {
-    fn default() -> Self {
-        Self {
-            struct_type: STRUCTTYPE::Transfer,
-            struct_req: Default::default(),
-            xfer_cnt: Default::default(),
-            byte_swap: Default::default(),
-            block_size: BLOCKSIZE::Unit1,
-            done_if_s_en: Default::default(),
-            req_mode: Default::default(),
-            dec_loop_cnt: Default::default(),
-            ignore_s_req: Default::default(),
-            src_inc: SRCINC::One,
-            size: SIZE::Byte,
-            dst_inc: DSTINC::One,
-            src_mode: Default::default(),
-            dst_mode: Default::default(),
-        }
-    }
-}
-
-impl From<Ctrl> for u32 {
-    fn from(value: Ctrl) -> Self {
-        let mut ret = 0;
-        ret |= (value.dst_mode as u32) << 31;
-        ret |= (value.src_mode as u32) << 30;
-        ret |= (value.dst_inc as u32) << 28;
-        ret |= (value.size as u32) << 26;
-        ret |= (value.src_inc as u32) << 24;
-        ret |= (value.ignore_s_req as u32) << 23;
-        ret |= (value.dec_loop_cnt as u32) << 22;
-        ret |= (value.req_mode as u32) << 21;
-        ret |= (value.done_if_s_en as u32) << 20;
-        ret |= (value.block_size as u32) << 16;
-        ret |= (value.byte_swap as u32) << 15;
-        ret |= ((value.xfer_cnt as u32) & 0x7FF) << 4;
-        ret |= (value.struct_req as u32) << 3;
-        ret |= value.struct_type as u32;
-        ret
-    }
-}
-
-/// Wrapper for the CTRL.XFERCNT which makes sure the value is at most `Descriptor::MAX_TRANSFER_UNITS` (`0x800`),
-/// and that it's greater than `0`
-struct TransferCount {
-    count: u16,
-}
-
-impl TryFrom<usize> for TransferCount {
-    type Error = ();
-
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if (value > 0) && (value <= Descriptor::MAX_TRANSFER_UNITS) {
-            Ok(Self {
-                count: value as u16,
-            })
-        } else {
-            Err(())
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-struct Link {
-    /// Link Structure Address
-    ///
-    /// **WARNING:** the value of this field needs to be expressed in 32-bit words, not in bytes
-    ///
-    /// - For `Absolute` addressing, right-shift the byte addres by 2. E.g. if the descriptor is at `0x200056F4`,
-    ///   then this field needs to contain `0x200056F4 >> 2`, which is `0x80015BD`
-    ///
-    /// - For `Relative` addressing, if you need to point to the next descriptor in memory, right-shift the size of
-    ///   the descriptor by 2, so write `4` to point to the next descriptor, `8` to jump to the one after that, etc.
-    ///
-    /// [31:2]
-    link_addr: usize,
-    /// [1]
-    link: bool,
-    /// [0]
-    link_mode: AddrMode,
-}
-
-impl Link {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn with_absolute_addr(mut self, addr: usize) -> Link {
-        self.link_addr = addr >> 2;
-        self.link = true;
-        self.link_mode = AddrMode::Absolute;
-        self
-    }
-
-    fn with_relative_addr(mut self, count: isize) -> Link {
-        self.link_addr = (count * size_of::<SerializedDescriptor>() as isize) as usize >> 2;
-        self.link = true;
-        self.link_mode = AddrMode::Relative;
-        self
-    }
-}
-
-impl From<Link> for u32 {
-    fn from(value: Link) -> Self {
-        let mut ret = 0;
-        ret |= (value.link_addr as u32) << 2;
-        ret |= (value.link as u32) << 1;
-        ret |= value.link_mode as u32;
-        ret
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-#[repr(u8)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum AddrMode {
-    #[default]
-    Absolute = 0,
-    Relative = 1,
 }
 
 /// DMA interrupt handling
@@ -798,7 +593,8 @@ pub mod irq {
 
 /// Register-level DMA functions
 pub(crate) mod mmio {
-    use crate::dma::{ChannelId, Descriptor, DmaChannel};
+    use crate::dma::descriptor::Descriptor;
+    use crate::dma::{ChannelId, DmaChannel};
     use crate::pac::Ldma;
     use crate::SingleCycleRMW;
 
@@ -910,19 +706,19 @@ pub(crate) mod mmio {
         dma()
             .ch(id as usize)
             .ctrl()
-            .write(|w| unsafe { w.bits(descr.ctrl.into()) });
+            .write(|w| unsafe { w.bits(descr.raw[Descriptor::INDEX_CTRL]) });
         dma()
             .ch(id as usize)
             .src()
-            .write(|w| unsafe { w.bits(descr.src as u32) });
+            .write(|w| unsafe { w.bits(descr.raw[Descriptor::INDEX_SRC]) });
         dma()
             .ch(id as usize)
             .dst()
-            .write(|w| unsafe { w.bits(descr.dst as u32) });
+            .write(|w| unsafe { w.bits(descr.raw[Descriptor::INDEX_DST]) });
         dma()
             .ch(id as usize)
             .link()
-            .write(|w| unsafe { w.bits(descr.link.into()) });
+            .write(|w| unsafe { w.bits(descr.raw[Descriptor::INDEX_LINK]) });
     }
 
     /// Iterator over all raised channel DMA done flags
