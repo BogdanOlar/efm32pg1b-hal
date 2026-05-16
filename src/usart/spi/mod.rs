@@ -20,14 +20,13 @@ pub use fugit::{HertzU32, RateExtU32};
 /// SPI master which implements `SpiBus` trait
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct Spi<const N: u8, USART, PCLK, PTX, PRX> {
-    usart: USART,
+pub struct Spi<const N: u8, PCLK, PTX, PRX> {
     pin_clk: PCLK,
     pin_tx: PTX,
     pin_rx: PRX,
 }
 
-impl<const N: u8, PCLK, PTX, PRX> Spi<N, Usart<N>, PCLK, PTX, PRX>
+impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX>
 where
     PCLK: OutputPin + UsartClkPin,
     PTX: OutputPin + UsartTxPin,
@@ -35,15 +34,8 @@ where
 {
     const FILLER_BYTE: u8 = 0x00;
 
-    pub(crate) fn new(
-        usart: Usart<N>,
-        pin_clk: PCLK,
-        pin_tx: PTX,
-        pin_rx: PRX,
-        mode: Mode,
-    ) -> Self {
+    pub(crate) fn new(pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: Mode) -> Self {
         let mut spi = Spi {
-            usart,
             pin_clk,
             pin_tx,
             pin_rx,
@@ -115,8 +107,8 @@ where
     }
 
     /// Release the resources used to create this SPI instance
-    pub fn free(self) -> (Usart<N>, PCLK, PTX, PRX) {
-        (self.usart, self.pin_clk, self.pin_tx, self.pin_rx)
+    pub fn free(self) -> (PCLK, PTX, PRX) {
+        (self.pin_clk, self.pin_tx, self.pin_rx)
     }
 
     /// Set the SPI loopback flag
@@ -271,11 +263,11 @@ impl Error for SpiError {
 }
 
 // Implementations for `ErrorType` to be used by `SpiBus` `embedded-hal` trait
-impl<const N: u8, PCLK, PTX, PRX> ErrorType for Spi<N, Usart<N>, PCLK, PTX, PRX> {
+impl<const N: u8, PCLK, PTX, PRX> ErrorType for Spi<N, PCLK, PTX, PRX> {
     type Error = SpiError;
 }
 
-impl<const N: u8, PCLK, PTX, PRX> SpiBus<u8> for Spi<N, Usart<N>, PCLK, PTX, PRX>
+impl<const N: u8, PCLK, PTX, PRX> SpiBus<u8> for Spi<N, PCLK, PTX, PRX>
 where
     PCLK: OutputPin + UsartClkPin,
     PTX: OutputPin + UsartTxPin,

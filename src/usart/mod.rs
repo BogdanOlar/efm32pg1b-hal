@@ -76,14 +76,14 @@ impl<const N: u8> Usart<N> {
         pin_tx: PTX,
         pin_rx: PRX,
         mode: Mode,
-    ) -> Spi<N, Usart<N>, PCLK, PTX, PRX>
+    ) -> Spi<N, PCLK, PTX, PRX>
     where
         PCLK: OutputPin + UsartClkPin,
         PTX: OutputPin + UsartTxPin,
         PRX: InputPin + UsartRxPin,
     {
         self.enable();
-        Spi::new(self, pin_clk, pin_tx, pin_rx, mode)
+        Spi::new(pin_clk, pin_tx, pin_rx, mode)
     }
 
     fn enable(&mut self) {
