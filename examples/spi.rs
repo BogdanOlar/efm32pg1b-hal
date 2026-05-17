@@ -118,12 +118,12 @@ fn main() -> ! {
 
     println!("SPI: {}", &spi);
 
-    let (usart, clk, tx, rx) = spi.free();
-    println!("SPI Freed. Returned:");
-    println!("\t usart: {}", usart);
-    println!("\t clk: {}", clk);
-    println!("\t tx: {}", tx);
-    println!("\t rx: {}", rx);
+    // let (usart, clk, tx, rx) = spi.free();
+    // println!("SPI Freed. Returned:");
+    // println!("\t usart: {}", usart);
+    // println!("\t clk: {}", clk);
+    // println!("\t tx: {}", tx);
+    // println!("\t rx: {}", rx);
 
     loop {}
 }

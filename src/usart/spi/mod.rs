@@ -174,6 +174,7 @@ where
         });
     }
 
+    /// Convert into a Spi implementation which used DMA channels
     pub fn into_spi_dma(self, tx: DmaChannel, rx: DmaChannel) -> SpiDma<N> {
         SpiDma::new(tx, rx)
     }
@@ -257,15 +258,17 @@ pub enum SpiError {
     TxUnderflow,
     /// Rx underflow
     RxUnderflow,
+    /// SPI peripheral is busy
+    Busy,
+    /// TX Error
+    Tx,
+    /// RX Error
+    Rx,
 }
 
 impl Error for SpiError {
     fn kind(&self) -> ErrorKind {
-        match self {
-            SpiError::InvalidBaudrate(_) => ErrorKind::Other,
-            SpiError::TxUnderflow => ErrorKind::Other,
-            SpiError::RxUnderflow => ErrorKind::Other,
-        }
+        ErrorKind::Other
     }
 }
 

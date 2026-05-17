@@ -4,13 +4,12 @@
 #[cfg(test)]
 #[embedded_test::tests]
 mod tests {
-    use cortex_m::asm::nop;
     use defmt::error;
     use defmt_rtt as _;
     use efm32pg1b_hal::{
         cmu::CmuExt,
         crc::{algos::CRC_32_CKSUM, CrcDriver},
-        dma::Dma,
+        dma::{descriptor::Descriptor, Dma},
         gpio::{Gpio, InFilt, OutPp},
         pac::Peripherals,
         usart::{Usart, UsartBuild},
@@ -56,7 +55,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma(p: Peripherals) {
+    fn transfer_u8_dma_short(p: Peripherals) {
         let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
         let clocks = p.cmu.split();
         let gpio = Gpio::new(p.gpio);
@@ -74,16 +73,12 @@ mod tests {
         let mut dst_buf: [u8; SRC_U8_SIZE] = [0; _];
 
         let src = &SRC_U8;
-        // let dst = &mut dst_buf[1..Descriptor::MAX_TRANSFER_UNITS + 1];
-        let dst = &mut dst_buf[..10];
+        let dst = &mut dst_buf[1..Descriptor::MAX_TRANSFER_UNITS + 1];
 
         let ret_tr1 = spi.transfer(dst, src);
         assert!(ret_tr1.is_ok());
-
-        // FIXME: DMA transfer still ongoing when CRC is calculated
-        for _ in 0..100_000 {
-            nop();
-        }
+        let ret_tr2 = spi.flush();
+        assert!(ret_tr2.is_ok());
 
         crc.update(&src[..dst.len()]);
         let src_crc = crc.finalize();
@@ -98,8 +93,8 @@ mod tests {
                 src_crc,
                 dst_crc
             );
-            error!("src: {}", src[..dst.len()]);
-            error!("dst: {}", dst);
+            // error!("src: {}", src[..dst.len()]);
+            // error!("dst: {}", dst);
         }
 
         assert_eq!(src_crc, dst_crc);
