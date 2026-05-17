@@ -434,7 +434,7 @@
         },
         {
             "name": "probe_rs spi example",
-            "preLaunchTask": "${defaultBuildTask}",
+            "preLaunchTask": "cargo build example spi",
             "type": "probe-rs-debug",
             "request": "launch",
             "flashingConfig": {
@@ -443,8 +443,19 @@
             "chip": "EFM32PG1B200F256GM48",
             "coreConfigs": [
                 {
-                    //!MODIFY
-                    "programBinary": "target/thumbv7em-none-eabihf/debug/examples/spi"
+                    "programBinary": "target/thumbv7em-none-eabihf/debug/examples/spi",
+                    "svdFile": "EFM32PG1B.svd",
+                    "rttEnabled": true,
+                    "rttChannelFormats": [
+                        {
+                            "channelNumber": 0,
+                            // Format RTT data as String data
+                            "dataFormat": "String",
+                            // Include host-side timestamps for every line of data transferred from the target RTT output
+                            "showTimestamps": true,
+                            "showLocation": true
+                        }
+                    ]
                 }
             ]
         },

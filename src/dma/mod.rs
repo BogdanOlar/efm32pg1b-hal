@@ -94,6 +94,11 @@ impl DmaChannel {
         mmio::ch_enabled(self.id)
     }
 
+    /// Enable channel
+    pub fn set_enable(&self) {
+        mmio::ch_enable_set(self.id());
+    }
+
     /// Get channel busy (if enabled)
     pub fn busy(&self) -> bool {
         self.enabled() && mmio::ch_busy(self.id)
@@ -118,6 +123,24 @@ impl DmaChannel {
         let mut transfer = ChannelTransfer::new(self, src, dst);
         transfer.start();
         transfer
+    }
+
+    /// Set the channel Peripheral Request selection
+    pub fn set_per_req(&self, source: ChReqSel) {
+        mmio::ch_reqsel_set(self.id(), source);
+    }
+
+    /// Write a descriptor to the channel DMA descriptor registers
+    pub fn set_descriptor(&self, descr: &Descriptor) {
+        mmio::ch_write_descriptor(self.id(), descr);
+    }
+
+    pub fn set_ien(&self) {
+        mmio::ien_set(self.id());
+    }
+
+    pub fn start(&self) {
+        mmio::ch_start(self.id());
     }
 }
 
@@ -171,6 +194,107 @@ impl ChannelId {
             _ => unreachable!(),
         }
     }
+}
+
+/// Channel Peripheral Request Select
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u16)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum ChReqSel {
+    /// No source selected
+    None = 0b0,
+    /// Peripheral Reflex System, PRSREQ0
+    PrsReq0 = 0x10,
+    /// Peripheral Reflex System, PRSREQ1
+    PrsReq1 = 0x11,
+    /// Analog to Digital Converter 0, ADC0SINGLE REQ/SREQ
+    Adc0Single = 0x80,
+    /// Analog to Digital Converter 0, ADC0SCAN REQ/SREQ
+    Adc0Scan = 0x81,
+    /// Universal Synchronous/Asynchronous Receiver/Transmitter 0
+    /// USART0RXDATAV REQ/SREQ
+    Usart0RxDataV = 0xC0,
+    /// Universal Synchronous/Asynchronous Receiver/Transmitter 0
+    /// USART0TXBL REQ/SREQ
+    Usart0TxBl = 0xC1,
+    /// Universal Synchronous/Asynchronous Receiver/Transmitter 0
+    /// USART0TXEMPTY
+    Usart0TxEmpty = 0xC2,
+    /// Universal Synchronous/Asynchronous Receiver/Transmitter 1
+    /// USART1RXDATAV REQ/SREQ
+    Usart1RxDataV = 0xD0,
+    /// Universal Synchronous/Asynchronous Receiver/Transmitter 1
+    /// USART1TXBL REQ/SREQ
+    Usart1TxBl = 0xD1,
+    /// Universal Synchronous/Asynchronous Receiver/Transmitter 1
+    /// USART1TXEMPTY
+    Usart1TxEmpty = 0xD2,
+    /// Universal Synchronous/Asynchronous Receiver/Transmitter 1
+    /// USART1RXDATAVRIGHT REQ/SREQ
+    Usart1RxDataVRight = 0xD3,
+    /// Universal Synchronous/Asynchronous Receiver/Transmitter 1
+    /// USART1TXBLRIGHT REQ/SREQ
+    Usart1TxBlRight = 0xD4,
+    /// Low Energy UART 0
+    /// LEUART0RXDATAV
+    LeUart0RxDataV = 0x100,
+    /// Low Energy UART 0
+    /// LEUART0TXBL
+    LeUart0TxBl = 0x101,
+    /// Low Energy UART 0
+    /// LEUART0TXEMPTY
+    LeUart0TxEmpty = 0x102,
+    /// I2C 0
+    /// I2C0RXDATAV REQ/SREQ
+    I2C0RxDataV = 0x140,
+    /// I2C 0
+    /// I2C0TXBL REQ/SREQ
+    I2C0TxBl = 0x141,
+    /// Timer 0
+    /// TIMER0UFOF
+    Timer0UfOf = 0x180,
+    /// Timer 0
+    /// TIMER0CC0
+    Timer0Cc0 = 0x181,
+    /// Timer 0
+    /// TIMER0CC1
+    Timer0Cc1 = 0x182,
+    /// Timer 0
+    /// TIMER0CC2
+    Timer0Cc2 = 0x183,
+    /// Timer 1
+    /// TIMER1UFOF
+    Timer1UfOf = 0x190,
+    /// Timer 1
+    /// TIMER1CC0
+    Timer1Cc0 = 0x191,
+    /// Timer 1
+    /// TIMER1CC1
+    Timer1Cc1 = 0x192,
+    /// Timer 1
+    /// TIMER1CC2
+    Timer1Cc2 = 0x193,
+    /// Timer 1
+    /// TIMER1CC3
+    Timer1Cc3 = 0x194,
+    /// Memory System Controller
+    /// MSCWDATA
+    MscWData = 0x300,
+    /// Advanced Encryption Standard Accelerator
+    /// CRYPTODATA0WR
+    CryptoData0Wr = 0x310,
+    /// Advanced Encryption Standard Accelerator
+    /// CRYPTODATA0XWR
+    CryptoData0XWr = 0x311,
+    /// Advanced Encryption Standard Accelerator
+    /// CRYPTODATA0RD
+    CryptoData0Rd = 0x312,
+    /// Advanced Encryption Standard Accelerator
+    /// CRYPTODATA1WR
+    CryptoData1Wr = 0x313,
+    /// Advanced Encryption Standard Accelerator
+    /// CRYPTODATA1RD
+    CryptoData1Rd = 0x314,
 }
 
 /// DMA channel specialised for memory-to-memory transfer
@@ -549,7 +673,7 @@ pub mod irq {
 /// Register-level DMA functions
 pub(crate) mod mmio {
     use crate::dma::descriptor::Descriptor;
-    use crate::dma::{ChannelId, DmaChannel};
+    use crate::dma::{ChReqSel, ChannelId, DmaChannel};
     use crate::pac::Ldma;
     use crate::SingleCycleRMW;
 
@@ -620,6 +744,17 @@ pub(crate) mod mmio {
         dma()
             .swreq()
             .write(|w| unsafe { w.swreq().bits(1 << id as u8) });
+    }
+
+    /// Set Channel Peripheral Request Select
+    pub(crate) fn ch_reqsel_set(id: ChannelId, source: ChReqSel) {
+        let sig = ((source as u16) & 0b1111) as u8;
+        let source = (((source as u16) >> 4) & 0b111111) as u8;
+
+        dma()
+            .ch(id as usize)
+            .reqsel()
+            .write(|w| unsafe { w.sigsel().bits(sig).sourcesel().bits(source) });
     }
 
     pub(crate) fn ch_link_load(id: ChannelId) {

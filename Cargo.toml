@@ -96,15 +96,21 @@ defmt = [
 ]
 
 [profile.release]
-codegen-units = 1 # better optimizations
-debug = true      # symbols are nice and they don't increase the size on Flash
-lto = true        # better link time optimizations
+codegen-units    = 1     # LLVM can perform better optimizations using a single thread
+debug            = 2
+debug-assertions = false
+incremental      = false
+lto              = 'fat'
+opt-level        = 's'
+overflow-checks  = false
 
 [profile.dev]
-codegen-units = 1             # better optimizations
-debug = true                  # symbols are nice and they don't increase the size on Flash
-lto = true
+# Rust debug is too slow.
+# For debug builds always builds with some optimization
+opt-level = "s"
 required-features = ["defmt", "qfn48"]
+
+
 
 # ==== Integration Tests ===============================================================================================
 

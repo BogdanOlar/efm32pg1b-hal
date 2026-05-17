@@ -8,6 +8,8 @@ use core::marker::PhantomData;
 ///
 /// This descriptor defines a typical data transfer which may be a Normal, Link, or Loop transfer.
 /// Only this structure type can be written directly into LDMA's registers by the CPU.
+///
+/// `UNIT` may be [`UnitByte`], [`UnitHalfWord`], or [`UnitWord`]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TransferDescBuilder<UNIT> {
     descr: Descriptor,

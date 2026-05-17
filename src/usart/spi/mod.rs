@@ -2,13 +2,16 @@
 //!
 //! Specialize USART peripherals into SPI peripherals
 
+pub mod dma;
+
 use crate::{
     cmu::Clocks,
+    dma::DmaChannel,
     gpio::pin::{
         mode::{InputMode, OutputMode},
         Pin,
     },
-    usart::{usarts::usartx, Usart},
+    usart::{spi::dma::SpiDma, usarts::usartx},
 };
 use core::cmp::max;
 use embedded_hal::{
@@ -169,6 +172,10 @@ where
                 .clkpha()
                 .bit(mode.phase == Phase::CaptureOnSecondTransition)
         });
+    }
+
+    pub fn into_spi_dma(self, tx: DmaChannel, rx: DmaChannel) -> SpiDma<N> {
+        SpiDma::new(tx, rx)
     }
 
     fn reset(&mut self) {
