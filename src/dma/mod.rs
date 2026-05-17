@@ -220,7 +220,7 @@ impl ChannelId {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ChReqSel {
     /// No source selected
-    None = 0b0,
+    None = 0,
     /// Peripheral Reflex System, PRSREQ0
     PrsReq0 = 0x10,
     /// Peripheral Reflex System, PRSREQ1

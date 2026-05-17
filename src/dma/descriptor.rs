@@ -512,6 +512,19 @@ pub enum AddrInc {
     None = 3,
 }
 
+/// Unit Data Transfer Size
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum UnitSize {
+    /// 8-bit transfer unit
+    Byte = 0,
+    /// 16-bit transfer unit
+    Halfword = 1,
+    /// 32-bit transfer unit
+    Word = 2,
+}
+
 /// Descriptor address mode
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[repr(u8)]
@@ -522,19 +535,6 @@ pub(crate) enum AddrMode {
     Absolute = 0,
     /// Relative addressing
     Relative = 1,
-}
-
-/// Unit Data Transfer Size
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub(crate) enum UnitSize {
-    /// 8-bit transfer unit
-    Byte = 0,
-    /// 16-bit transfer unit
-    Halfword = 1,
-    /// 32-bit transfer unit
-    Word = 2,
 }
 
 ///Block Transfer Size
