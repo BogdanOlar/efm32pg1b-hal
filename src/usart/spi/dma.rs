@@ -24,7 +24,7 @@ impl<const N: u8> SpiDma<N> {
         /// Helper function to get the appropriate peripheral sources based on SPI instance id (`N`):
         /// `(tx_source, rx_source)`
         const fn sources<const N: u8>() -> (ChReqSel, ChReqSel) {
-            match N & 1 {
+            match N {
                 0 => (ChReqSel::Usart0TxBl, ChReqSel::Usart0RxDataAvl),
                 1 => (ChReqSel::Usart1TxBl, ChReqSel::Usart1RxDataAvl),
                 _ => unreachable!(),
