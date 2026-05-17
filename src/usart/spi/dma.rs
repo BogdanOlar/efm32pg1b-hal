@@ -20,7 +20,7 @@ pub struct SpiDma<const N: u8> {
 }
 
 impl<const N: u8> SpiDma<N> {
-    pub(crate) fn new(tx: DmaChannel, rx: DmaChannel) -> Self {
+    pub(crate) fn new(mut tx: DmaChannel, mut rx: DmaChannel) -> Self {
         /// Helper function to get the appropriate peripheral sources based on SPI instance id (`N`):
         /// `(tx_source, rx_source)`
         const fn sources<const N: u8>() -> (ChReqSel, ChReqSel) {
@@ -31,8 +31,10 @@ impl<const N: u8> SpiDma<N> {
             }
         }
 
-        let (tx_sel, rx_sel) = sources::<N>();
+        tx.reset();
+        rx.reset();
 
+        let (tx_sel, rx_sel) = sources::<N>();
         tx.set_per_req(tx_sel);
         rx.set_per_req(rx_sel);
 
@@ -40,15 +42,12 @@ impl<const N: u8> SpiDma<N> {
             // Clear any existing content in the IRQ channel of the DMA channels
             dma::irq::irq_ch_take(cs, tx.id());
             dma::irq::irq_ch_take(cs, rx.id());
-        });
-
-        // Set the IRQ handler for TX channel
-        // FIXME: Handle RX too?
-        critical_section::with(|cs| {
+            // Set the IRQ handler for TX channel
             dma::irq::set_handler(cs, tx.id(), |id, channel_error| {
                 // signal to the main thread that transfer is resolved
                 critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_error)));
             })
+            // FIXME: Handle RX too?
         });
 
         Self {
@@ -136,6 +135,11 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     break is_error;
                 }
             };
+
+            // FIXME: don't clear the peripheral source with reset, since that's set only once when the `SpiDma` is
+            //        created
+            // self.tx.reset();
+            // self.rx.reset();
 
             match error {
                 true => Err(SpiError::Tx),

@@ -84,6 +84,24 @@ impl DmaChannel {
     /// Number of DMA channels
     const COUNT: usize = 1 << 3;
 
+    /// Reset channel to a known state
+    pub fn reset(&mut self) {
+        mmio::chen_clear(self.id);
+        mmio::ien_clear(self.id);
+        mmio::ifc_set(self.id);
+        mmio::chdone_clear(self.id);
+
+        mmio::ctrl_syncprsseten_clear(self.id);
+        mmio::ctrl_syncprsclren_clear(self.id);
+        mmio::sync_clear(self.id);
+        mmio::dbghalt_clear(self.id);
+        mmio::reqdis_clear(self.id);
+        mmio::reqclear_set(self.id);
+        mmio::reqsel_set(self.id, ChReqSel::None);
+
+        // TODO: LDMA_CHx_CFG, LDMA_CHx_LOOP
+    }
+
     /// Get the DMA channel ID
     pub fn id(&self) -> ChannelId {
         self.id
@@ -91,12 +109,12 @@ impl DmaChannel {
 
     /// Get channel enabled
     pub fn enabled(&self) -> bool {
-        mmio::ch_enabled(self.id)
+        mmio::chen(self.id)
     }
 
     /// Enable channel
     pub fn set_enable(&self) {
-        mmio::ch_enable_set(self.id());
+        mmio::chen_set(self.id());
     }
 
     /// Get channel busy (if enabled)
@@ -127,7 +145,7 @@ impl DmaChannel {
 
     /// Set the channel Peripheral Request selection
     pub fn set_per_req(&self, source: ChReqSel) {
-        mmio::ch_reqsel_set(self.id(), source);
+        mmio::reqsel_set(self.id, source);
     }
 
     /// Write a descriptor to the channel DMA descriptor registers
@@ -140,7 +158,7 @@ impl DmaChannel {
     }
 
     pub fn start(&self) {
-        mmio::ch_start(self.id());
+        mmio::swreq(self.id());
     }
 }
 
@@ -350,9 +368,9 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         }
 
         mmio::ien_clear(self.id);
-        mmio::if_clear(self.id);
-        mmio::ch_enable_clear(self.id);
-        mmio::ch_done_clear(self.id);
+        mmio::ifc_set(self.id);
+        mmio::chen_clear(self.id);
+        mmio::chdone_clear(self.id);
 
         critical_section::with(|cs| {
             // Clear any existing content in the IRQ channel of this DMA channel
@@ -420,8 +438,8 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
         // start the transfer
         mmio::ien_set(self.id);
-        mmio::ch_enable_set(self.id);
-        mmio::ch_start(self.id);
+        mmio::chen_set(self.id);
+        mmio::swreq(self.id);
     }
 
     /// Check if DMA transfer is done. Will only return `Some` once, when the transfer is complete.
@@ -460,9 +478,9 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             if let Some(params) = self.params.take() {
                 // Disable channel
                 mmio::ien_clear(self.id);
-                mmio::if_clear(self.id);
-                mmio::ch_enable_clear(self.id);
-                mmio::ch_done_clear(self.id);
+                mmio::ifc_set(self.id);
+                mmio::chen_clear(self.id);
+                mmio::chdone_clear(self.id);
                 // Clear DMA channel handler
                 critical_section::with(|cs| irq::clear_handler(cs, self.id));
 
@@ -579,7 +597,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
 impl<'a, W: Sized> Drop for ChannelTransfer<'a, W> {
     fn drop(&mut self) {
-        if mmio::ch_enabled(self.id) {
+        if mmio::chen(self.id) {
             panic!("`ChannelTransfer` was dropped while DMA channel was still active");
         }
     }
@@ -663,7 +681,7 @@ pub mod irq {
 
         // process channel done flags
         for id in mmio::if_raised() {
-            mmio::if_clear(id);
+            mmio::ifc_set(id);
             let handle = critical_section::with(|cs| HANDLERS.borrow(cs).borrow()[id as usize]);
             handle(id, false);
         }
@@ -677,18 +695,32 @@ pub(crate) mod mmio {
     use crate::pac::Ldma;
     use crate::SingleCycleRMW;
 
+    /// Disable "Synchronization PRS Set Enable"
+    pub(crate) fn ctrl_syncprsseten_clear(id: ChannelId) {
+        dma().ctrl().sc_clear(1 << id as u8);
+    }
+
+    /// Disable "Synchronization PRS Clear Enable"
+    pub(crate) fn ctrl_syncprsclren_clear(id: ChannelId) {
+        dma().ctrl().sc_clear((1 << id as u8) << DmaChannel::COUNT);
+    }
+
+    pub(crate) fn sync_clear(id: ChannelId) {
+        dma().sync().sc_clear(1 << id as u8);
+    }
+
     /// Get channel enabled
-    pub(crate) fn ch_enabled(id: ChannelId) -> bool {
+    pub(crate) fn chen(id: ChannelId) -> bool {
         dma().chen().read().chen().bits() & (1 << id as u8) != 0
     }
 
     /// Enable channel
-    pub(crate) fn ch_enable_set(id: ChannelId) {
+    pub(crate) fn chen_set(id: ChannelId) {
         dma().chen().sc_set(1 << id as u8);
     }
 
     /// Disable channel
-    pub(crate) fn ch_enable_clear(id: ChannelId) {
+    pub(crate) fn chen_clear(id: ChannelId) {
         dma().chen().sc_clear(1 << id as u8);
     }
 
@@ -700,8 +732,20 @@ pub(crate) mod mmio {
         dma().chdone().sc_set(1 << id as u8);
     }
 
-    pub(crate) fn ch_done_clear(id: ChannelId) {
+    pub(crate) fn chdone_clear(id: ChannelId) {
         dma().chdone().sc_clear(1 << id as u8);
+    }
+
+    pub(crate) fn dbghalt_clear(id: ChannelId) {
+        dma().dbghalt().sc_clear(1 << id as u8);
+    }
+
+    pub(crate) fn reqdis_clear(id: ChannelId) {
+        dma().reqdis().sc_clear(1 << id as u8);
+    }
+
+    pub(crate) fn reqclear_set(id: ChannelId) {
+        dma().reqclear().sc_set(1 << id as u8);
     }
 
     pub(crate) fn ch_error(id: ChannelId) -> bool {
@@ -720,10 +764,8 @@ pub(crate) mod mmio {
         dma().ien().sc_clear(1 << id as u8);
     }
 
-    pub(crate) fn if_clear(id: ChannelId) {
-        dma()
-            .ifc()
-            .write(|w| unsafe { w.done().bits(1 << id as u8) });
+    pub(crate) fn ifc_set(id: ChannelId) {
+        dma().ifc().sc_set(1 << id as u8);
     }
 
     pub(crate) fn if_error() -> Option<ChannelId> {
@@ -740,14 +782,14 @@ pub(crate) mod mmio {
         dma().ifc().write(|w| w.error().set_bit());
     }
 
-    pub(crate) fn ch_start(id: ChannelId) {
+    pub(crate) fn swreq(id: ChannelId) {
         dma()
             .swreq()
             .write(|w| unsafe { w.swreq().bits(1 << id as u8) });
     }
 
     /// Set Channel Peripheral Request Select
-    pub(crate) fn ch_reqsel_set(id: ChannelId, source: ChReqSel) {
+    pub(crate) fn reqsel_set(id: ChannelId, source: ChReqSel) {
         let sig = ((source as u16) & 0b1111) as u8;
         let source = (((source as u16) >> 4) & 0b111111) as u8;
 
