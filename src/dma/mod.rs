@@ -231,7 +231,7 @@ pub enum ChReqSel {
     Adc0Scan = 0x81,
     /// Universal Synchronous/Asynchronous Receiver/Transmitter 0
     /// USART0RXDATAV REQ/SREQ
-    Usart0RxDataV = 0xC0,
+    Usart0RxDataAvl = 0xC0,
     /// Universal Synchronous/Asynchronous Receiver/Transmitter 0
     /// USART0TXBL REQ/SREQ
     Usart0TxBl = 0xC1,
@@ -240,7 +240,7 @@ pub enum ChReqSel {
     Usart0TxEmpty = 0xC2,
     /// Universal Synchronous/Asynchronous Receiver/Transmitter 1
     /// USART1RXDATAV REQ/SREQ
-    Usart1RxDataV = 0xD0,
+    Usart1RxDataAvl = 0xD0,
     /// Universal Synchronous/Asynchronous Receiver/Transmitter 1
     /// USART1TXBL REQ/SREQ
     Usart1TxBl = 0xD1,
@@ -249,13 +249,13 @@ pub enum ChReqSel {
     Usart1TxEmpty = 0xD2,
     /// Universal Synchronous/Asynchronous Receiver/Transmitter 1
     /// USART1RXDATAVRIGHT REQ/SREQ
-    Usart1RxDataVRight = 0xD3,
+    Usart1RxDataAvlRight = 0xD3,
     /// Universal Synchronous/Asynchronous Receiver/Transmitter 1
     /// USART1TXBLRIGHT REQ/SREQ
     Usart1TxBlRight = 0xD4,
     /// Low Energy UART 0
     /// LEUART0RXDATAV
-    LeUart0RxDataV = 0x100,
+    LeUart0RxDataAvl = 0x100,
     /// Low Energy UART 0
     /// LEUART0TXBL
     LeUart0TxBl = 0x101,
@@ -264,7 +264,7 @@ pub enum ChReqSel {
     LeUart0TxEmpty = 0x102,
     /// I2C 0
     /// I2C0RXDATAV REQ/SREQ
-    I2C0RxDataV = 0x140,
+    I2C0RxDataAvl = 0x140,
     /// I2C 0
     /// I2C0TXBL REQ/SREQ
     I2C0TxBl = 0x141,
