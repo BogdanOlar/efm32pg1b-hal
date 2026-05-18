@@ -3,7 +3,7 @@
 use crate::{
     dma::{
         self,
-        descriptor::{Addr, AddrInc, TransferDescBuilder, UnitByte},
+        descriptor::{Addr, AddrInc, Descriptor, TransferDescBuilder, UnitByte},
         ChReqSel, DmaChannel,
     },
     usart::{spi::SpiError, usarts::usartx},
@@ -21,20 +21,10 @@ pub struct SpiDma<const N: u8> {
 
 impl<const N: u8> SpiDma<N> {
     pub(crate) fn new(mut tx: DmaChannel, mut rx: DmaChannel) -> Self {
-        /// Helper function to get the appropriate peripheral sources based on SPI instance id (`N`):
-        /// `(tx_source, rx_source)`
-        const fn sources<const N: u8>() -> (ChReqSel, ChReqSel) {
-            match N {
-                0 => (ChReqSel::Usart0TxBl, ChReqSel::Usart0RxDataAvl),
-                1 => (ChReqSel::Usart1TxBl, ChReqSel::Usart1RxDataAvl),
-                _ => unreachable!(),
-            }
-        }
-
         tx.reset();
         rx.reset();
 
-        let (tx_sel, rx_sel) = sources::<N>();
+        let (tx_sel, rx_sel) = Self::sources();
         tx.set_per_req(tx_sel);
         rx.set_per_req(rx_sel);
 
@@ -56,6 +46,16 @@ impl<const N: u8> SpiDma<N> {
             busy: false,
         }
     }
+
+    /// Helper function to get the appropriate peripheral sources based on SPI instance id (`N`):
+    /// Returns `(tx_source, rx_source)`
+    const fn sources() -> (ChReqSel, ChReqSel) {
+        match N {
+            0 => (ChReqSel::Usart0TxBl, ChReqSel::Usart0RxDataAvl),
+            1 => (ChReqSel::Usart1TxBl, ChReqSel::Usart1RxDataAvl),
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl<const N: u8> SpiBus for SpiDma<N> {
@@ -69,8 +69,13 @@ impl<const N: u8> SpiBus for SpiDma<N> {
 
     fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Self::Error> {
         if self.busy {
+            // FIXME: [`embedded_hal::spi::SpiBus`] docs disallow returning a `Busy` error, though it's not clear to me
+            //        what the implementation should so. Enqueueing the request is problematic because if one of the
+            //        queued transfer fails, then how is the user supposed to know which one failed?
             Err(SpiError::Busy)
         } else {
+            // FIXME: current implementation only allows equal-sized Read and Write buffers to be transacted
+            //        AND the transacted units need to fit into a single descriptor
             let unit_cout = write.len().min(read.len());
             let usart_p = usartx::<N>();
 
