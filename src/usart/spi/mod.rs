@@ -109,6 +109,12 @@ where
         spi
     }
 
+    /// Construct Spi driver with Loopback enabled
+    pub fn with_loopback(mut self) -> Self {
+        self.set_loopback(true);
+        self
+    }
+
     /// Release the resources used to create this SPI instance
     pub fn free(self) -> (PCLK, PTX, PRX) {
         (self.pin_clk, self.pin_tx, self.pin_rx)

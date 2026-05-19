@@ -28,11 +28,14 @@ mod tests {
         let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
         let clocks = p.cmu.split();
         let gpio = Gpio::new(p.gpio);
-        let tx = gpio.pc6.into_mode::<OutPp>();
-        let rx = gpio.pc7.into_mode::<InFilt>();
-        let clk = gpio.pc8.into_mode::<OutPp>();
-        let mut spi = Usart::new(p.usart0).into_spi_bus(clk, tx, rx, MODE_2);
-        spi.set_loopback(true);
+        let mut spi = Usart::new(p.usart0)
+            .into_spi_bus(
+                gpio.pc8.into_mode::<OutPp>(),
+                gpio.pc6.into_mode::<OutPp>(),
+                gpio.pc7.into_mode::<InFilt>(),
+                MODE_2,
+            )
+            .with_loopback();
         let rs_br = spi.set_baudrate(4.MHz(), &clocks);
         assert!(rs_br.is_ok());
 
@@ -59,11 +62,15 @@ mod tests {
         let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
         let clocks = p.cmu.split();
         let gpio = Gpio::new(p.gpio);
-        let tx = gpio.pc6.into_mode::<OutPp>();
-        let rx = gpio.pc7.into_mode::<InFilt>();
-        let clk = gpio.pc8.into_mode::<OutPp>();
-        let mut spi = Usart::new(p.usart0).into_spi_bus(clk, tx, rx, MODE_2);
-        spi.set_loopback(true);
+        let mut spi = Usart::new(p.usart0)
+            .into_spi_bus(
+                gpio.pc8.into_mode::<OutPp>(),
+                gpio.pc6.into_mode::<OutPp>(),
+                gpio.pc7.into_mode::<InFilt>(),
+                MODE_2,
+            )
+            .with_loopback();
+
         let rs_br = spi.set_baudrate(4.MHz(), &clocks);
         assert!(rs_br.is_ok());
         let dma = Dma::init(p.ldma);
