@@ -150,15 +150,21 @@ impl DmaChannel {
 
     /// Write a descriptor to the channel DMA descriptor registers
     pub fn set_descriptor(&self, descr: &Descriptor) {
-        mmio::ch_write_descriptor(self.id(), descr);
+        mmio::ch_write_descriptor(self.id, descr);
     }
 
+    /// Enable channel interrupt
     pub fn set_ien(&self) {
-        mmio::ien_set(self.id());
+        mmio::ien_set(self.id);
     }
 
     pub fn start(&self) {
-        mmio::swreq(self.id());
+        mmio::swreq(self.id);
+    }
+
+    /// Set channel loop count value
+    pub fn set_ch_loop(&self, loop_count: u8) {
+        mmio::ch_loop_set(self.id, loop_count);
     }
 }
 
@@ -538,7 +544,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
             if remaining_units > 0 {
                 descr_builder =
-                    descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()));
+                    descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()), true);
             }
 
             descr_builder.build()
@@ -577,7 +583,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 .with_block_size(descriptor::BlockSize::All);
 
                 if !is_last {
-                    descr_builder = descr_builder.with_link(Addr::Relative(1));
+                    descr_builder = descr_builder.with_link(Addr::Relative(1), true);
                 }
 
                 descr_builder.build()
@@ -788,6 +794,13 @@ pub(crate) mod mmio {
             .write(|w| unsafe { w.swreq().bits(1 << id as u8) });
     }
 
+    pub(crate) fn ch_loop_set(id: ChannelId, loop_count: u8) {
+        dma()
+            .ch(id as usize)
+            .loop_()
+            .write(|w| unsafe { w.loopcnt().bits(loop_count) });
+    }
+
     /// Set Channel Peripheral Request Select
     pub(crate) fn reqsel_set(id: ChannelId, source: ChReqSel) {
         let sig = ((source as u16) & 0b1111) as u8;
@@ -863,7 +876,7 @@ pub(crate) mod mmio {
     }
 
     /// Get the DMA (pac) peripheral
-    fn dma() -> Ldma {
+    pub(crate) fn dma() -> Ldma {
         unsafe { crate::pac::Ldma::steal() }
     }
 }

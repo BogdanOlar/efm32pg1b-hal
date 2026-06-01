@@ -63,6 +63,8 @@ impl<UNIT: UnitTs> TransferDescBuilder<UNIT> {
         self
     }
 
+    /// Setting this bit will set the interrupt flag when the transfer is done, or linked in the case where the LINK bit
+    /// is set, or synchronized in the case of a SYNC transfer.
     pub const fn with_done_ifs(mut self) -> Self {
         self.descr.done_ifs_set(true);
         self
@@ -93,8 +95,13 @@ impl<UNIT: UnitTs> TransferDescBuilder<UNIT> {
         self
     }
 
-    pub const fn with_link(mut self, addr: Addr) -> Self {
-        self.descr.link_set(true);
+    /// Set the link register
+    ///
+    /// The link `flag` needs to be specified separately since we can have looped descriptors which use this flag to
+    /// determine if another descriptor (placed immediatelly after it) needs to be loaded after the loop counter reaches
+    /// `0`
+    pub const fn with_link(mut self, addr: Addr, is_linked: bool) -> Self {
+        self.descr.link_set(is_linked);
 
         match addr {
             Addr::Absolute(addr) => {
@@ -282,7 +289,7 @@ pub struct Descriptor {
 }
 
 impl Descriptor {
-    /// Maximum number of units (byte, half-word, word) which can be transfered in one DMA shot
+    /// Maximum number of units (byte, half-word, word) which can be transfered in one DMA shot (`0x800`)
     #[cfg(not(feature = "dma-debug-max-transfer"))]
     pub const MAX_TRANSFER_UNITS: usize = 1 << 11;
     #[cfg(feature = "dma-debug-max-transfer")]
@@ -450,9 +457,9 @@ impl Descriptor {
             (addr_mode as u32 & Self::LINK_MODE_MASK) << Self::LINK_MODE_OFFSET;
     }
 
-    pub(crate) const fn link_set(&mut self, is_link: bool) {
+    pub(crate) const fn link_set(&mut self, is_linked: bool) {
         self.raw[Self::INDEX_LINK] &= !(Self::LINK_MASK << Self::LINK_OFFSET);
-        self.raw[Self::INDEX_LINK] |= (is_link as u32 & Self::LINK_MASK) << Self::LINK_OFFSET;
+        self.raw[Self::INDEX_LINK] |= (is_linked as u32 & Self::LINK_MASK) << Self::LINK_OFFSET;
     }
 
     pub(crate) const fn link_addr_set(&mut self, addr: usize) {
@@ -592,6 +599,13 @@ pub(crate) enum StructType {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TransferCount {
     count: u16,
+}
+
+impl TransferCount {
+    /// Maximum transfer unit count value
+    pub const MAX: Self = Self {
+        count: Descriptor::MAX_TRANSFER_UNITS as u16,
+    };
 }
 
 impl TryFrom<usize> for TransferCount {
