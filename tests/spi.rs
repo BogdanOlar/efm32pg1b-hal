@@ -56,9 +56,11 @@ mod tests {
         assert_eq!(src_crc, dst_crc);
     }
 
+    /// SPI transfer uses just one descriptor for both TX and RX
+    /// TX and RX slices have the same size
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_short(p: Peripherals) {
+    fn transfer_u8_dma_short_symmetric(p: Peripherals) {
         let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
         let clocks = p.cmu.split();
         let gpio = Gpio::new(p.gpio);
@@ -107,14 +109,186 @@ mod tests {
         assert_eq!(src_crc, dst_crc);
     }
 
-    const SRC_U8_SIZE: usize = 1024 * 26;
+    /// SPI transfer uses just one descriptor for both TX and RX
+    /// RX slice is smaller than TX slice
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_short_asymmetric_rx_shorter(p: Peripherals) {
+        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
+        let clocks = p.cmu.split();
+        let gpio = Gpio::new(p.gpio);
+        let mut spi = Usart::new(p.usart0)
+            .into_spi_bus(
+                gpio.pc8.into_mode::<OutPp>(),
+                gpio.pc6.into_mode::<OutPp>(),
+                gpio.pc7.into_mode::<InFilt>(),
+                MODE_2,
+            )
+            .with_loopback();
+
+        let rs_br = spi.set_baudrate(4.MHz(), &clocks);
+        assert!(rs_br.is_ok());
+        let dma = Dma::init(p.ldma);
+        let mut spi = spi.into_spi_dma(dma.ch0, dma.ch1);
+
+        // Set the `dst` length to a multiple of 1
+        let mut dst_buf: [u8; SRC_U8_SIZE] = [0; _];
+
+        let src = &SRC_U8[0..32];
+        let dst = &mut dst_buf[1..=16];
+
+        let ret_tr1 = spi.transfer(dst, src);
+        assert!(ret_tr1.is_ok());
+        let ret_tr2 = spi.flush();
+        assert!(ret_tr2.is_ok());
+
+        crc.update(&src[0..dst.len()]);
+        let src_crc = crc.finalize();
+        crc.update(dst);
+        let dst_crc = crc.finalize();
+
+        // DEBUG:
+        if src_crc != dst_crc {
+            error!(
+                "{} bytes src_crc=0x{:X} dst_crc=0x{:X}",
+                src.len().min(dst.len()),
+                src_crc,
+                dst_crc
+            );
+            error!("src: {}", src);
+            error!("dst: {}", dst);
+        }
+
+        assert_eq!(src_crc, dst_crc);
+
+        // check potential under/overflows
+        assert_eq!(dst_buf[0], 0);
+        assert_eq!(dst_buf[17], 0);
+    }
+
+    /// SPI transfer uses just one descriptor for both TX and RX
+    /// RX slice is larger than TX slice
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_short_asymmetric_rx_longer(p: Peripherals) {
+        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
+        let clocks = p.cmu.split();
+        let gpio = Gpio::new(p.gpio);
+        let mut spi = Usart::new(p.usart0)
+            .into_spi_bus(
+                gpio.pc8.into_mode::<OutPp>(),
+                gpio.pc6.into_mode::<OutPp>(),
+                gpio.pc7.into_mode::<InFilt>(),
+                MODE_2,
+            )
+            .with_loopback();
+
+        let rs_br = spi.set_baudrate(4.MHz(), &clocks);
+        assert!(rs_br.is_ok());
+        let dma = Dma::init(p.ldma);
+        let mut spi = spi.into_spi_dma(dma.ch0, dma.ch1);
+
+        // Set the `dst` length to a multiple of 1
+        let mut dst_buf: [u8; SRC_U8_SIZE] = [0; _];
+
+        let src = &SRC_U8[0..16];
+        let dst = &mut dst_buf[1..=32];
+
+        let ret_tr1 = spi.transfer(dst, src);
+        assert!(ret_tr1.is_ok());
+        let ret_tr2 = spi.flush();
+        assert!(ret_tr2.is_ok());
+
+        crc.update(src);
+        let src_crc = crc.finalize();
+        crc.update(&dst[0..src.len()]);
+        let dst_crc = crc.finalize();
+
+        // DEBUG:
+        if src_crc != dst_crc {
+            error!(
+                "{} bytes src_crc=0x{:X} dst_crc=0x{:X}",
+                src.len().min(dst.len()),
+                src_crc,
+                dst_crc
+            );
+            error!("src: {}", src);
+            error!("dst: {}", dst);
+        }
+
+        assert_eq!(src_crc, dst_crc);
+
+        // check potential under/overflows
+        assert_eq!(dst_buf[0], 0);
+        assert_eq!(dst_buf[33], 0);
+    }
+
+    /// SPI transfer uses more than one descriptor for both TX and RX
+    /// TX and RX slices have the same size
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_long_symmetric(p: Peripherals) {
+        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
+        let clocks = p.cmu.split();
+        let gpio = Gpio::new(p.gpio);
+        let mut spi = Usart::new(p.usart0)
+            .into_spi_bus(
+                gpio.pc8.into_mode::<OutPp>(),
+                gpio.pc6.into_mode::<OutPp>(),
+                gpio.pc7.into_mode::<InFilt>(),
+                MODE_2,
+            )
+            .with_loopback();
+
+        let rs_br = spi.set_baudrate(4.MHz(), &clocks);
+        assert!(rs_br.is_ok());
+        let dma = Dma::init(p.ldma);
+        let mut spi = spi.into_spi_dma(dma.ch0, dma.ch1);
+
+        // Set the `dst` length to a multiple of 1
+        let mut dst_buf: [u8; SRC_U8_SIZE] = [0; _];
+
+        let src = &SRC_U8;
+        let dst = &mut dst_buf;
+
+        let ret_tr1 = spi.transfer(dst, src);
+        assert!(ret_tr1.is_ok());
+        let ret_tr2 = spi.flush();
+        assert!(ret_tr2.is_ok());
+
+        crc.update(src);
+        let src_crc = crc.finalize();
+        crc.update(dst);
+        let dst_crc = crc.finalize();
+
+        // DEBUG:
+        if src_crc != dst_crc {
+            error!(
+                "src (TX): {} bytes, dst (RX): {} bytes, src_crc=0x{:X} dst_crc=0x{:X}",
+                src.len(),
+                dst.len(),
+                src_crc,
+                dst_crc
+            );
+            // error!("src: {}", src[src.len() - 10..src.len()]);
+            // error!("dst: {}", dst[dst.len() - 10..dst.len()]);
+            error!("src: {}", src[0x800 - 16..0x800 + 16]);
+            error!("dst: {}", dst[0x800 - 16..0x800 + 16]);
+        }
+
+        assert_eq!(src_crc, dst_crc);
+    }
+
+    /// `0x800` = `2048` bytes
+    const SRC_U8_SIZE: usize = 0x800 * 13;
     #[allow(clippy::large_const_arrays)]
     const SRC_U8: [u8; SRC_U8_SIZE] = {
         let mut seq = [0; SRC_U8_SIZE];
         let mut i = 0;
-        // Fill the buffer with values from 1 to 255
+        // Fill the buffer with values from 1 to 254 (`0x00` is the initial contents of the RX buffer, and `0xff` is the
+        // filler value for TX)
         while i < SRC_U8_SIZE {
-            seq[i] = 1 + (i % u8::MAX as usize) as u8;
+            seq[i] = 1 + (i % (u8::MAX as usize - 1)) as u8;
             i += 1;
         }
         seq
