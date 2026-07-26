@@ -176,11 +176,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         TransferDescBuilder::new(
                             Addr::Relative(0),
                             Addr::Relative(0),
-                            if remainder > 0 {
-                                remainder.try_into().unwrap()
-                            } else {
-                                TransferCount::MAX
-                            },
+                            TransferCount::MAX,
                             unit,
                         )
                         .with_src_inc(AddrInc::One)
