@@ -1,7 +1,7 @@
 //! DMA Descriptors
 //!
 
-use crate::{dma::DmaError, Sealed};
+use crate::dma::DmaError;
 use core::slice::IterMut;
 
 /// XFER Descriptor builder
@@ -184,9 +184,7 @@ impl LoopTransferDescBuilder {
         self
     }
 
-    /// Setting this bit will set the interrupt flag when the transfer is done, or linked in the case where the LINK bit
-    /// is set, or synchronized in the case of a SYNC transfer.
-    pub const fn with_done_ifs(mut self, is_done: bool) -> Self {
+    pub const fn with_loop_done_ifs(mut self, is_done: bool) -> Self {
         self.descr.done_ifs_set(is_done);
         self
     }
@@ -240,46 +238,6 @@ impl LoopTransferDescBuilder {
     pub const fn build(self) -> Descriptor {
         self.descr
     }
-}
-
-/// DMA transfer Unit is 8-bit (typestate)
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Clone, Copy)]
-pub struct UnitByte;
-/// DMA transfer Unit is 16-bit (typestate)
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Clone, Copy)]
-pub struct UnitHalfWord;
-/// DMA transfer Unit is 32-bit (typestate)
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Clone, Copy)]
-pub struct UnitWord;
-
-impl Sealed for UnitByte {}
-impl Sealed for UnitHalfWord {}
-impl Sealed for UnitWord {}
-
-/// DMA transfer Unit (typestate)
-pub trait UnitTs: Sealed {
-    /// Unit size of DMA Transfer
-    const U: UnitSize;
-    /// Size of the unit, in bytes
-    const BYTES: usize;
-}
-
-impl UnitTs for UnitByte {
-    const U: UnitSize = UnitSize::Byte;
-    const BYTES: usize = 1;
-}
-
-impl UnitTs for UnitHalfWord {
-    const U: UnitSize = UnitSize::Halfword;
-    const BYTES: usize = 2;
-}
-
-impl UnitTs for UnitWord {
-    const U: UnitSize = UnitSize::Word;
-    const BYTES: usize = 4;
 }
 
 /// SYNC Descriptor builder

@@ -163,18 +163,14 @@ impl<const N: u8> SpiBus for SpiDma<N> {
 
                         let desc_loops = tx_loops.min(u8::MAX as usize);
 
-                        desc_list = desc_list.push(
-                            ImmediateDescBuilder::new(
-                                desc_loops as u32,
-                                crate::dma::mmio::dma()
-                                    .ch(self.tx.id() as usize)
-                                    .loop_()
-                                    .as_ptr()
-                                    .addr(),
-                            )
-                            // move on to the transfer descriptor (below) after writing the loop count
-                            .with_link(Addr::Relative(1)),
-                        )?;
+                        desc_list = desc_list.push(ImmediateDescBuilder::new(
+                            desc_loops as u32,
+                            crate::dma::mmio::dma()
+                                .ch(self.tx.id() as usize)
+                                .loop_()
+                                .as_ptr()
+                                .addr(),
+                        ))?;
                         tx_loops -= desc_loops;
 
                         desc_list = desc_list.push(
@@ -184,8 +180,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                                 TransferCount::MAX,
                                 unit,
                             )
-                            .with_dst_inc(AddrInc::None)
-                            .with_link(Addr::Relative(1)),
+                            .with_dst_inc(AddrInc::None),
                         )?;
                         cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.bytes();
 
@@ -201,7 +196,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                             // this is a looped transfer descriptor (the link is also set below)
                             .with_loop(Addr::Relative(0))
                             // if this is the last descriptor and there are no filler bytes following, so set the ISR flag
-                            .with_done_ifs(tx_loops == 0 && tx_filler_units == 0),
+                            .with_loop_done_ifs(tx_loops == 0 && tx_filler_units == 0),
                         )?;
 
                         cur_addr += desc_loops * Descriptor::MAX_TRANSFER_UNITS * unit.bytes();
@@ -219,40 +214,33 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     let remaining_filler_units = tx_filler_units - first_filler_desc_units;
                     assert!(remaining_filler_units.is_multiple_of(Descriptor::MAX_TRANSFER_UNITS));
 
-                    let first_filler_desc_builder = TransferDescBuilder::new(
-                        Addr::Absolute((&TX_FILLER as *const u32).addr()),
-                        Addr::Absolute(usart_p.txdata().as_ptr().addr()),
-                        first_filler_desc_units.try_into().unwrap(),
-                        unit,
-                    )
-                    .with_src_inc(AddrInc::None)
-                    .with_dst_inc(AddrInc::None)
-                    .with_done_ifs(remaining_filler_units == 0);
+                    desc_list = desc_list.push(
+                        TransferDescBuilder::new(
+                            Addr::Absolute((&TX_FILLER as *const u32).addr()),
+                            Addr::Absolute(usart_p.txdata().as_ptr().addr()),
+                            first_filler_desc_units.try_into().unwrap(),
+                            unit,
+                        )
+                        .with_src_inc(AddrInc::None)
+                        .with_dst_inc(AddrInc::None)
+                        .with_done_ifs(remaining_filler_units == 0),
+                    )?;
 
-                    if remaining_filler_units == 0 {
-                        desc_list = desc_list.push(first_filler_desc_builder)?;
-                    } else {
-                        desc_list = desc_list
-                            .push(first_filler_desc_builder.with_link(Addr::Relative(1)))?;
-
+                    if remaining_filler_units > 0 {
                         let mut filler_loops =
                             remaining_filler_units / Descriptor::MAX_TRANSFER_UNITS;
 
                         while filler_loops > 0 {
                             let desc_loops = filler_loops.min(u8::MAX as usize);
 
-                            desc_list = desc_list.push(
-                                ImmediateDescBuilder::new(
-                                    desc_loops as u32,
-                                    crate::dma::mmio::dma()
-                                        .ch(self.tx.id() as usize)
-                                        .loop_()
-                                        .as_ptr()
-                                        .addr(),
-                                )
-                                // move on to the transfer descriptor (below) after writing the loop count
-                                .with_link(Addr::Relative(1)),
-                            )?;
+                            desc_list = desc_list.push(ImmediateDescBuilder::new(
+                                desc_loops as u32,
+                                crate::dma::mmio::dma()
+                                    .ch(self.tx.id() as usize)
+                                    .loop_()
+                                    .as_ptr()
+                                    .addr(),
+                            ))?;
 
                             // update `filler_loops` here so that we can know if there will be more descriptors after
                             // this one
@@ -267,18 +255,12 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                                 )
                                 .with_loop(Addr::Relative(0))
                                 // we're reading from the FILLER, so don't increment
-                                // we're writing to the TXDATA SPI register, so don't increment destination address
                                 .with_src_inc(AddrInc::None)
+                                // we're writing to the TXDATA SPI register, so don't increment destination address
                                 .with_dst_inc(AddrInc::None)
                                 // if this is the last descriptor, so set the ISR flag
-                                .with_done_ifs(filler_loops == 0),
+                                .with_loop_done_ifs(filler_loops == 0),
                             )?;
-
-                            // } else {
-                            //     // there are additional units to TX, so there will be more descriptors following this
-                            //     // one, once the loop counter reaches 0
-                            //     looped_transfer_desc = looped_transfer_desc.with_link(true)
-                            // }
                         }
                     }
                 }
@@ -319,6 +301,9 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         .with_link(Addr::Absolute(self.rx_descriptors.as_ptr().addr()));
                 }
 
+                // write the first RX descriptor to the DMA registers
+                self.rx.set_descriptor(&first_desc_builder.build());
+
                 let mut desc_list = DescList::new(&mut self.rx_descriptors);
 
                 let mut rx_loops = rx_rem_units / Descriptor::MAX_TRANSFER_UNITS;
@@ -344,17 +329,14 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         rx_loops -= 1;
                         let desc_loops = rx_loops.min(u8::MAX as usize);
 
-                        desc_list = desc_list.push(
-                            ImmediateDescBuilder::new(
-                                desc_loops as u32,
-                                crate::dma::mmio::dma()
-                                    .ch(self.rx.id() as usize)
-                                    .loop_()
-                                    .as_ptr()
-                                    .addr(),
-                            )
-                            .with_link(Addr::Relative(1)),
-                        )?;
+                        desc_list = desc_list.push(ImmediateDescBuilder::new(
+                            desc_loops as u32,
+                            crate::dma::mmio::dma()
+                                .ch(self.rx.id() as usize)
+                                .loop_()
+                                .as_ptr()
+                                .addr(),
+                        ))?;
 
                         desc_list = desc_list.push(
                             TransferDescBuilder::new(
@@ -363,8 +345,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                                 TransferCount::MAX,
                                 unit,
                             )
-                            .with_src_inc(AddrInc::None)
-                            .with_link(Addr::Relative(1)),
+                            .with_src_inc(AddrInc::None),
                         )?;
 
                         cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.bytes();
@@ -380,18 +361,14 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                             )
                             // we're reading from the RXDATA SPI register, so don't increment destination address
                             .with_src_inc(AddrInc::None)
-                            // this is a looped transfer descriptor (the link is also set below)
                             .with_loop(Addr::Relative(0))
-                            .with_done_ifs(rx_loops == 0),
+                            .with_loop_done_ifs(rx_loops == 0),
                         )?;
                     }
                 }
 
                 // make sure all linked descriptors have been written before proceeding
                 asm::dsb();
-
-                // write the first RX descriptor to the DMA registers
-                self.rx.set_descriptor(&first_desc_builder.build());
             }
 
             // start the transfer
