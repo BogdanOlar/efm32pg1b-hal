@@ -6,7 +6,7 @@ pub mod dma;
 
 use crate::{
     cmu::Clocks,
-    dma::DmaChannel,
+    dma::{DmaChannel, DmaError},
     gpio::pin::{
         mode::{InputMode, OutputMode},
         Pin,
@@ -270,6 +270,14 @@ pub enum SpiError {
     Tx,
     /// RX Error
     Rx,
+    /// SPI DMA error
+    Dma(DmaError),
+}
+
+impl From<DmaError> for SpiError {
+    fn from(value: DmaError) -> Self {
+        Self::Dma(value)
+    }
 }
 
 impl Error for SpiError {

@@ -66,8 +66,8 @@ impl TransferDescBuilder {
 
     /// Setting this bit will set the interrupt flag when the transfer is done, or linked in the case where the LINK bit
     /// is set, or synchronized in the case of a SYNC transfer.
-    pub const fn with_done_ifs(mut self) -> Self {
-        self.descr.done_ifs_set(true);
+    pub const fn with_done_ifs(mut self, is_done: bool) -> Self {
+        self.descr.done_ifs_set(is_done);
         self
     }
 
@@ -186,8 +186,8 @@ impl LoopTransferDescBuilder {
 
     /// Setting this bit will set the interrupt flag when the transfer is done, or linked in the case where the LINK bit
     /// is set, or synchronized in the case of a SYNC transfer.
-    pub const fn with_done_ifs(mut self) -> Self {
-        self.descr.done_ifs_set(true);
+    pub const fn with_done_ifs(mut self, is_done: bool) -> Self {
+        self.descr.done_ifs_set(is_done);
         self
     }
 
