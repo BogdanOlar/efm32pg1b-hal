@@ -8,14 +8,14 @@
 /// This descriptor can be written directly into LDMA's registers
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Default, Clone, Copy)]
-pub struct TransferDescBuilder {
+pub struct RawTransferDescBuilder {
     descr: Descriptor,
 }
 
-impl TransferDescBuilder {
+impl RawTransferDescBuilder {
     /// Build a new Transfer Descriptor
     pub const fn new(src: Addr, dst: Addr, count: TransferCount, unit: UnitSize) -> Self {
-        let mut descr = Descriptor::default();
+        let mut descr = Descriptor::const_default();
         descr.struct_type_set(StructType::Transfer);
         descr.unit_size_set(unit);
 
@@ -127,14 +127,14 @@ impl TransferDescBuilder {
 /// constrain the [`DescList`] to never end with a Loop descriptor which is Link
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Default, Clone, Copy)]
-pub struct LoopTransferDescBuilder {
+pub struct RawLoopTransferDescBuilder {
     descr: Descriptor,
 }
 
-impl LoopTransferDescBuilder {
+impl RawLoopTransferDescBuilder {
     /// Build a new Transfer Descriptor
     pub const fn new(src: Addr, dst: Addr, count: TransferCount, unit: UnitSize) -> Self {
-        let mut descr = Descriptor::default();
+        let mut descr = Descriptor::const_default();
         descr.struct_type_set(StructType::Transfer);
         descr.dec_loop_cnt_set(true);
         descr.unit_size_set(unit);
@@ -237,123 +237,6 @@ impl LoopTransferDescBuilder {
     }
 }
 
-/// SYNC Descriptor builder
-///
-/// This descriptor defines an intra-channel synchronizing structure.
-///
-/// This descriptor can only be linked from memory, not written directly to the DMA channel registers
-#[derive(Default, Clone, Copy)]
-pub struct SyncDescBuilder {
-    descr: Descriptor,
-}
-
-impl SyncDescBuilder {
-    /// Build a new Synchronization Descriptor
-    pub const fn new() -> Self {
-        let mut descr = Descriptor::default();
-
-        descr.struct_type_set(StructType::Synchronize);
-        Self { descr }
-    }
-
-    pub const fn with_syncset(mut self, bits: u8) -> Self {
-        self.descr.with_syncset_set(bits);
-        self
-    }
-
-    pub const fn with_syncclr(mut self, bits: u8) -> Self {
-        self.descr.with_syncclr_set(bits);
-        self
-    }
-
-    pub const fn with_matchen(mut self, bits: u8) -> Self {
-        self.descr.with_matchen_set(bits);
-        self
-    }
-
-    pub const fn with_matchval(mut self, bits: u8) -> Self {
-        self.descr.with_matchval_set(bits);
-        self
-    }
-
-    pub const fn with_done_ifs(mut self, is_done: bool) -> Self {
-        self.descr.done_ifs_set(is_done);
-        self
-    }
-
-    pub const fn with_link(mut self, addr: Addr) -> Self {
-        self.descr.link_set(true);
-
-        match addr {
-            Addr::Absolute(addr) => {
-                self.descr.link_mode_set(AddrMode::Absolute);
-                self.descr.link_addr_set(addr >> 2);
-            }
-            Addr::Relative(offset) => {
-                self.descr.link_mode_set(AddrMode::Relative);
-                self.descr
-                    .link_addr_set(((offset * size_of::<Descriptor>() as isize) >> 2) as usize);
-            }
-        }
-
-        self
-    }
-
-    pub const fn build(self) -> Descriptor {
-        self.descr
-    }
-}
-
-/// WRI Descriptor builder
-///
-/// This descriptor defines a write-immediate structure.
-///
-/// This descriptor can only be linked from memory, not written directly to the DMA channel registers
-#[derive(Default, Clone, Copy)]
-pub struct ImmediateDescBuilder {
-    descr: Descriptor,
-}
-
-impl ImmediateDescBuilder {
-    /// Build a new Immediate Write Descriptor
-    pub const fn new(val: u32, dst: usize) -> Self {
-        let mut descr = Descriptor::default();
-
-        descr.struct_type_set(StructType::Write);
-        descr.val_set(val);
-        descr.dst_set(dst);
-
-        Self { descr }
-    }
-
-    pub const fn with_done_ifs(mut self, is_done: bool) -> Self {
-        self.descr.done_ifs_set(is_done);
-        self
-    }
-
-    pub const fn with_link(mut self, addr: Addr) -> Self {
-        self.descr.link_set(true);
-
-        match addr {
-            Addr::Absolute(addr) => {
-                self.descr.link_mode_set(AddrMode::Absolute);
-                self.descr.link_addr_set(addr >> 2);
-            }
-            Addr::Relative(offset) => {
-                self.descr.link_mode_set(AddrMode::Relative);
-                self.descr
-                    .link_addr_set(((offset * size_of::<Descriptor>() as isize) >> 2) as usize);
-            }
-        }
-
-        self
-    }
-
-    pub const fn build(self) -> Descriptor {
-        self.descr
-    }
-}
-
 /// DMA Descriptor
 #[derive(Clone, Copy, Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -421,7 +304,7 @@ impl Descriptor {
     const LINK_ADDR_MASK: u32 = 0x3FFFFFFF;
 
     /// Const default for [`Descriptor`]
-    const fn default() -> Self {
+    pub const fn const_default() -> Self {
         Self { raw: [0; 4] }
     }
 

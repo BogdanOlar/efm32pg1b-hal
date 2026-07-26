@@ -3,11 +3,8 @@
 use crate::{
     dma::{
         self,
-        descriptor::{Addr, AddrInc, Descriptor, TransferCount, TransferDescBuilder, UnitSize},
-        list::{
-            DescList, ImmediateListDescBuilder, LoopTransferListDescBuilder,
-            TransferListDescBuilder,
-        },
+        descriptor::{Addr, AddrInc, Descriptor, RawTransferDescBuilder, TransferCount, UnitSize},
+        list::{DescList, ImmediateDescBuilder, LoopTransferDescBuilder, TransferDescBuilder},
         ChReqSel, DmaChannel,
     },
     usart::{spi::SpiError, usarts::usartx},
@@ -117,7 +114,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     tx_units % Descriptor::MAX_TRANSFER_UNITS
                 };
 
-                let mut first_desc_builder = TransferDescBuilder::new(
+                let mut first_desc_builder = RawTransferDescBuilder::new(
                     Addr::Absolute(write.as_ptr().addr()),
                     Addr::Absolute(usart_p.txdata().as_ptr().addr()),
                     first_desc_units.try_into().unwrap(),
@@ -125,7 +122,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 )
                 .with_dst_inc(AddrInc::None)
                 // if this is the only descriptor, enable DONE Interrupt Flag Set
-                .with_done_ifs((transfer_units - first_desc_units) == 0);
+                .with_done_ifs(transfer_units == first_desc_units);
 
                 // if there are more units to TX (including filler units), then use the TX descriptor linked list
                 if transfer_units - first_desc_units > 0 {
@@ -145,7 +142,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     if tx_loops < 2 {
                         let desc_loops = tx_loops.min(u8::MAX as usize);
                         desc_list = desc_list.push(
-                            TransferListDescBuilder::new(
+                            TransferDescBuilder::new(
                                 Addr::Absolute(cur_addr),
                                 Addr::Absolute(usart_p.txdata().as_ptr().addr()),
                                 TransferCount::MAX,
@@ -164,7 +161,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
 
                         let desc_loops = tx_loops.min(u8::MAX as usize);
 
-                        desc_list = desc_list.push(ImmediateListDescBuilder::new(
+                        desc_list = desc_list.push(ImmediateDescBuilder::new(
                             desc_loops as u32,
                             crate::dma::mmio::dma()
                                 .ch(self.tx.id() as usize)
@@ -175,7 +172,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         tx_loops -= desc_loops;
 
                         desc_list = desc_list.push(
-                            TransferListDescBuilder::new(
+                            TransferDescBuilder::new(
                                 Addr::Absolute(cur_addr),
                                 Addr::Absolute(usart_p.txdata().as_ptr().addr()),
                                 TransferCount::MAX,
@@ -186,7 +183,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.byte_count();
 
                         desc_list = desc_list.push(
-                            LoopTransferListDescBuilder::new(
+                            LoopTransferDescBuilder::new(
                                 Addr::Relative(0),
                                 Addr::Absolute(usart_p.txdata().as_ptr().addr()),
                                 TransferCount::MAX,
@@ -216,7 +213,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     assert!(remaining_filler_units.is_multiple_of(Descriptor::MAX_TRANSFER_UNITS));
 
                     desc_list = desc_list.push(
-                        TransferListDescBuilder::new(
+                        TransferDescBuilder::new(
                             Addr::Absolute((&TX_FILLER as *const u32).addr()),
                             Addr::Absolute(usart_p.txdata().as_ptr().addr()),
                             first_filler_desc_units.try_into().unwrap(),
@@ -234,7 +231,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         while filler_loops > 0 {
                             let desc_loops = filler_loops.min(u8::MAX as usize);
 
-                            desc_list = desc_list.push(ImmediateListDescBuilder::new(
+                            desc_list = desc_list.push(ImmediateDescBuilder::new(
                                 desc_loops as u32,
                                 crate::dma::mmio::dma()
                                     .ch(self.tx.id() as usize)
@@ -248,7 +245,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                             filler_loops -= desc_loops;
 
                             desc_list = desc_list.push(
-                                LoopTransferListDescBuilder::new(
+                                LoopTransferDescBuilder::new(
                                     Addr::Absolute((&TX_FILLER as *const u32).addr()),
                                     Addr::Absolute(usart_p.txdata().as_ptr().addr()),
                                     TransferCount::MAX,
@@ -285,7 +282,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 let rx_rem_units = rx_units - first_desc_units;
                 assert!(rx_rem_units.is_multiple_of(Descriptor::MAX_TRANSFER_UNITS));
 
-                let mut first_desc_builder = TransferDescBuilder::new(
+                let mut first_desc_builder = RawTransferDescBuilder::new(
                     Addr::Absolute(usart_p.rxdata().as_ptr().addr()),
                     Addr::Absolute(read.as_ptr().addr()),
                     first_desc_units.try_into().unwrap(),
@@ -312,7 +309,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 while rx_loops > 0 {
                     if rx_loops == 1 {
                         desc_list = desc_list.push(
-                            TransferListDescBuilder::new(
+                            TransferDescBuilder::new(
                                 Addr::Absolute(usart_p.rxdata().as_ptr().addr()),
                                 Addr::Relative(0),
                                 TransferCount::MAX,
@@ -330,7 +327,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         rx_loops -= 1;
                         let desc_loops = rx_loops.min(u8::MAX as usize);
 
-                        desc_list = desc_list.push(ImmediateListDescBuilder::new(
+                        desc_list = desc_list.push(ImmediateDescBuilder::new(
                             desc_loops as u32,
                             crate::dma::mmio::dma()
                                 .ch(self.rx.id() as usize)
@@ -340,7 +337,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         ))?;
 
                         desc_list = desc_list.push(
-                            TransferListDescBuilder::new(
+                            TransferDescBuilder::new(
                                 Addr::Absolute(usart_p.rxdata().as_ptr().addr()),
                                 Addr::Absolute(cur_addr),
                                 TransferCount::MAX,
@@ -354,7 +351,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         rx_loops -= desc_loops;
 
                         desc_list = desc_list.push(
-                            LoopTransferListDescBuilder::new(
+                            LoopTransferDescBuilder::new(
                                 Addr::Absolute(usart_p.rxdata().as_ptr().addr()),
                                 Addr::Relative(0),
                                 TransferCount::MAX,

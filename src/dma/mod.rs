@@ -16,7 +16,7 @@ pub mod efemb;
 
 use crate::{
     dma::{
-        descriptor::{Addr, Descriptor, TransferDescBuilder, UnitSize},
+        descriptor::{Addr, Descriptor, RawTransferDescBuilder, UnitSize},
         irq::set_handler,
     },
     pac::{Interrupt, Ldma, NVIC},
@@ -534,7 +534,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         remaining_units -= first_descr_units;
 
         let first_descriptor = {
-            let mut descr_builder = TransferDescBuilder::new(
+            let mut descr_builder = RawTransferDescBuilder::new(
                 Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
                 Addr::Absolute(self.params.as_ref().unwrap().dst.as_ptr().addr()),
                 first_descr_units.try_into().unwrap(),
@@ -569,7 +569,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             let addr_offset = (total_units - remaining_units) * unit.byte_count();
 
             let descr = {
-                let mut descr_builder = TransferDescBuilder::new(
+                let mut descr_builder = RawTransferDescBuilder::new(
                     Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset),
                     Addr::Absolute(self.params.as_ref().unwrap().dst.as_ptr().addr() + addr_offset),
                     descr_units.try_into().unwrap(),

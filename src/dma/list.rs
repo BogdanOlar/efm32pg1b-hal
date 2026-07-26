@@ -1,9 +1,9 @@
-/// Descriptor list and the Descriptor types whic can be used with it
+/// Descriptor list and the Descriptor types which can be used with it
 ///
 use crate::dma::{
     descriptor::{
-        Addr, AddrInc, BlockSize, Descriptor, ImmediateDescBuilder, LoopTransferDescBuilder,
-        SyncDescBuilder, TransferCount, TransferDescBuilder, UnitSize,
+        Addr, AddrInc, AddrMode, BlockSize, Descriptor, RawLoopTransferDescBuilder,
+        RawTransferDescBuilder, StructType, TransferCount, UnitSize,
     },
     DmaError,
 };
@@ -57,44 +57,43 @@ impl<'a> DescList<'a> {
                     loop_transfer_desc_builder.inner.with_link(true).build()
                 }
                 ListDescriptor::Sync(sync_desc_builder) => {
-                    sync_desc_builder.inner.with_link(Addr::Relative(1)).build()
+                    sync_desc_builder.with_link(Addr::Relative(1)).build()
                 }
-                ListDescriptor::Immediate(immediate_desc_builder) => immediate_desc_builder
-                    .inner
-                    .with_link(Addr::Relative(1))
-                    .build(),
+                ListDescriptor::Immediate(immediate_desc_builder) => {
+                    immediate_desc_builder.with_link(Addr::Relative(1)).build()
+                }
             };
         }
     }
 }
 
 enum ListDescriptor {
-    Transfer(TransferListDescBuilder),
-    LoopTransfer(LoopTransferListDescBuilder),
-    Sync(SyncListDescBuilder),
-    Immediate(ImmediateListDescBuilder),
+    Transfer(TransferDescBuilder),
+    LoopTransfer(LoopTransferDescBuilder),
+    Sync(SyncDescBuilder),
+    Immediate(ImmediateDescBuilder),
 }
 
-impl From<TransferListDescBuilder> for ListDescriptor {
-    fn from(value: TransferListDescBuilder) -> Self {
+impl From<TransferDescBuilder> for ListDescriptor {
+    fn from(value: TransferDescBuilder) -> Self {
         Self::Transfer(value)
     }
 }
 
-impl From<LoopTransferListDescBuilder> for ListDescriptor {
-    fn from(value: LoopTransferListDescBuilder) -> Self {
+impl From<LoopTransferDescBuilder> for ListDescriptor {
+    fn from(value: LoopTransferDescBuilder) -> Self {
         Self::LoopTransfer(value)
     }
 }
 
-impl From<SyncListDescBuilder> for ListDescriptor {
-    fn from(value: SyncListDescBuilder) -> Self {
+impl From<SyncDescBuilder> for ListDescriptor {
+    fn from(value: SyncDescBuilder) -> Self {
         Self::Sync(value)
     }
 }
 
-impl From<ImmediateListDescBuilder> for ListDescriptor {
-    fn from(value: ImmediateListDescBuilder) -> Self {
+impl From<ImmediateDescBuilder> for ListDescriptor {
+    fn from(value: ImmediateDescBuilder) -> Self {
         Self::Immediate(value)
     }
 }
@@ -106,15 +105,15 @@ impl From<ImmediateListDescBuilder> for ListDescriptor {
 /// This descriptor can be written directly into LDMA's registers
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Default, Clone, Copy)]
-pub struct TransferListDescBuilder {
-    inner: TransferDescBuilder,
+pub struct TransferDescBuilder {
+    inner: RawTransferDescBuilder,
 }
 
-impl TransferListDescBuilder {
+impl TransferDescBuilder {
     /// Build a new Transfer Descriptor
     pub const fn new(src: Addr, dst: Addr, count: TransferCount, unit: UnitSize) -> Self {
         Self {
-            inner: TransferDescBuilder::new(src, dst, count, unit),
+            inner: RawTransferDescBuilder::new(src, dst, count, unit),
         }
     }
 
@@ -188,15 +187,15 @@ impl TransferListDescBuilder {
 /// constrain the [`DescList`] to never end with a Loop descriptor which is Link
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Default, Clone, Copy)]
-pub struct LoopTransferListDescBuilder {
-    inner: LoopTransferDescBuilder,
+pub struct LoopTransferDescBuilder {
+    inner: RawLoopTransferDescBuilder,
 }
 
-impl LoopTransferListDescBuilder {
+impl LoopTransferDescBuilder {
     /// Build a new Transfer Descriptor
     pub const fn new(src: Addr, dst: Addr, count: TransferCount, unit: UnitSize) -> Self {
         Self {
-            inner: LoopTransferDescBuilder::new(src, dst, count, unit),
+            inner: RawLoopTransferDescBuilder::new(src, dst, count, unit),
         }
     }
 
@@ -268,50 +267,64 @@ impl LoopTransferListDescBuilder {
 ///
 /// This descriptor can only be linked from memory, not written directly to the DMA channel registers
 #[derive(Default, Clone, Copy)]
-pub struct SyncListDescBuilder {
-    inner: SyncDescBuilder,
+pub struct SyncDescBuilder {
+    descr: Descriptor,
 }
 
-impl SyncListDescBuilder {
+impl SyncDescBuilder {
     /// Build a new Synchronization Descriptor
     pub const fn new() -> Self {
-        Self {
-            inner: SyncDescBuilder::new(),
-        }
+        let mut descr = Descriptor::const_default();
+
+        descr.struct_type_set(StructType::Synchronize);
+        Self { descr }
     }
 
-    pub const fn with_syncset(self, bits: u8) -> Self {
-        Self {
-            inner: self.inner.with_syncset(bits),
-        }
+    pub const fn with_syncset(mut self, bits: u8) -> Self {
+        self.descr.with_syncset_set(bits);
+        self
     }
 
-    pub const fn with_syncclr(self, bits: u8) -> Self {
-        Self {
-            inner: self.inner.with_syncclr(bits),
-        }
+    pub const fn with_syncclr(mut self, bits: u8) -> Self {
+        self.descr.with_syncclr_set(bits);
+        self
     }
 
-    pub const fn with_matchen(self, bits: u8) -> Self {
-        Self {
-            inner: self.inner.with_matchen(bits),
-        }
+    pub const fn with_matchen(mut self, bits: u8) -> Self {
+        self.descr.with_matchen_set(bits);
+        self
     }
 
-    pub const fn with_matchval(self, bits: u8) -> Self {
-        Self {
-            inner: self.inner.with_matchval(bits),
-        }
+    pub const fn with_matchval(mut self, bits: u8) -> Self {
+        self.descr.with_matchval_set(bits);
+        self
     }
 
-    pub const fn with_done_ifs(self, is_done: bool) -> Self {
-        Self {
-            inner: self.inner.with_done_ifs(is_done),
-        }
+    pub const fn with_done_ifs(mut self, is_done: bool) -> Self {
+        self.descr.done_ifs_set(is_done);
+        self
     }
 
-    pub(crate) const fn build(self) -> Descriptor {
-        self.inner.build()
+    const fn with_link(mut self, addr: Addr) -> Self {
+        self.descr.link_set(true);
+
+        match addr {
+            Addr::Absolute(addr) => {
+                self.descr.link_mode_set(AddrMode::Absolute);
+                self.descr.link_addr_set(addr >> 2);
+            }
+            Addr::Relative(offset) => {
+                self.descr.link_mode_set(AddrMode::Relative);
+                self.descr
+                    .link_addr_set(((offset * size_of::<Descriptor>() as isize) >> 2) as usize);
+            }
+        }
+
+        self
+    }
+
+    pub const fn build(self) -> Descriptor {
+        self.descr
     }
 }
 
@@ -321,25 +334,46 @@ impl SyncListDescBuilder {
 ///
 /// This descriptor can only be linked from memory, not written directly to the DMA channel registers
 #[derive(Default, Clone, Copy)]
-pub struct ImmediateListDescBuilder {
-    inner: ImmediateDescBuilder,
+pub struct ImmediateDescBuilder {
+    descr: Descriptor,
 }
 
-impl ImmediateListDescBuilder {
+impl ImmediateDescBuilder {
     /// Build a new Immediate Write Descriptor
     pub const fn new(val: u32, dst: usize) -> Self {
-        Self {
-            inner: ImmediateDescBuilder::new(val, dst),
-        }
+        let mut descr = Descriptor::const_default();
+
+        descr.struct_type_set(StructType::Write);
+        descr.val_set(val);
+        descr.dst_set(dst);
+
+        Self { descr }
     }
 
-    pub const fn with_done_ifs(self, is_done: bool) -> Self {
-        Self {
-            inner: self.inner.with_done_ifs(is_done),
-        }
+    pub const fn with_done_ifs(mut self, is_done: bool) -> Self {
+        self.descr.done_ifs_set(is_done);
+        self
     }
 
-    pub(crate) const fn build(self) -> Descriptor {
-        self.inner.build()
+    const fn with_link(mut self, addr: Addr) -> Self {
+        self.descr.link_set(true);
+
+        match addr {
+            Addr::Absolute(addr) => {
+                self.descr.link_mode_set(AddrMode::Absolute);
+                self.descr.link_addr_set(addr >> 2);
+            }
+            Addr::Relative(offset) => {
+                self.descr.link_mode_set(AddrMode::Relative);
+                self.descr
+                    .link_addr_set(((offset * size_of::<Descriptor>() as isize) >> 2) as usize);
+            }
+        }
+
+        self
+    }
+
+    pub const fn build(self) -> Descriptor {
+        self.descr
     }
 }
