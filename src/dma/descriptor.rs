@@ -1,9 +1,6 @@
 //! DMA Descriptors
 //!
 
-use crate::dma::DmaError;
-use core::slice::IterMut;
-
 /// XFER Descriptor builder
 ///
 /// This descriptor defines a typical data transfer which may be a Normal or Link transfer.
@@ -279,8 +276,8 @@ impl SyncDescBuilder {
         self
     }
 
-    pub const fn with_done_ifs(mut self) -> Self {
-        self.descr.done_ifs_set(true);
+    pub const fn with_done_ifs(mut self, is_done: bool) -> Self {
+        self.descr.done_ifs_set(is_done);
         self
     }
 
@@ -329,8 +326,8 @@ impl ImmediateDescBuilder {
         Self { descr }
     }
 
-    pub const fn with_done_ifs(mut self) -> Self {
-        self.descr.done_ifs_set(true);
+    pub const fn with_done_ifs(mut self, is_done: bool) -> Self {
+        self.descr.done_ifs_set(is_done);
         self
     }
 
@@ -354,94 +351,6 @@ impl ImmediateDescBuilder {
 
     pub const fn build(self) -> Descriptor {
         self.descr
-    }
-}
-
-pub struct DescList<'a> {
-    prev: Option<(ListDescriptor, &'a mut Descriptor)>,
-    desc_iter: IterMut<'a, Descriptor>,
-}
-
-impl<'a> DescList<'a> {
-    pub fn new(storage: &'a mut [Descriptor]) -> Self {
-        storage.iter_mut().for_each(|d| *d = Descriptor::default());
-        Self {
-            prev: None,
-            desc_iter: storage.into_iter(),
-        }
-    }
-
-    pub fn push<T>(mut self, desc_bld: T) -> Result<Self, DmaError>
-    where
-        T: Into<ListDescriptor> + Copy,
-    {
-        let desc = self
-            .desc_iter
-            .next()
-            .ok_or(DmaError::DescriptorListOverflow)?;
-
-        self.link_prev();
-
-        *desc = match desc_bld.into() {
-            ListDescriptor::Transfer(desc_bld) => desc_bld.build(),
-            ListDescriptor::LoopTransfer(desc_bld) => desc_bld.build(),
-            ListDescriptor::Sync(desc_bld) => desc_bld.build(),
-            ListDescriptor::Immediate(desc_bld) => desc_bld.build(),
-        };
-        Ok(Self {
-            prev: Some((desc_bld.into(), desc)),
-            desc_iter: self.desc_iter,
-        })
-    }
-
-    fn link_prev(&mut self) {
-        if let Some((prev_builder, prev_descr)) = self.prev.take() {
-            *prev_descr = match prev_builder {
-                ListDescriptor::Transfer(transfer_desc_builder) => {
-                    transfer_desc_builder.with_link(Addr::Relative(1)).build()
-                }
-                ListDescriptor::LoopTransfer(loop_transfer_desc_builder) => {
-                    loop_transfer_desc_builder.with_link(true).build()
-                }
-                ListDescriptor::Sync(sync_desc_builder) => {
-                    sync_desc_builder.with_link(Addr::Relative(1)).build()
-                }
-                ListDescriptor::Immediate(immediate_desc_builder) => {
-                    immediate_desc_builder.with_link(Addr::Relative(1)).build()
-                }
-            };
-        }
-    }
-}
-
-pub enum ListDescriptor {
-    Transfer(TransferDescBuilder),
-    LoopTransfer(LoopTransferDescBuilder),
-    Sync(SyncDescBuilder),
-    Immediate(ImmediateDescBuilder),
-}
-
-impl From<TransferDescBuilder> for ListDescriptor {
-    fn from(value: TransferDescBuilder) -> Self {
-        Self::Transfer(value)
-    }
-}
-
-impl From<LoopTransferDescBuilder> for ListDescriptor {
-    fn from(value: LoopTransferDescBuilder) -> Self {
-        Self::LoopTransfer(value)
-    }
-}
-
-impl From<SyncDescBuilder> for ListDescriptor {
-    fn from(value: SyncDescBuilder) -> Self {
-        Self::Sync(value)
-    }
-}
-
-impl From<ImmediateDescBuilder> for ListDescriptor {
-    fn from(value: ImmediateDescBuilder) -> Self {
-        Self::Immediate(value)
     }
 }
 
