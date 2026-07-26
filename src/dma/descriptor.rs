@@ -1,27 +1,26 @@
 //! DMA Descriptors
 //!
 
-use crate::Sealed;
-use core::marker::PhantomData;
+use crate::{dma::DmaError, Sealed};
+use core::slice::IterMut;
 
 /// XFER Descriptor builder
 ///
-/// This descriptor defines a typical data transfer which may be a Normal, Link, or Loop transfer.
-/// Only this structure type can be written directly into LDMA's registers by the CPU.
+/// This descriptor defines a typical data transfer which may be a Normal or Link transfer.
 ///
-/// `UNIT` may be [`UnitByte`], [`UnitHalfWord`], or [`UnitWord`]
+/// This descriptor can be written directly into LDMA's registers
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct TransferDescBuilder<UNIT> {
+#[derive(Default, Clone, Copy)]
+pub struct TransferDescBuilder {
     descr: Descriptor,
-    _unit: PhantomData<UNIT>,
 }
 
-impl<UNIT: UnitTs> TransferDescBuilder<UNIT> {
+impl TransferDescBuilder {
     /// Build a new Transfer Descriptor
-    pub const unsafe fn new(src: Addr, dst: Addr, count: TransferCount) -> Self {
+    pub const fn new(src: Addr, dst: Addr, count: TransferCount, unit: UnitSize) -> Self {
         let mut descr = Descriptor::default();
         descr.struct_type_set(StructType::Transfer);
-        descr.unit_size_set(UNIT::U);
+        descr.unit_size_set(unit);
 
         match src {
             Addr::Absolute(addr) => {
@@ -47,10 +46,7 @@ impl<UNIT: UnitTs> TransferDescBuilder<UNIT> {
 
         descr.xfer_count_set(count.count - 1);
 
-        Self {
-            descr,
-            _unit: PhantomData,
-        }
+        Self { descr }
     }
 
     pub const fn with_struct_req(mut self) -> Self {
@@ -63,6 +59,11 @@ impl<UNIT: UnitTs> TransferDescBuilder<UNIT> {
         self
     }
 
+    pub const fn with_byte_swap(mut self) -> Self {
+        self.descr.byte_swap_set(true);
+        self
+    }
+
     /// Setting this bit will set the interrupt flag when the transfer is done, or linked in the case where the LINK bit
     /// is set, or synchronized in the case of a SYNC transfer.
     pub const fn with_done_ifs(mut self) -> Self {
@@ -72,11 +73,6 @@ impl<UNIT: UnitTs> TransferDescBuilder<UNIT> {
 
     pub const fn with_req_mode_all(mut self) -> Self {
         self.descr.req_mode_set(true);
-        self
-    }
-
-    pub const fn with_dec_loop_cnt(mut self) -> Self {
-        self.descr.dec_loop_cnt_set(true);
         self
     }
 
@@ -96,12 +92,8 @@ impl<UNIT: UnitTs> TransferDescBuilder<UNIT> {
     }
 
     /// Set the link register
-    ///
-    /// The link `flag` needs to be specified separately since we can have looped descriptors which use this flag to
-    /// determine if another descriptor (placed immediatelly after it) needs to be loaded after the loop counter reaches
-    /// `0`
-    pub const fn with_link(mut self, addr: Addr, is_linked: bool) -> Self {
-        self.descr.link_set(is_linked);
+    pub const fn with_link(mut self, addr: Addr) -> Self {
+        self.descr.link_set(true);
 
         match addr {
             Addr::Absolute(addr) => {
@@ -123,18 +115,144 @@ impl<UNIT: UnitTs> TransferDescBuilder<UNIT> {
     }
 }
 
-impl<UNIT: MultiByte> TransferDescBuilder<UNIT> {
+/// Looped XFER Descriptor builder
+///
+/// This descriptor defines a typical data transfer which may be a Loop or Link transfer.
+///
+/// This descriptor can be written directly into LDMA's registers
+///
+/// # WARNING
+///
+/// if this descriptor is linked (by calling [`LoopTransferDescBuilder::with_link()`] with `true`), then
+///          once the DMA channel counter reaches `0`, the *next* descriptor in the list will be executed
+///
+/// # TODO
+/// constrain the [`DescList`] to never end with a Loop descriptor which is Link
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Default, Clone, Copy)]
+pub struct LoopTransferDescBuilder {
+    descr: Descriptor,
+}
+
+impl LoopTransferDescBuilder {
+    /// Build a new Transfer Descriptor
+    pub const fn new(src: Addr, dst: Addr, count: TransferCount, unit: UnitSize) -> Self {
+        let mut descr = Descriptor::default();
+        descr.struct_type_set(StructType::Transfer);
+        descr.dec_loop_cnt_set(true);
+        descr.unit_size_set(unit);
+
+        match src {
+            Addr::Absolute(addr) => {
+                descr.src_mode_set(AddrMode::Absolute);
+                descr.src_set(addr);
+            }
+            Addr::Relative(offset) => {
+                descr.src_mode_set(AddrMode::Relative);
+                descr.src_set(offset as usize);
+            }
+        }
+
+        match dst {
+            Addr::Absolute(addr) => {
+                descr.dst_mode_set(AddrMode::Absolute);
+                descr.dst_set(addr);
+            }
+            Addr::Relative(offset) => {
+                descr.dst_mode_set(AddrMode::Relative);
+                descr.dst_set(offset as usize);
+            }
+        }
+
+        descr.xfer_count_set(count.count - 1);
+
+        Self { descr }
+    }
+
+    pub const fn with_struct_req(mut self) -> Self {
+        self.descr.struct_req_set(true);
+        self
+    }
+
+    pub const fn with_block_size(mut self, block_size: BlockSize) -> Self {
+        self.descr.block_size_set(block_size);
+        self
+    }
+
     pub const fn with_byte_swap(mut self) -> Self {
         self.descr.byte_swap_set(true);
         self
     }
+
+    /// Setting this bit will set the interrupt flag when the transfer is done, or linked in the case where the LINK bit
+    /// is set, or synchronized in the case of a SYNC transfer.
+    pub const fn with_done_ifs(mut self) -> Self {
+        self.descr.done_ifs_set(true);
+        self
+    }
+
+    pub const fn with_req_mode_all(mut self) -> Self {
+        self.descr.req_mode_set(true);
+        self
+    }
+
+    pub const fn with_ignore_single_requests(mut self) -> Self {
+        self.descr.ignore_sreq_set(true);
+        self
+    }
+
+    pub const fn with_src_inc(mut self, addr_inc: AddrInc) -> Self {
+        self.descr.src_inc_set(addr_inc);
+        self
+    }
+
+    pub const fn with_dst_inc(mut self, addr_inc: AddrInc) -> Self {
+        self.descr.dst_inc_set(addr_inc);
+        self
+    }
+
+    /// Set the link register
+    ///
+    /// The link `flag` needs to be specified separately since we can have looped descriptors which
+    pub const fn with_loop(mut self, addr: Addr) -> Self {
+        match addr {
+            Addr::Absolute(addr) => {
+                self.descr.link_mode_set(AddrMode::Absolute);
+                self.descr.link_addr_set(addr >> 2);
+            }
+            Addr::Relative(offset) => {
+                self.descr.link_mode_set(AddrMode::Relative);
+                self.descr
+                    .link_addr_set(((offset * size_of::<Descriptor>() as isize) >> 2) as usize);
+            }
+        }
+
+        self
+    }
+
+    /// Use this flag to determine if another descriptor (placed immediatelly after it) needs to be loaded if the
+    /// DMA channel loop counter reaches `0`
+    pub const fn with_link(mut self, is_linked: bool) -> Self {
+        self.descr.link_set(is_linked);
+        self
+    }
+
+    pub const fn build(self) -> Descriptor {
+        self.descr
+    }
 }
 
 /// DMA transfer Unit is 8-bit (typestate)
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy)]
 pub struct UnitByte;
 /// DMA transfer Unit is 16-bit (typestate)
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy)]
 pub struct UnitHalfWord;
 /// DMA transfer Unit is 32-bit (typestate)
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy)]
 pub struct UnitWord;
 
 impl Sealed for UnitByte {}
@@ -164,14 +282,12 @@ impl UnitTs for UnitWord {
     const BYTES: usize = 4;
 }
 
-/// DMA transfer descriptor is using HalfWord or Word unit size (marker trait)
-pub trait MultiByte: Sealed {}
-impl MultiByte for UnitHalfWord {}
-impl MultiByte for UnitWord {}
-
 /// SYNC Descriptor builder
 ///
 /// This descriptor defines an intra-channel synchronizing structure.
+///
+/// This descriptor can only be linked from memory, not written directly to the DMA channel registers
+#[derive(Default, Clone, Copy)]
 pub struct SyncDescBuilder {
     descr: Descriptor,
 }
@@ -236,13 +352,16 @@ impl SyncDescBuilder {
 /// WRI Descriptor builder
 ///
 /// This descriptor defines a write-immediate structure.
+///
+/// This descriptor can only be linked from memory, not written directly to the DMA channel registers
+#[derive(Default, Clone, Copy)]
 pub struct ImmediateDescBuilder {
     descr: Descriptor,
 }
 
 impl ImmediateDescBuilder {
     /// Build a new Immediate Write Descriptor
-    pub const unsafe fn new(val: u32, dst: usize) -> Self {
+    pub const fn new(val: u32, dst: usize) -> Self {
         let mut descr = Descriptor::default();
 
         descr.struct_type_set(StructType::Write);
@@ -277,6 +396,94 @@ impl ImmediateDescBuilder {
 
     pub const fn build(self) -> Descriptor {
         self.descr
+    }
+}
+
+pub struct DescList<'a> {
+    prev: Option<(ListDescriptor, &'a mut Descriptor)>,
+    desc_iter: IterMut<'a, Descriptor>,
+}
+
+impl<'a> DescList<'a> {
+    pub fn new(storage: &'a mut [Descriptor]) -> Self {
+        storage.iter_mut().for_each(|d| *d = Descriptor::default());
+        Self {
+            prev: None,
+            desc_iter: storage.into_iter(),
+        }
+    }
+
+    pub fn push<T>(mut self, desc_bld: T) -> Result<Self, DmaError>
+    where
+        T: Into<ListDescriptor> + Copy,
+    {
+        let desc = self
+            .desc_iter
+            .next()
+            .ok_or(DmaError::DescriptorListOverflow)?;
+
+        self.link_prev();
+
+        *desc = match desc_bld.into() {
+            ListDescriptor::Transfer(desc_bld) => desc_bld.build(),
+            ListDescriptor::LoopTransfer(desc_bld) => desc_bld.build(),
+            ListDescriptor::Sync(desc_bld) => desc_bld.build(),
+            ListDescriptor::Immediate(desc_bld) => desc_bld.build(),
+        };
+        Ok(Self {
+            prev: Some((desc_bld.into(), desc)),
+            desc_iter: self.desc_iter,
+        })
+    }
+
+    fn link_prev(&mut self) {
+        if let Some((prev_builder, prev_descr)) = self.prev.take() {
+            *prev_descr = match prev_builder {
+                ListDescriptor::Transfer(transfer_desc_builder) => {
+                    transfer_desc_builder.with_link(Addr::Relative(1)).build()
+                }
+                ListDescriptor::LoopTransfer(loop_transfer_desc_builder) => {
+                    loop_transfer_desc_builder.with_link(true).build()
+                }
+                ListDescriptor::Sync(sync_desc_builder) => {
+                    sync_desc_builder.with_link(Addr::Relative(1)).build()
+                }
+                ListDescriptor::Immediate(immediate_desc_builder) => {
+                    immediate_desc_builder.with_link(Addr::Relative(1)).build()
+                }
+            };
+        }
+    }
+}
+
+pub enum ListDescriptor {
+    Transfer(TransferDescBuilder),
+    LoopTransfer(LoopTransferDescBuilder),
+    Sync(SyncDescBuilder),
+    Immediate(ImmediateDescBuilder),
+}
+
+impl From<TransferDescBuilder> for ListDescriptor {
+    fn from(value: TransferDescBuilder) -> Self {
+        Self::Transfer(value)
+    }
+}
+
+impl From<LoopTransferDescBuilder> for ListDescriptor {
+    fn from(value: LoopTransferDescBuilder) -> Self {
+        Self::LoopTransfer(value)
+    }
+}
+
+impl From<SyncDescBuilder> for ListDescriptor {
+    fn from(value: SyncDescBuilder) -> Self {
+        Self::Sync(value)
+    }
+}
+
+impl From<ImmediateDescBuilder> for ListDescriptor {
+    fn from(value: ImmediateDescBuilder) -> Self {
+        Self::Immediate(value)
     }
 }
 
@@ -508,14 +715,14 @@ pub enum Addr {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AddrInc {
-    ///0: Increment source/destination address by one unit data size after each read/write
+    /// Increment source/destination address by one [`UnitSize`] after each read/write
     One = 0,
-    ///1: Increment source/destination address by two unit data sizes after each read/write
+    /// Increment source/destination address by two [`UnitSize`] after each read/write
     Two = 1,
-    ///2: Increment source/destination address by four unit data sizes after each read/write
+    /// Increment source/destination address by four [`UnitSize`] after each read/write
     Four = 2,
-    ///3: Do not increment the source/destination address. Read/writes are made to a fixed destination address, for
-    /// example writing to a FIFO.
+    /// Source/destination address is not incremented.
+    /// Read/writes are made to a fixed destination address, for example writing to a FIFO.
     None = 3,
 }
 
@@ -532,6 +739,16 @@ pub enum UnitSize {
     Word = 2,
 }
 
+impl UnitSize {
+    pub const fn bytes(self) -> usize {
+        match self {
+            UnitSize::Byte => 1,
+            UnitSize::Halfword => 2,
+            UnitSize::Word => 4,
+        }
+    }
+}
+
 /// Descriptor address mode
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[repr(u8)]
@@ -544,7 +761,7 @@ pub(crate) enum AddrMode {
     Relative = 1,
 }
 
-///Block Transfer Size
+/// Block Transfer Size
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]

@@ -15,10 +15,7 @@ pub mod efemb;
 
 use crate::{
     dma::{
-        descriptor::{
-            Addr, Descriptor, TransferDescBuilder, UnitByte, UnitHalfWord, UnitSize, UnitTs,
-            UnitWord,
-        },
+        descriptor::{Addr, Descriptor, TransferDescBuilder, UnitSize},
         irq::set_handler,
     },
     pac::{Interrupt, Ldma, NVIC},
@@ -421,20 +418,23 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             )
         };
         let first_descriptor = match self.unit {
-            UnitSize::Byte => self.build_descriptors::<UnitByte>(
+            UnitSize::Byte => self.build_descriptors(
                 total_units,
                 last_chunk_min_units,
                 descriptor_list,
+                UnitSize::Byte,
             ),
-            UnitSize::Halfword => self.build_descriptors::<UnitHalfWord>(
+            UnitSize::Halfword => self.build_descriptors(
                 total_units,
                 last_chunk_min_units,
                 descriptor_list,
+                UnitSize::Halfword,
             ),
-            UnitSize::Word => self.build_descriptors::<UnitWord>(
+            UnitSize::Word => self.build_descriptors(
                 total_units,
                 last_chunk_min_units,
                 descriptor_list,
+                UnitSize::Word,
             ),
         };
 
@@ -512,11 +512,12 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
     }
 
     /// Build the first transfer descriptor, and any necessary linked descriptors
-    fn build_descriptors<UNIT: UnitTs>(
+    fn build_descriptors(
         &mut self,
         total_units: usize,
         last_chunk_min_units: usize,
         descriptor_list: &mut [Descriptor],
+        unit: UnitSize,
     ) -> Descriptor {
         let mut remaining_units = total_units;
 
@@ -532,19 +533,18 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         remaining_units -= first_descr_units;
 
         let first_descriptor = {
-            let mut descr_builder = unsafe {
-                TransferDescBuilder::<UNIT>::new(
-                    Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
-                    Addr::Absolute(self.params.as_ref().unwrap().dst.as_ptr().addr()),
-                    first_descr_units.try_into().unwrap(),
-                )
-            }
+            let mut descr_builder = TransferDescBuilder::new(
+                Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr()),
+                Addr::Absolute(self.params.as_ref().unwrap().dst.as_ptr().addr()),
+                first_descr_units.try_into().unwrap(),
+                unit,
+            )
             .with_struct_req()
             .with_block_size(descriptor::BlockSize::All);
 
             if remaining_units > 0 {
                 descr_builder =
-                    descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()), true);
+                    descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()));
             }
 
             descr_builder.build()
@@ -565,25 +565,20 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             };
             assert!(descr_units <= Descriptor::MAX_TRANSFER_UNITS);
 
-            let addr_offset = (total_units - remaining_units) * UNIT::BYTES;
+            let addr_offset = (total_units - remaining_units) * unit.bytes();
 
             let descr = {
-                let mut descr_builder = unsafe {
-                    TransferDescBuilder::<UNIT>::new(
-                        Addr::Absolute(
-                            self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset,
-                        ),
-                        Addr::Absolute(
-                            self.params.as_ref().unwrap().dst.as_ptr().addr() + addr_offset,
-                        ),
-                        descr_units.try_into().unwrap(),
-                    )
-                }
+                let mut descr_builder = TransferDescBuilder::new(
+                    Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset),
+                    Addr::Absolute(self.params.as_ref().unwrap().dst.as_ptr().addr() + addr_offset),
+                    descr_units.try_into().unwrap(),
+                    unit,
+                )
                 .with_struct_req()
                 .with_block_size(descriptor::BlockSize::All);
 
                 if !is_last {
-                    descr_builder = descr_builder.with_link(Addr::Relative(1), true);
+                    descr_builder = descr_builder.with_link(Addr::Relative(1));
                 }
 
                 descr_builder.build()
@@ -633,6 +628,8 @@ pub enum DmaError {
     InvalidTransferSize(DmaChannel),
     /// DMA transfer failed
     Transfer(DmaChannel),
+    /// Descriptor list overflowed
+    DescriptorListOverflow,
 }
 
 /// DMA interrupt handling
