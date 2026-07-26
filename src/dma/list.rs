@@ -86,9 +86,7 @@ impl<'a> DescList<'a> {
                     .with_link(Addr::Relative(1))
                     .build(),
                 ListDescriptorBuilder::LoopTransfer(loop_transfer_desc_builder) => {
-                    // FIXME: is this right? I would have expected `is_linked` to have to be `true` if we want to
-                    //        advance to next descriptor once the looping is done.
-                    loop_transfer_desc_builder.with_link(false).build()
+                    loop_transfer_desc_builder.with_link(true).build()
                 }
                 ListDescriptorBuilder::Sync(sync_desc_builder) => {
                     sync_desc_builder.with_link(Addr::Relative(1)).build()

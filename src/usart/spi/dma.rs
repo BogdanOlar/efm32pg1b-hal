@@ -132,7 +132,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 // set the absolute address of the buffer, so that the rest of the Transfers can use relative addressing
                 if loop_count > 0 {
                     desc_list = desc_list.push(ImmediateDescBuilder::new(
-                        loop_count as u32,
+                        (loop_count - 1) as u32,
                         crate::dma::mmio::dma()
                             .ch(self.tx.id() as usize)
                             .loop_()
