@@ -90,10 +90,10 @@ impl<const N: u8> SpiBus for SpiDma<N> {
         // TX Filler
         static TX_FILLER: u32 = 0xFFFFFFFF;
 
-        let tx_units = write.len() / unit.bytes();
-        assert_eq!(write.len() % unit.bytes(), 0);
-        let rx_units = read.len() / unit.bytes();
-        assert_eq!(read.len() % unit.bytes(), 0);
+        let tx_units = write.len() / unit.byte_count();
+        assert_eq!(write.len() % unit.byte_count(), 0);
+        let rx_units = read.len() / unit.byte_count();
+        assert_eq!(read.len() % unit.byte_count(), 0);
         let tx_filler_units = rx_units.saturating_sub(tx_units);
         let transfer_units = tx_units + tx_filler_units;
         assert_eq!(transfer_units, rx_units.max(tx_units));
@@ -139,7 +139,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 assert!(tx_rem_units.is_multiple_of(Descriptor::MAX_TRANSFER_UNITS));
 
                 let mut tx_loops = tx_rem_units / Descriptor::MAX_TRANSFER_UNITS;
-                let mut cur_addr = write.as_ptr().addr() + (first_desc_units * unit.bytes());
+                let mut cur_addr = write.as_ptr().addr() + (first_desc_units * unit.byte_count());
 
                 while tx_loops > 0 {
                     if tx_loops < 2 {
@@ -156,7 +156,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         )?;
 
                         tx_loops -= desc_loops;
-                        cur_addr += desc_loops * Descriptor::MAX_TRANSFER_UNITS * unit.bytes();
+                        cur_addr += desc_loops * Descriptor::MAX_TRANSFER_UNITS * unit.byte_count();
                     } else {
                         // We're going to use one descriptor with absolute address in order to restore the `src` and
                         // `dst` registers of the DMA channel peripheral
@@ -183,7 +183,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                             )
                             .with_dst_inc(AddrInc::None),
                         )?;
-                        cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.bytes();
+                        cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.byte_count();
 
                         desc_list = desc_list.push(
                             LoopTransferListDescBuilder::new(
@@ -200,7 +200,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                             .with_loop_done_ifs(tx_loops == 0 && tx_filler_units == 0),
                         )?;
 
-                        cur_addr += desc_loops * Descriptor::MAX_TRANSFER_UNITS * unit.bytes();
+                        cur_addr += desc_loops * Descriptor::MAX_TRANSFER_UNITS * unit.byte_count();
                     }
                 }
 
@@ -281,7 +281,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     rx_units % Descriptor::MAX_TRANSFER_UNITS
                 };
                 let mut cur_addr = read.as_ptr().addr();
-                cur_addr += first_desc_units * unit.bytes();
+                cur_addr += first_desc_units * unit.byte_count();
                 let rx_rem_units = rx_units - first_desc_units;
                 assert!(rx_rem_units.is_multiple_of(Descriptor::MAX_TRANSFER_UNITS));
 
@@ -323,7 +323,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                             .with_done_ifs(true),
                         )?;
 
-                        cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.bytes();
+                        cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.byte_count();
                         rx_loops -= 1;
                     } else {
                         // for the absolute addr transfer descriptor
@@ -349,8 +349,8 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                             .with_src_inc(AddrInc::None),
                         )?;
 
-                        cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.bytes();
-                        cur_addr += desc_loops * Descriptor::MAX_TRANSFER_UNITS * unit.bytes();
+                        cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.byte_count();
+                        cur_addr += desc_loops * Descriptor::MAX_TRANSFER_UNITS * unit.byte_count();
                         rx_loops -= desc_loops;
 
                         desc_list = desc_list.push(

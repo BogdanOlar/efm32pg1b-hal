@@ -607,7 +607,7 @@ pub enum UnitSize {
 }
 
 impl UnitSize {
-    pub const fn bytes(self) -> usize {
+    pub const fn byte_count(self) -> usize {
         match self {
             UnitSize::Byte => 1,
             UnitSize::Halfword => 2,

@@ -68,7 +68,7 @@ impl<'a> DescList<'a> {
     }
 }
 
-pub enum ListDescriptor {
+enum ListDescriptor {
     Transfer(TransferListDescBuilder),
     LoopTransfer(LoopTransferListDescBuilder),
     Sync(SyncListDescBuilder),

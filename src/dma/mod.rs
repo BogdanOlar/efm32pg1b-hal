@@ -566,7 +566,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             };
             assert!(descr_units <= Descriptor::MAX_TRANSFER_UNITS);
 
-            let addr_offset = (total_units - remaining_units) * unit.bytes();
+            let addr_offset = (total_units - remaining_units) * unit.byte_count();
 
             let descr = {
                 let mut descr_builder = TransferDescBuilder::new(
