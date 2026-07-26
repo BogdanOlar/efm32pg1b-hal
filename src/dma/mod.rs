@@ -160,6 +160,10 @@ impl DmaChannel {
         mmio::swreq(self.id);
     }
 
+    pub fn link_load(&self) {
+        mmio::ch_link_load(self.id)
+    }
+
     /// Set channel loop count value
     pub fn set_ch_loop(&self, loop_count: u8) {
         mmio::ch_loop_set(self.id, loop_count);
@@ -626,7 +630,7 @@ pub type ChannelTransferResult<'a, W> =
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DmaError {
     /// Invalid transfer size (e.g. transfer size is `0`)
-    InvalidTransferSize(DmaChannel),
+    InvalidTransferSize(ChannelId),
     /// DMA transfer failed
     Transfer(DmaChannel),
     /// Descriptor list overflowed

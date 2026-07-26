@@ -13,15 +13,18 @@ use core::slice::IterMut;
 pub struct DescList<'a> {
     prev: Option<(ListDescriptorBuilder, &'a mut Descriptor)>,
     desc_iter: IterMut<'a, Descriptor>,
+    link_descriptor: Descriptor,
 }
 
 impl<'a> DescList<'a> {
     /// Create a new Descriptor List using the given `storage`
     pub fn new(storage: &'a mut [Descriptor]) -> Self {
+        let storage_addr = storage.as_ptr().addr();
         storage.iter_mut().for_each(|d| *d = Descriptor::default());
         Self {
             prev: None,
             desc_iter: storage.iter_mut(),
+            link_descriptor: LinkDescriptorBuilder::new(storage_addr).build(),
         }
     }
 
@@ -66,7 +69,12 @@ impl<'a> DescList<'a> {
         Ok(Self {
             prev: Some((desc_bld.into(), desc)),
             desc_iter: self.desc_iter,
+            link_descriptor: self.link_descriptor,
         })
+    }
+
+    pub fn finalize(self) -> Descriptor {
+        self.link_descriptor
     }
 
     /// Modify the previous descriptor (if it exists) to link to the next descriptor in the list
@@ -78,7 +86,9 @@ impl<'a> DescList<'a> {
                     .with_link(Addr::Relative(1))
                     .build(),
                 ListDescriptorBuilder::LoopTransfer(loop_transfer_desc_builder) => {
-                    loop_transfer_desc_builder.with_link(true).build()
+                    // FIXME: is this right? I would have expected `is_linked` to have to be `true` if we want to
+                    //        advance to next descriptor once the looping is done.
+                    loop_transfer_desc_builder.with_link(false).build()
                 }
                 ListDescriptorBuilder::Sync(sync_desc_builder) => {
                     sync_desc_builder.with_link(Addr::Relative(1)).build()
@@ -213,7 +223,13 @@ pub struct LoopTransferDescBuilder {
 
 impl LoopTransferDescBuilder {
     /// Build a new Transfer Descriptor
-    pub const fn new(src: Addr, dst: Addr, count: TransferCount, unit: UnitSize) -> Self {
+    pub const fn new(
+        src: Addr,
+        dst: Addr,
+        count: TransferCount,
+        loop_to: Addr,
+        unit: UnitSize,
+    ) -> Self {
         let mut descr = Descriptor::const_default();
         descr.struct_type_set(StructType::Transfer);
         descr.dec_loop_cnt_set(true);
@@ -238,6 +254,17 @@ impl LoopTransferDescBuilder {
             Addr::Relative(offset) => {
                 descr.dst_mode_set(AddrMode::Relative);
                 descr.dst_set(offset as usize);
+            }
+        }
+
+        match loop_to {
+            Addr::Absolute(addr) => {
+                descr.link_mode_set(AddrMode::Absolute);
+                descr.link_addr_set(addr >> 2);
+            }
+            Addr::Relative(offset) => {
+                descr.link_mode_set(AddrMode::Relative);
+                descr.link_addr_set(((offset * size_of::<Descriptor>() as isize) >> 2) as usize);
             }
         }
 
@@ -283,25 +310,6 @@ impl LoopTransferDescBuilder {
 
     pub const fn with_dst_inc(mut self, addr_inc: AddrInc) -> Self {
         self.descr.dst_inc_set(addr_inc);
-        self
-    }
-
-    /// Set the link register
-    ///
-    /// The link `flag` needs to be specified separately since we can have looped descriptors which
-    pub const fn with_loop(mut self, addr: Addr) -> Self {
-        match addr {
-            Addr::Absolute(addr) => {
-                self.descr.link_mode_set(AddrMode::Absolute);
-                self.descr.link_addr_set(addr >> 2);
-            }
-            Addr::Relative(offset) => {
-                self.descr.link_mode_set(AddrMode::Relative);
-                self.descr
-                    .link_addr_set(((offset * size_of::<Descriptor>() as isize) >> 2) as usize);
-            }
-        }
-
         self
     }
 
@@ -427,6 +435,26 @@ impl ImmediateDescBuilder {
         }
 
         self
+    }
+
+    pub const fn build(self) -> Descriptor {
+        self.descr
+    }
+}
+
+pub struct LinkDescriptorBuilder {
+    descr: Descriptor,
+}
+
+impl LinkDescriptorBuilder {
+    const fn new(addr: usize) -> Self {
+        let mut descr = Descriptor::const_default();
+        descr.struct_type_set(StructType::Transfer);
+
+        descr.link_mode_set(AddrMode::Absolute);
+        descr.link_addr_set(addr >> 2);
+
+        Self { descr }
     }
 
     pub const fn build(self) -> Descriptor {
