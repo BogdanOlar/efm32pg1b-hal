@@ -3,13 +3,16 @@
 use crate::{
     dma::{
         self,
-        descriptor::{Addr, AddrInc, Descriptor, RawTransferDescBuilder, TransferCount, UnitSize},
+        descriptor::{
+            Addr,
+            AddrInc::{self, None},
+            Descriptor, TransferCount, UnitSize,
+        },
         list::{DescList, ImmediateDescBuilder, LoopTransferDescBuilder, TransferDescBuilder},
         ChReqSel, DmaChannel,
     },
     usart::{spi::SpiError, usarts::usartx},
 };
-use cortex_m::asm;
 use embedded_hal::spi::{ErrorType, SpiBus};
 
 /// Maximum number of DMA descriptors in [`SpiDma::descriptors`]
@@ -105,7 +108,8 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             Ok(())
         } else {
             let usart_p = usartx::<N>();
-            let mut desc_list = DescList::new(&mut self.tx_descriptors);
+            let mut tx_list = DescList::new(&mut self.tx_descriptors);
+            let mut rx_list = DescList::new(&mut self.rx_descriptors);
 
             const NON_LOOP_TRANSFER_COUNT: usize = 2;
             const MAX_TRANSFER_COUNT: usize =
@@ -131,7 +135,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 // Immediate Transfer needs to be written before the first Transfer because the first Transfer will
                 // set the absolute address of the buffer, so that the rest of the Transfers can use relative addressing
                 if loop_count > 0 {
-                    desc_list = desc_list.push(ImmediateDescBuilder::new(
+                    tx_list = tx_list.push(ImmediateDescBuilder::new(
                         (loop_count - 1) as u32,
                         crate::dma::mmio::dma()
                             .ch(self.tx.id() as usize)
@@ -141,7 +145,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     ))?;
                 }
 
-                desc_list = desc_list.push(
+                tx_list = tx_list.push(
                     TransferDescBuilder::new(
                         Addr::Absolute(write.as_ptr().addr()),
                         Addr::Absolute(usart_p.txdata().as_ptr().addr()),
@@ -159,7 +163,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
 
                 if tx_transfer_count > 1 {
                     if loop_count > 0 {
-                        desc_list = desc_list.push(
+                        tx_list = tx_list.push(
                             LoopTransferDescBuilder::new(
                                 Addr::Relative(0),
                                 Addr::Relative(0),
@@ -172,7 +176,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                         )?;
                     }
 
-                    desc_list = desc_list.push(
+                    tx_list = tx_list.push(
                         TransferDescBuilder::new(
                             Addr::Relative(0),
                             Addr::Relative(0),
@@ -189,111 +193,89 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             // TODO: TX filler
 
             // RX
-            {
-                let first_desc_units = if rx_units.is_multiple_of(Descriptor::MAX_TRANSFER_UNITS) {
-                    Descriptor::MAX_TRANSFER_UNITS
+            if rx_units > 0 {
+                let remainder = rx_units % Descriptor::MAX_TRANSFER_UNITS;
+                let rx_transfer_count = if remainder == 0 {
+                    rx_units / Descriptor::MAX_TRANSFER_UNITS
                 } else {
-                    rx_units % Descriptor::MAX_TRANSFER_UNITS
+                    rx_units / Descriptor::MAX_TRANSFER_UNITS + 1
                 };
-                let mut cur_addr = read.as_ptr().addr();
-                cur_addr += first_desc_units * unit.byte_count();
-                let rx_rem_units = rx_units - first_desc_units;
-                assert!(rx_rem_units.is_multiple_of(Descriptor::MAX_TRANSFER_UNITS));
 
-                let mut first_desc_builder = RawTransferDescBuilder::new(
-                    Addr::Absolute(usart_p.rxdata().as_ptr().addr()),
-                    Addr::Absolute(read.as_ptr().addr()),
-                    first_desc_units.try_into().unwrap(),
-                    unit,
-                )
-                .with_src_inc(AddrInc::None)
-                .with_dst_inc(AddrInc::One)
-                // if this is the only descriptor, enable DONE Interrupt Flag Set
-                .with_done_ifs(rx_rem_units == 0);
-
-                if rx_rem_units > 0 {
-                    // if there are more units to RX then use the RX descriptor linked list
-                    first_desc_builder = first_desc_builder
-                        .with_link(Addr::Absolute(self.rx_descriptors.as_ptr().addr()));
+                if rx_transfer_count > MAX_TRANSFER_COUNT {
+                    return Err(SpiError::Dma(dma::DmaError::InvalidTransferSize(
+                        self.rx.id(),
+                    )));
                 }
 
-                // write the first RX descriptor to the DMA registers
-                self.rx.set_descriptor(&first_desc_builder.build());
+                let loop_count = rx_transfer_count.saturating_sub(NON_LOOP_TRANSFER_COUNT);
 
-                let mut desc_list = DescList::new(&mut self.rx_descriptors);
+                // Immediate Transfer needs to be written before the first Transfer because the first Transfer will
+                // set the absolute address of the buffer, so that the rest of the Transfers can use relative addressing
+                if loop_count > 0 {
+                    rx_list = rx_list.push(ImmediateDescBuilder::new(
+                        (loop_count - 1) as u32,
+                        crate::dma::mmio::dma()
+                            .ch(self.rx.id() as usize)
+                            .loop_()
+                            .as_ptr()
+                            .addr(),
+                    ))?;
+                }
 
-                let mut rx_loops = rx_rem_units / Descriptor::MAX_TRANSFER_UNITS;
+                rx_list = rx_list.push(
+                    TransferDescBuilder::new(
+                        Addr::Absolute(usart_p.rxdata().as_ptr().addr()),
+                        Addr::Absolute(read.as_ptr().addr()),
+                        if remainder > 0 {
+                            remainder.try_into().unwrap()
+                        } else {
+                            TransferCount::MAX
+                        },
+                        unit,
+                    )
+                    .with_src_inc(AddrInc::None)
+                    .with_dst_inc(AddrInc::One)
+                    .with_done_ifs(rx_transfer_count == 1),
+                )?;
 
-                while rx_loops > 0 {
-                    if rx_loops == 1 {
-                        desc_list = desc_list.push(
-                            TransferDescBuilder::new(
-                                Addr::Absolute(usart_p.rxdata().as_ptr().addr()),
-                                Addr::Relative(0),
-                                TransferCount::MAX,
-                                unit,
-                            )
-                            // we're reading from the RXDATA SPI register, so don't increment destination address
-                            .with_src_inc(AddrInc::None)
-                            .with_done_ifs(true),
-                        )?;
-
-                        cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.byte_count();
-                        rx_loops -= 1;
-                    } else {
-                        // for the absolute addr transfer descriptor
-                        rx_loops -= 1;
-                        let desc_loops = rx_loops.min(u8::MAX as usize);
-
-                        desc_list = desc_list.push(ImmediateDescBuilder::new(
-                            desc_loops as u32,
-                            crate::dma::mmio::dma()
-                                .ch(self.rx.id() as usize)
-                                .loop_()
-                                .as_ptr()
-                                .addr(),
-                        ))?;
-
-                        desc_list = desc_list.push(
-                            TransferDescBuilder::new(
-                                Addr::Absolute(usart_p.rxdata().as_ptr().addr()),
-                                Addr::Absolute(cur_addr),
-                                TransferCount::MAX,
-                                unit,
-                            )
-                            .with_src_inc(AddrInc::None),
-                        )?;
-
-                        cur_addr += Descriptor::MAX_TRANSFER_UNITS * unit.byte_count();
-                        cur_addr += desc_loops * Descriptor::MAX_TRANSFER_UNITS * unit.byte_count();
-                        rx_loops -= desc_loops;
-
-                        desc_list = desc_list.push(
+                if rx_transfer_count > 1 {
+                    if loop_count > 0 {
+                        rx_list = rx_list.push(
                             LoopTransferDescBuilder::new(
-                                Addr::Absolute(usart_p.rxdata().as_ptr().addr()),
+                                Addr::Relative(0),
                                 Addr::Relative(0),
                                 TransferCount::MAX,
                                 Addr::Relative(0),
                                 unit,
                             )
-                            // we're reading from the RXDATA SPI register, so don't increment destination address
                             .with_src_inc(AddrInc::None)
-                            .with_loop_done_ifs(rx_loops == 0),
+                            .with_dst_inc(AddrInc::One),
                         )?;
                     }
-                }
 
-                // make sure all linked descriptors have been written before proceeding
-                asm::dsb();
+                    rx_list = rx_list.push(
+                        TransferDescBuilder::new(
+                            Addr::Relative(0),
+                            Addr::Relative(0),
+                            TransferCount::MAX,
+                            unit,
+                        )
+                        .with_src_inc(None)
+                        .with_dst_inc(AddrInc::One)
+                        .with_done_ifs(total_units == rx_units),
+                    )?;
+                }
             }
 
             // start the transfer
             self.busy = true;
 
+            self.rx.set_descriptor(&rx_list.finalize());
             self.rx.set_ien();
             self.rx.set_enable();
+            self.rx.link_load();
 
-            self.tx.set_descriptor(&desc_list.finalize());
+            self.tx.set_descriptor(&tx_list.finalize());
             self.tx.set_ien();
             self.tx.set_enable();
             self.tx.link_load();
