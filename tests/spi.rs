@@ -270,23 +270,23 @@ mod tests {
                 src_crc,
                 dst_crc
             );
-            // error!("src: {}", src[src.len() - 10..src.len()]);
-            // error!("dst: {}", dst[dst.len() - 10..dst.len()]);
-            error!("src: {}", src[0x800 - 16..0x800 + 16]);
-            error!("dst: {}", dst[0x800 - 16..0x800 + 16]);
+            error!("src: {}", src[src.len() - 10..src.len()]);
+            error!("dst: {}", dst[dst.len() - 10..dst.len()]);
         }
 
         assert_eq!(src_crc, dst_crc);
     }
 
-    /// `0x800` = `2048` bytes
-    const SRC_U8_SIZE: usize = 0x800 * 13;
+    /// `Descriptor::MAX_TRANSFER_UNITS` = `0x800` = `2048` bytes
+    /// The size of RAM is 32K, and since the tests may use a destination (RX) buffer of size `SRC_U8_SIZE`, then
+    /// the value needs to be smaller than 32K (probably even smaler than that)
+    const SRC_U8_SIZE: usize = Descriptor::MAX_TRANSFER_UNITS * 14;
     #[allow(clippy::large_const_arrays)]
     const SRC_U8: [u8; SRC_U8_SIZE] = {
         let mut seq = [0; SRC_U8_SIZE];
         let mut i = 0;
-        // Fill the buffer with values from 1 to 254 (`0x00` is the initial contents of the RX buffer, and `0xff` is the
-        // filler value for TX)
+        // Fill the buffer with values from 1 to 254 (`0x00` is reserved for the initial contents of the RX buffer,
+        // and `0xff` for the filler value for TX transactions where TX is smaller than RX
         while i < SRC_U8_SIZE {
             seq[i] = 1 + (i % (u8::MAX as usize - 1)) as u8;
             i += 1;
