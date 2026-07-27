@@ -190,7 +190,80 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 }
             }
 
-            // TODO: TX filler
+            // TX filler
+            if tx_filler_units > 0 {
+                let remainder = tx_filler_units % Descriptor::MAX_TRANSFER_UNITS;
+                let tx_filler_transfer_count = if remainder == 0 {
+                    tx_filler_units / Descriptor::MAX_TRANSFER_UNITS
+                } else {
+                    tx_filler_units / Descriptor::MAX_TRANSFER_UNITS + 1
+                };
+
+                if tx_filler_transfer_count > MAX_TRANSFER_COUNT {
+                    return Err(SpiError::Dma(dma::DmaError::InvalidTransferSize(
+                        self.tx.id(),
+                    )));
+                }
+
+                let loop_count = tx_filler_transfer_count.saturating_sub(NON_LOOP_TRANSFER_COUNT);
+
+                // Immediate Transfer needs to be written before the first Transfer because the first Transfer will
+                // set the absolute address of the buffer, so that the rest of the Transfers can use relative addressing
+                if loop_count > 0 {
+                    tx_list = tx_list.push(ImmediateDescBuilder::new(
+                        (loop_count - 1) as u32,
+                        crate::dma::mmio::dma()
+                            .ch(self.tx.id() as usize)
+                            .loop_()
+                            .as_ptr()
+                            .addr(),
+                    ))?;
+                }
+
+                tx_list = tx_list.push(
+                    TransferDescBuilder::new(
+                        Addr::Absolute((&TX_FILLER) as *const u32 as usize),
+                        Addr::Absolute(usart_p.txdata().as_ptr().addr()),
+                        if remainder > 0 {
+                            remainder.try_into().unwrap()
+                        } else {
+                            TransferCount::MAX
+                        },
+                        unit,
+                    )
+                    .with_src_inc(AddrInc::None)
+                    .with_dst_inc(AddrInc::None)
+                    .with_done_ifs(tx_filler_transfer_count == 1),
+                )?;
+
+                if tx_filler_transfer_count > 1 {
+                    if loop_count > 0 {
+                        tx_list = tx_list.push(
+                            LoopTransferDescBuilder::new(
+                                Addr::Relative(0),
+                                Addr::Relative(0),
+                                TransferCount::MAX,
+                                Addr::Relative(0),
+                                unit,
+                            )
+                            .with_src_inc(AddrInc::None)
+                            .with_dst_inc(AddrInc::None),
+                        )?;
+                    }
+
+                    tx_list = tx_list.push(
+                        TransferDescBuilder::new(
+                            Addr::Relative(0),
+                            Addr::Relative(0),
+                            TransferCount::MAX,
+                            unit,
+                        )
+                        .with_src_inc(AddrInc::None)
+                        .with_dst_inc(AddrInc::None)
+                        .with_done_ifs(total_units == (tx_filler_units + tx_units)),
+                    )?;
+                }
+            }
 
             // RX
             if rx_units > 0 {
