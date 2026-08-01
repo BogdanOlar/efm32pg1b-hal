@@ -14,6 +14,7 @@ pub struct DescList<'a> {
     prev: Option<(ListDescriptorBuilder, &'a mut Descriptor)>,
     desc_iter: IterMut<'a, Descriptor>,
     link_descriptor: Descriptor,
+    storage_addr: usize,
 }
 
 impl<'a> DescList<'a> {
@@ -25,6 +26,7 @@ impl<'a> DescList<'a> {
             prev: None,
             desc_iter: storage.iter_mut(),
             link_descriptor: LinkDescriptorBuilder::new(storage_addr).build(),
+            storage_addr,
         }
     }
 
@@ -58,7 +60,7 @@ impl<'a> DescList<'a> {
             .next()
             .ok_or(DmaError::DescriptorListOverflow)?;
 
-        self.link_to_prev();
+        self.link_prev();
 
         *desc = match desc_bld.into() {
             ListDescriptorBuilder::Transfer(desc_bld) => desc_bld.build(),
@@ -70,6 +72,7 @@ impl<'a> DescList<'a> {
             prev: Some((desc_bld.into(), desc)),
             desc_iter: self.desc_iter,
             link_descriptor: self.link_descriptor,
+            storage_addr: self.storage_addr,
         })
     }
 
@@ -77,13 +80,17 @@ impl<'a> DescList<'a> {
         self.link_descriptor
     }
 
+    pub(crate) fn storage_addr(&self) -> usize {
+        self.storage_addr
+    }
+
     /// Modify the previous descriptor (if it exists) to link to the next descriptor in the list
-    fn link_to_prev(&mut self) {
+    fn link_prev(&mut self) {
         if let Some((prev_builder, prev_descr)) = self.prev.take() {
             *prev_descr = match prev_builder {
                 ListDescriptorBuilder::Transfer(transfer_desc_builder) => transfer_desc_builder
                     .inner
-                    .with_link(Addr::Relative(1))
+                    .with_link(Addr::Relative(1), true)
                     .build(),
                 ListDescriptorBuilder::LoopTransfer(loop_transfer_desc_builder) => {
                     loop_transfer_desc_builder.with_link(true).build()

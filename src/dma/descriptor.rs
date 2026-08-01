@@ -89,8 +89,8 @@ impl RawTransferDescBuilder {
     }
 
     /// Set the link register
-    pub const fn with_link(mut self, addr: Addr) -> Self {
-        self.descr.link_set(true);
+    pub const fn with_link(mut self, addr: Addr, is_linked: bool) -> Self {
+        self.descr.link_set(is_linked);
 
         match addr {
             Addr::Absolute(addr) => {

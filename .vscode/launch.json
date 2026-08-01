@@ -89,6 +89,36 @@
             }
         },
         {
+            "name": "JLink spi_dma example",
+            /* Configuration for the STM32F303 Discovery board */
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "jlink",
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "cargo build example spi_dma",
+            "runToEntryPoint": "main",
+            "executable": "./target/thumbv7em-none-eabihf/debug/examples/spi_dma",
+            "device": "EFM32PG1B200F256GM48",
+            "svdFile": "${workspaceRoot}/EFM32PG1B.svd",
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 4
+            },
+            "swoConfig": {
+                "enabled": true,
+                "cpuFrequency": 8000000,
+                "swoFrequency": 2000000,
+                "source": "probe",
+                "decoders": [
+                    {
+                        "type": "console",
+                        "label": "ITM",
+                        "port": 0
+                    }
+                ]
+            }
+        },
+        {
             "name": "JLink spi LCD example",
             /* Configuration for the STM32F303 Discovery board */
             "type": "cortex-debug",
@@ -444,6 +474,33 @@
             "coreConfigs": [
                 {
                     "programBinary": "target/thumbv7em-none-eabihf/debug/examples/spi",
+                    "svdFile": "EFM32PG1B.svd",
+                    "rttEnabled": true,
+                    "rttChannelFormats": [
+                        {
+                            "channelNumber": 0,
+                            // Format RTT data as String data
+                            "dataFormat": "String",
+                            // Include host-side timestamps for every line of data transferred from the target RTT output
+                            "showTimestamps": true,
+                            "showLocation": true
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "probe_rs spi_dma example",
+            "preLaunchTask": "cargo build example spi_dma",
+            "type": "probe-rs-debug",
+            "request": "launch",
+            "flashingConfig": {
+                "flashingEnabled": true,
+            },
+            "chip": "EFM32PG1B200F256GM48",
+            "coreConfigs": [
+                {
+                    "programBinary": "target/thumbv7em-none-eabihf/debug/examples/spi_dma",
                     "svdFile": "EFM32PG1B.svd",
                     "rttEnabled": true,
                     "rttChannelFormats": [

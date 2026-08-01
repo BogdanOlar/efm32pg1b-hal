@@ -178,6 +178,27 @@
             }
         },
         {
+            "label": "cargo build example spi_dma",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "spi_dma",
+                "--features='defmt qfn48'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "presentation": {
+                "clear": true
+            },
+            "group": {
+                "kind": "build",
+                // "isDefault": true
+            }
+        },
+        {
             "label": "cargo build example spi LCD",
             "type": "shell",
             "command": "cargo",

@@ -156,6 +156,11 @@ impl DmaChannel {
         mmio::ien_set(self.id);
     }
 
+    /// Enable channel halt during debugger breakpoint
+    pub fn set_dbg_halt(&self) {
+        mmio::dbghalt_set(self.id);
+    }
+
     pub fn start(&self) {
         mmio::swreq(self.id);
     }
@@ -549,7 +554,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
             if remaining_units > 0 {
                 descr_builder =
-                    descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()));
+                    descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()), true);
             }
 
             descr_builder.build()
@@ -583,7 +588,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 .with_block_size(descriptor::BlockSize::All);
 
                 if !is_last {
-                    descr_builder = descr_builder.with_link(Addr::Relative(1));
+                    descr_builder = descr_builder.with_link(Addr::Relative(1), true);
                 }
 
                 descr_builder.build()
@@ -746,6 +751,10 @@ pub(crate) mod mmio {
 
     pub(crate) fn dbghalt_clear(id: ChannelId) {
         dma().dbghalt().sc_clear(1 << id as u8);
+    }
+
+    pub(crate) fn dbghalt_set(id: ChannelId) {
+        dma().dbghalt().sc_set(1 << id as u8);
     }
 
     pub(crate) fn reqdis_clear(id: ChannelId) {
