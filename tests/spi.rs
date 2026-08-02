@@ -229,6 +229,7 @@ fn test_spi_bus_transfer<T: SpiBus + ErrorType>(
     spi: &mut T,
     crc: &Crc<u32>,
 ) -> Result<(), ()> {
+    const FILLER_VALUE: u8 = 0xFF;
     assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset);
     let dst = &mut dst_buf[dst_offset..dst_offset + dst_len];
 
@@ -237,22 +238,46 @@ fn test_spi_bus_transfer<T: SpiBus + ErrorType>(
     let ret = spi.flush();
     assert!(ret.is_ok());
 
-    crc.update(src);
-    let src_crc = crc.finalize();
-    crc.update(dst);
-    let dst_crc = crc.finalize();
+    // Only compare the common bytes of the two slices `src` and `dst`
+    let crc_len = src.len().min(dst.len());
+    if crc_len > 0 {
+        crc.update(&src[..crc_len]);
+        let src_crc = crc.finalize();
+        crc.update(&dst[..crc_len]);
+        let dst_crc = crc.finalize();
 
-    // src and dest are identical
-    if src_crc != dst_crc {
-        error!(
-            "CRCs don't match! Src: {} bytes, src_crc=0x{:X}, Dst: {} bytes, dst_crc=0x{:X}",
-            src.len(),
-            src_crc,
-            dst.len(),
-            dst_crc
-        );
+        // src and dest are identical
+        if src_crc != dst_crc {
+            error!(
+                "CRCs don't match! Src: {} bytes, src_crc=0x{:X}, Dst: {} bytes, dst_crc=0x{:X}",
+                src.len(),
+                src_crc,
+                dst.len(),
+                dst_crc
+            );
+        }
+        assert_eq!(src_crc, dst_crc);
     }
-    assert_eq!(src_crc, dst_crc);
+
+    // Check filler bytes, if they exist
+    let dst_filler_len = dst.len().saturating_sub(src.len());
+    if dst_filler_len > 0 {
+        let start_index = dst.len() - dst_filler_len;
+        let end_index = dst.len();
+
+        // filler bytes of `dst`
+        for (i, b) in dst[start_index..end_index].iter().enumerate() {
+            if *b != FILLER_VALUE {
+                error!(
+                    "Dst filler: expected {}, found {}, at index {}",
+                    FILLER_VALUE,
+                    *b,
+                    i + start_index
+                );
+            }
+            assert_eq!(*b, FILLER_VALUE);
+        }
+    }
 
     // no bytes written before start of `dst`
     for b in &dst_buf[0..dst_offset] {
