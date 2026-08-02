@@ -48,6 +48,7 @@ impl<const N: u8> SpiDma<N> {
             dma::irq::set_handler(cs, tx.id(), |id, channel_error| {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("IRQ Tx {}", channel_error);
+
                 // signal to the main thread that transfer is resolved
                 critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_error)));
             });
@@ -55,10 +56,10 @@ impl<const N: u8> SpiDma<N> {
             dma::irq::set_handler(cs, rx.id(), |id, channel_error| {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("IRQ Rx {}", channel_error);
+
                 // signal to the main thread that transfer is resolved
                 critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_error)));
             });
-            // FIXME: Handle RX too?
         });
 
         Self {
@@ -121,6 +122,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             if tx_units > 0 {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("TX: tx_units {}", tx_units);
+
                 let (mut desc, list) = reduced(
                     self.tx.id(),
                     write.as_ptr().addr(),
@@ -137,6 +139,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 if tx_filler_units > 0 {
                     #[cfg(feature = "debug-spi-dma-defmt-info")]
                     info!("TX tx_filler_units {}", tx_filler_units);
+
                     let list = extended(
                         self.tx.id(),
                         (&TX_FILLER) as *const u32 as usize,
