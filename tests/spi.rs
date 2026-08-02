@@ -44,7 +44,7 @@ mod tests {
         let mut seq = [0; SRC_BUF_SIZE];
         let mut i = 0;
         // Fill the buffer with values from 1 to 254 (`0x00` is reserved for the initial contents of the RX buffer,
-        // and `0xff` for the filler value for TX transactions where TX is smaller than RX
+        // and `0xff` for the filler value for TX transactions where TX is smaller than RX)
         while i < SRC_BUF_SIZE {
             seq[i] = 1 + (i % (u8::MAX as usize - 1)) as u8;
             i += 1;
