@@ -104,7 +104,49 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_short_asymmetric_rx_shorter(p: Peripherals) {
+    fn transfer_u8_dma_tx_desc_1_rx_0(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_tx_0_rx_desc_1(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_tx_desc_1_rx_1(p: Peripherals) {
         // Size of slices which will be tested
         const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
         const DST_LEN: usize = 1;
@@ -125,7 +167,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_short_asymmetric_rx_longer(p: Peripherals) {
+    fn transfer_u8_dma_tx_1_rx_desc_1(p: Peripherals) {
         // Size of slices which will be tested
         const SRC_LEN: usize = 1;
         const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;

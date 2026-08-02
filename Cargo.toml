@@ -94,6 +94,9 @@ defmt = [
     "embassy-time/defmt",
     "embassy-time/defmt-timestamp-uptime-us"
 ]
+# Module level debug features
+## Spi
+debug-spi-dma-defmt-info = []
 
 [profile.release]
 codegen-units    = 1     # LLVM can perform better optimizations using a single thread

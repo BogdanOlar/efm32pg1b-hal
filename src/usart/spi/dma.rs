@@ -13,6 +13,7 @@ use crate::{
     },
     usart::{spi::SpiError, usarts::usartx},
 };
+#[cfg(feature = "debug-spi-dma-defmt-info")]
 use defmt::info;
 use embedded_hal::spi::{ErrorType, SpiBus};
 
@@ -45,12 +46,14 @@ impl<const N: u8> SpiDma<N> {
             dma::irq::irq_ch_take(cs, rx.id());
             // Set the IRQ handler for TX channel
             dma::irq::set_handler(cs, tx.id(), |id, channel_error| {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("IRQ Tx {}", channel_error);
                 // signal to the main thread that transfer is resolved
                 critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_error)));
             });
             // Set the IRQ handler for RX channel
             dma::irq::set_handler(cs, rx.id(), |id, channel_error| {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("IRQ Rx {}", channel_error);
                 // signal to the main thread that transfer is resolved
                 critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_error)));
@@ -116,6 +119,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
 
             // TX
             if tx_units > 0 {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("TX: tx_units {}", tx_units);
                 let (mut desc, list) = reduced(
                     self.tx.id(),
@@ -131,6 +135,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 tx_list = list;
 
                 if tx_filler_units > 0 {
+                    #[cfg(feature = "debug-spi-dma-defmt-info")]
                     info!("TX tx_filler_units {}", tx_filler_units);
                     let list = extended(
                         self.tx.id(),
@@ -149,6 +154,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
 
                 self.tx.set_descriptor(&desc.build());
             } else if tx_filler_units > 0 {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("TX tx_filler_units {}", tx_filler_units);
 
                 let (desc, _) = reduced(
@@ -167,7 +173,9 @@ impl<const N: u8> SpiBus for SpiDma<N> {
 
             // RX
             if rx_units > 0 {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("RX: rx_units {}", rx_units);
+
                 let (desc, _) = reduced(
                     self.rx.id(),
                     usart_p.rxdata().as_ptr().addr(),
@@ -276,7 +284,10 @@ fn reduced(
     // Write DMA channel loop count
     if iteration_count > 0 {
         let loop_count = iteration_count - 1;
+
+        #[cfg(feature = "debug-spi-dma-defmt-info")]
         info!("\t loop_count: {}", loop_count);
+
         crate::dma::mmio::dma()
             .ch(dma_ch_id as usize)
             .loop_()
@@ -299,7 +310,9 @@ fn reduced(
     .with_link(Addr::Absolute(desc_list.storage_addr()), transfer_count > 1);
 
     if transfer_count > 1 {
+        #[cfg(feature = "debug-spi-dma-defmt-info")]
         info!("\t transfer_count: {}", &transfer_count);
+
         if iteration_count > 0 {
             desc_list = desc_list.push(
                 LoopTransferDescBuilder::new(
@@ -361,7 +374,9 @@ fn extended(
     // Immediate Transfer needs to be written before the first Transfer because the first Transfer will
     // set the absolute address of the buffer, so that the rest of the Transfers can use relative addressing
     if loop_count > 0 {
+        #[cfg(feature = "debug-spi-dma-defmt-info")]
         info!("\t Loop: {}", &loop_count);
+
         desc_list = desc_list.push(ImmediateDescBuilder::new(
             (loop_count - 1) as u32,
             crate::dma::mmio::dma()
@@ -389,7 +404,9 @@ fn extended(
     )?;
 
     if transfer_count > 1 {
+        #[cfg(feature = "debug-spi-dma-defmt-info")]
         info!("\t transfer_count: {}", &transfer_count);
+
         if loop_count > 0 {
             desc_list = desc_list.push(
                 LoopTransferDescBuilder::new(
