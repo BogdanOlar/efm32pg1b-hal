@@ -29,6 +29,29 @@ mod tests {
     use embedded_hal::spi::MODE_2;
     pub use fugit::RateExtU32;
 
+    /// `Descriptor::MAX_TRANSFER_UNITS` = `0x800` = `2048` bytes
+    ///
+    /// The size of RAM is 32K, and since the tests may use a destination (RX) buffer of size `MAX_RAM_TRANSFERS`, then
+    /// the value needs to be smaller than 32K (probably less than that, since the executable also uses some memory)
+    const MAX_RAM_TRANSFERS: usize = 13;
+    /// This value may need to get adjusted as we add more tests, since it occupies the vast majority of Flash
+    const MAX_ROM_TRANSFERS: usize = 100;
+    /// Huge ROM (Flash) array
+    const SRC_BUF_SIZE: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_ROM_TRANSFERS;
+
+    /// ROM Src bytes with values in repeating interval [1..254]
+    static SRC_BUF: [u8; SRC_BUF_SIZE] = {
+        let mut seq = [0; SRC_BUF_SIZE];
+        let mut i = 0;
+        // Fill the buffer with values from 1 to 254 (`0x00` is reserved for the initial contents of the RX buffer,
+        // and `0xff` for the filler value for TX transactions where TX is smaller than RX
+        while i < SRC_BUF_SIZE {
+            seq[i] = 1 + (i % (u8::MAX as usize - 1)) as u8;
+            i += 1;
+        }
+        seq
+    };
+
     #[init]
     fn init() -> Peripherals {
         Peripherals::take().unwrap()
@@ -770,30 +793,6 @@ mod tests {
         let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
         assert!(test_res.is_ok());
     }
-
-    /// `Descriptor::MAX_TRANSFER_UNITS` = `0x800` = `2048` bytes
-    ///
-    /// The size of RAM is 32K, and since the tests may use a destination (RX) buffer of size `SRC_U8_SIZE`, then
-    /// the value needs to be smaller than 32K (probably less than that, since the executable also uses some memory)
-    const MAX_RAM_TRANSFERS: usize = 13;
-    /// This value may need to get adjusted as we add more tests, since it occupies the vast majority of Flash
-    const MAX_ROM_TRANSFERS: usize = 100;
-    /// Huge ROM (Flash) array
-    const SRC_BUF_SIZE: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_ROM_TRANSFERS;
-
-    /// ROM Src bytes with values in repeating interval [1..254]
-    #[allow(clippy::large_const_arrays)]
-    const SRC_BUF: [u8; SRC_BUF_SIZE] = {
-        let mut seq = [0; SRC_BUF_SIZE];
-        let mut i = 0;
-        // Fill the buffer with values from 1 to 254 (`0x00` is reserved for the initial contents of the RX buffer,
-        // and `0xff` for the filler value for TX transactions where TX is smaller than RX
-        while i < SRC_BUF_SIZE {
-            seq[i] = 1 + (i % (u8::MAX as usize - 1)) as u8;
-            i += 1;
-        }
-        seq
-    };
 }
 
 /// Helper function to build the SPI DMA and Crc drivers to be used by tests
