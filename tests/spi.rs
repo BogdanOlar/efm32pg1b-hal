@@ -1,20 +1,32 @@
 #![no_std]
 #![no_main]
 
+use defmt::error;
+use efm32pg1b_hal::{
+    cmu::CmuExt,
+    crc::{algos::CRC_32_CKSUM, Crc, CrcDriver},
+    dma::Dma,
+    gpio::{Gpio, InFilt, OutPp},
+    pac::Peripherals,
+    usart::{spi::dma::SpiDma, Usart, UsartBuild},
+};
+use embedded_hal::spi::{ErrorType, SpiBus, MODE_2};
+pub use fugit::RateExtU32;
+
 #[cfg(test)]
 #[embedded_test::tests]
 mod tests {
-    use defmt::error;
+    use crate::{build_drivers, test_spi_bus_transfer};
     use defmt_rtt as _;
     use efm32pg1b_hal::{
         cmu::CmuExt,
         crc::{algos::CRC_32_CKSUM, CrcDriver},
-        dma::{descriptor::Descriptor, Dma},
+        dma::descriptor::Descriptor,
         gpio::{Gpio, InFilt, OutPp},
         pac::Peripherals,
         usart::{Usart, UsartBuild},
     };
-    use embedded_hal::spi::{SpiBus, MODE_2};
+    use embedded_hal::spi::MODE_2;
     pub use fugit::RateExtU32;
 
     #[init]
@@ -40,73 +52,56 @@ mod tests {
         assert!(rs_br.is_ok());
 
         // Set the `dst` length to a multiple of 1
-        let mut dst_buf: [u8; SRC_U8_SIZE] = [0; _];
+        let mut dst_buf: [u8; SRC_BUF_SIZE] = [0; _];
+        let dst_len = dst_buf.len();
+        let src = &SRC_BUF;
 
-        let src = &SRC_U8;
-        let dst: &mut [u8; _] = &mut dst_buf;
-
-        let ret_tr1 = spi.transfer(dst, src);
-        assert!(ret_tr1.is_ok());
-
-        crc.update(src);
-        let src_crc = crc.finalize();
-        crc.update(dst);
-        let dst_crc = crc.finalize();
-
-        assert_eq!(src_crc, dst_crc);
+        let test_res = test_spi_bus_transfer(src, &mut dst_buf, dst_len, 0, &mut spi, &crc);
+        assert!(test_res.is_ok());
     }
 
-    /// SPI transfer uses just one descriptor for both TX and RX
-    /// TX and RX slices have the same size
     #[test]
     #[timeout(5)]
     fn transfer_u8_dma_short_symmetric(p: Peripherals) {
-        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
-        let clocks = p.cmu.split();
-        let gpio = Gpio::new(p.gpio);
-        let mut spi = Usart::new(p.usart0)
-            .into_spi_bus(
-                gpio.pc8.into_mode::<OutPp>(),
-                gpio.pc6.into_mode::<OutPp>(),
-                gpio.pc7.into_mode::<InFilt>(),
-                MODE_2,
-            )
-            .with_loopback();
+        // Size of slices which will be tested
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
 
-        let rs_br = spi.set_baudrate(4.MHz(), &clocks);
-        assert!(rs_br.is_ok());
-        let dma = Dma::init(p.ldma);
-        let mut spi = spi.into_spi_dma(dma.ch0, dma.ch1);
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-        // Set the `dst` length to a multiple of 1
-        let mut dst_buf: [u8; SRC_U8_SIZE] = [0; _];
+        let (mut spi, crc) = build_drivers(p);
 
-        let src = &SRC_U8;
-        let dst = &mut dst_buf[1..Descriptor::MAX_TRANSFER_UNITS + 1];
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
-        let ret_tr1 = spi.transfer(dst, src);
-        assert!(ret_tr1.is_ok());
-        let ret_tr2 = spi.flush();
-        assert!(ret_tr2.is_ok());
+        let test_res =
+            test_spi_bus_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
 
-        crc.update(&src[..dst.len()]);
-        let src_crc = crc.finalize();
-        crc.update(dst);
-        let dst_crc = crc.finalize();
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_shorter_symmetric(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 1;
+        const DST_LEN: usize = 1;
 
-        // DEBUG:
-        if src_crc != dst_crc {
-            error!(
-                "{} bytes src_crc=0x{:X} dst_crc=0x{:X}",
-                src.len().min(dst.len()),
-                src_crc,
-                dst_crc
-            );
-            // error!("src: {}", src[..dst.len()]);
-            // error!("dst: {}", dst);
-        }
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-        assert_eq!(src_crc, dst_crc);
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res =
+            test_spi_bus_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
     }
 
     /// SPI transfer uses just one descriptor for both TX and RX
@@ -114,56 +109,23 @@ mod tests {
     #[test]
     #[timeout(5)]
     fn transfer_u8_dma_short_asymmetric_rx_shorter(p: Peripherals) {
-        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
-        let clocks = p.cmu.split();
-        let gpio = Gpio::new(p.gpio);
-        let mut spi = Usart::new(p.usart0)
-            .into_spi_bus(
-                gpio.pc8.into_mode::<OutPp>(),
-                gpio.pc6.into_mode::<OutPp>(),
-                gpio.pc7.into_mode::<InFilt>(),
-                MODE_2,
-            )
-            .with_loopback();
+        // Size of slices which will be tested
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
+        const DST_LEN: usize = 1;
 
-        let rs_br = spi.set_baudrate(4.MHz(), &clocks);
-        assert!(rs_br.is_ok());
-        let dma = Dma::init(p.ldma);
-        let mut spi = spi.into_spi_dma(dma.ch0, dma.ch1);
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-        // Set the `dst` length to a multiple of 1
-        let mut dst_buf: [u8; SRC_U8_SIZE] = [0; _];
+        let (mut spi, crc) = build_drivers(p);
 
-        let src = &SRC_U8[0..32];
-        let dst = &mut dst_buf[1..=16];
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
-        let ret_tr1 = spi.transfer(dst, src);
-        assert!(ret_tr1.is_ok());
-        let ret_tr2 = spi.flush();
-        assert!(ret_tr2.is_ok());
-
-        crc.update(&src[0..dst.len()]);
-        let src_crc = crc.finalize();
-        crc.update(dst);
-        let dst_crc = crc.finalize();
-
-        // DEBUG:
-        if src_crc != dst_crc {
-            error!(
-                "{} bytes src_crc=0x{:X} dst_crc=0x{:X}",
-                src.len().min(dst.len()),
-                src_crc,
-                dst_crc
-            );
-            error!("src: {}", src);
-            error!("dst: {}", dst);
-        }
-
-        assert_eq!(src_crc, dst_crc);
-
-        // check potential under/overflows
-        assert_eq!(dst_buf[0], 0);
-        assert_eq!(dst_buf[17], 0);
+        let test_res =
+            test_spi_bus_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
     }
 
     /// SPI transfer uses just one descriptor for both TX and RX
@@ -171,56 +133,23 @@ mod tests {
     #[test]
     #[timeout(5)]
     fn transfer_u8_dma_short_asymmetric_rx_longer(p: Peripherals) {
-        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
-        let clocks = p.cmu.split();
-        let gpio = Gpio::new(p.gpio);
-        let mut spi = Usart::new(p.usart0)
-            .into_spi_bus(
-                gpio.pc8.into_mode::<OutPp>(),
-                gpio.pc6.into_mode::<OutPp>(),
-                gpio.pc7.into_mode::<InFilt>(),
-                MODE_2,
-            )
-            .with_loopback();
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 1;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
 
-        let rs_br = spi.set_baudrate(4.MHz(), &clocks);
-        assert!(rs_br.is_ok());
-        let dma = Dma::init(p.ldma);
-        let mut spi = spi.into_spi_dma(dma.ch0, dma.ch1);
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-        // Set the `dst` length to a multiple of 1
-        let mut dst_buf: [u8; SRC_U8_SIZE] = [0; _];
+        let (mut spi, crc) = build_drivers(p);
 
-        let src = &SRC_U8[0..16];
-        let dst = &mut dst_buf[1..=32];
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
-        let ret_tr1 = spi.transfer(dst, src);
-        assert!(ret_tr1.is_ok());
-        let ret_tr2 = spi.flush();
-        assert!(ret_tr2.is_ok());
-
-        crc.update(src);
-        let src_crc = crc.finalize();
-        crc.update(&dst[0..src.len()]);
-        let dst_crc = crc.finalize();
-
-        // DEBUG:
-        if src_crc != dst_crc {
-            error!(
-                "{} bytes src_crc=0x{:X} dst_crc=0x{:X}",
-                src.len().min(dst.len()),
-                src_crc,
-                dst_crc
-            );
-            error!("src: {}", src);
-            error!("dst: {}", dst);
-        }
-
-        assert_eq!(src_crc, dst_crc);
-
-        // check potential under/overflows
-        assert_eq!(dst_buf[0], 0);
-        assert_eq!(dst_buf[33], 0);
+        let test_res =
+            test_spi_bus_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
     }
 
     /// SPI transfer uses more than one descriptor for both TX and RX
@@ -228,71 +157,123 @@ mod tests {
     #[test]
     #[timeout(5)]
     fn transfer_u8_dma_long_symmetric(p: Peripherals) {
-        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
-        let clocks = p.cmu.split();
-        let gpio = Gpio::new(p.gpio);
-        let mut spi = Usart::new(p.usart0)
-            .into_spi_bus(
-                gpio.pc8.into_mode::<OutPp>(),
-                gpio.pc6.into_mode::<OutPp>(),
-                gpio.pc7.into_mode::<InFilt>(),
-                MODE_2,
-            )
-            .with_loopback();
+        // Size of slices which will be tested
+        const SRC_LEN: usize = SRC_BUF_SIZE;
+        const DST_LEN: usize = SRC_BUF_SIZE;
 
-        let rs_br = spi.set_baudrate(4.MHz(), &clocks);
-        assert!(rs_br.is_ok());
-        let dma = Dma::init(p.ldma);
-        let mut spi = spi.into_spi_dma(dma.ch0, dma.ch1);
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 0;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-        // Set the `dst` length to a multiple of 1
-        let mut dst_buf: [u8; SRC_U8_SIZE] = [0; _];
+        let (mut spi, crc) = build_drivers(p);
 
-        let src = &SRC_U8;
-        let dst = &mut dst_buf;
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
-        let ret_tr1 = spi.transfer(dst, src);
-        assert!(ret_tr1.is_ok());
-        let ret_tr2 = spi.flush();
-        assert!(ret_tr2.is_ok());
-
-        crc.update(src);
-        let src_crc = crc.finalize();
-        crc.update(dst);
-        let dst_crc = crc.finalize();
-
-        // DEBUG:
-        if src_crc != dst_crc {
-            error!(
-                "src (TX): {} bytes, dst (RX): {} bytes, src_crc=0x{:X} dst_crc=0x{:X}",
-                src.len(),
-                dst.len(),
-                src_crc,
-                dst_crc
-            );
-            error!("src: {}", src[src.len() - 10..src.len()]);
-            error!("dst: {}", dst[dst.len() - 10..dst.len()]);
-        }
-
-        assert_eq!(src_crc, dst_crc);
+        let test_res =
+            test_spi_bus_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
     }
 
     /// `Descriptor::MAX_TRANSFER_UNITS` = `0x800` = `2048` bytes
     ///
     /// The size of RAM is 32K, and since the tests may use a destination (RX) buffer of size `SRC_U8_SIZE`, then
     /// the value needs to be smaller than 32K (probably even smaler than that)
-    const SRC_U8_SIZE: usize = Descriptor::MAX_TRANSFER_UNITS * 14;
+    const SRC_BUF_SIZE: usize = Descriptor::MAX_TRANSFER_UNITS * 14;
 
+    /// ROM Src bytes with values in repeating interval [1..254]
     #[allow(clippy::large_const_arrays)]
-    const SRC_U8: [u8; SRC_U8_SIZE] = {
-        let mut seq = [0; SRC_U8_SIZE];
+    const SRC_BUF: [u8; SRC_BUF_SIZE] = {
+        let mut seq = [0; SRC_BUF_SIZE];
         let mut i = 0;
         // Fill the buffer with values from 1 to 254 (`0x00` is reserved for the initial contents of the RX buffer,
         // and `0xff` for the filler value for TX transactions where TX is smaller than RX
-        while i < SRC_U8_SIZE {
+        while i < SRC_BUF_SIZE {
             seq[i] = 1 + (i % (u8::MAX as usize - 1)) as u8;
             i += 1;
         }
         seq
     };
+}
+
+/// Helper function to build the SPI DMA and Crc drivers to be used by tests
+///
+/// Cannot be defined in the `mod tests` above since `embedded-test` will freak out
+fn build_drivers(p: Peripherals) -> (SpiDma<0>, Crc<u32>) {
+    let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
+    let clocks = p.cmu.split();
+    let gpio = Gpio::new(p.gpio);
+    let mut spi = Usart::new(p.usart0)
+        .into_spi_bus(
+            gpio.pc8.into_mode::<OutPp>(),
+            gpio.pc6.into_mode::<OutPp>(),
+            gpio.pc7.into_mode::<InFilt>(),
+            MODE_2,
+        )
+        .with_loopback();
+
+    let rs_br = spi.set_baudrate(4.MHz(), &clocks);
+    assert!(rs_br.is_ok());
+    let dma = Dma::init(p.ldma);
+    let spi = spi.into_spi_dma(dma.ch0, dma.ch1);
+
+    (spi, crc)
+}
+
+fn test_spi_bus_transfer<T: SpiBus + ErrorType>(
+    src: &[u8],
+    dst_buf: &mut [u8],
+    dst_len: usize,
+    dst_offset: usize,
+    spi: &mut T,
+    crc: &Crc<u32>,
+) -> Result<(), ()> {
+    assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset);
+    let dst = &mut dst_buf[dst_offset..dst_offset + dst_len];
+
+    let ret = spi.transfer(dst, src);
+    assert!(ret.is_ok());
+    let ret = spi.flush();
+    assert!(ret.is_ok());
+
+    crc.update(src);
+    let src_crc = crc.finalize();
+    crc.update(dst);
+    let dst_crc = crc.finalize();
+
+    // src and dest are identical
+    if src_crc != dst_crc {
+        error!(
+            "CRCs don't match! Src: {} bytes, src_crc=0x{:X}, Dst: {} bytes, dst_crc=0x{:X}",
+            src.len(),
+            src_crc,
+            dst.len(),
+            dst_crc
+        );
+    }
+    assert_eq!(src_crc, dst_crc);
+
+    // no bytes written before start of `dst`
+    for b in &dst_buf[0..dst_offset] {
+        if *b != 0 {
+            error!(
+                "Dst underflow: expected [0;_], found {=[?]}",
+                &dst_buf[0..dst_offset]
+            );
+        }
+        assert_eq!(*b, 0);
+    }
+    // no bytes written after end of `dst`
+    for b in &dst_buf[dst_offset + dst_len..] {
+        if *b != 0 {
+            error!(
+                "Dst overflow: expected [0;_], found {=[?]}",
+                &dst_buf[dst_offset + dst_len..]
+            );
+        }
+        assert_eq!(*b, 0);
+    }
+
+    Ok(())
 }
