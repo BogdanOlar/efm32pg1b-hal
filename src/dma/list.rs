@@ -2,8 +2,8 @@
 ///
 use crate::dma::{
     descriptor::{
-        Addr, AddrInc, AddrMode, BlockSize, Descriptor, TransferDescriptor, StructType,
-        TransferCount, UnitSize,
+        Addr, AddrInc, AddrMode, BlockSize, Descriptor, StructType, TransferCount,
+        TransferDescriptor, UnitSize,
     },
     DmaError,
 };
@@ -96,11 +96,11 @@ impl<'a> DescList<'a> {
                     loop_transfer_desc_builder.with_link(true).build()
                 }
                 ListDescriptorBuilder::Sync(sync_desc_builder) => {
-                    sync_desc_builder.with_link(Addr::Relative(1)).build()
+                    sync_desc_builder.with_link(Addr::Relative(1), true).build()
                 }
-                ListDescriptorBuilder::Immediate(immediate_desc_builder) => {
-                    immediate_desc_builder.with_link(Addr::Relative(1)).build()
-                }
+                ListDescriptorBuilder::Immediate(immediate_desc_builder) => immediate_desc_builder
+                    .with_link(Addr::Relative(1), true)
+                    .build(),
             };
         }
     }
@@ -159,9 +159,9 @@ impl TransferDescBuilder {
         }
     }
 
-    pub const fn with_struct_req(self) -> Self {
+    pub const fn with_struct_req(self, is_struct_req: bool) -> Self {
         Self {
-            inner: self.inner.with_struct_req(),
+            inner: self.inner.with_struct_req(is_struct_req),
         }
     }
 
@@ -171,9 +171,9 @@ impl TransferDescBuilder {
         }
     }
 
-    pub const fn with_byte_swap(self) -> Self {
+    pub const fn with_byte_swap(self, is_byte_swapped: bool) -> Self {
         Self {
-            inner: self.inner.with_byte_swap(),
+            inner: self.inner.with_byte_swap(is_byte_swapped),
         }
     }
 
@@ -185,15 +185,15 @@ impl TransferDescBuilder {
         }
     }
 
-    pub const fn with_req_mode_all(self) -> Self {
+    pub const fn with_req_mode_all(self, is_req_mode_all: bool) -> Self {
         Self {
-            inner: self.inner.with_req_mode_all(),
+            inner: self.inner.with_req_mode_all(is_req_mode_all),
         }
     }
 
-    pub const fn with_ignore_single_requests(self) -> Self {
+    pub const fn with_ignore_single_requests(self, is_ignored: bool) -> Self {
         Self {
-            inner: self.inner.with_ignore_single_requests(),
+            inner: self.inner.with_ignore_single_requests(is_ignored),
         }
     }
 
@@ -374,8 +374,8 @@ impl SyncDescBuilder {
         self
     }
 
-    const fn with_link(mut self, addr: Addr) -> Self {
-        self.descr.link_set(true);
+    const fn with_link(mut self, addr: Addr, is_linked: bool) -> Self {
+        self.descr.link_set(is_linked);
 
         match addr {
             Addr::Absolute(addr) => {
@@ -424,8 +424,8 @@ impl ImmediateDescBuilder {
         self
     }
 
-    const fn with_link(mut self, addr: Addr) -> Self {
-        self.descr.link_set(true);
+    const fn with_link(mut self, addr: Addr, is_linked: bool) -> Self {
+        self.descr.link_set(is_linked);
 
         match addr {
             Addr::Absolute(addr) => {

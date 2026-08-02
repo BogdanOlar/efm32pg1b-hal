@@ -549,7 +549,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 first_descr_units.try_into().unwrap(),
                 unit,
             )
-            .with_struct_req()
+            .with_struct_req(true)
             .with_block_size(descriptor::BlockSize::All);
 
             if remaining_units > 0 {
@@ -584,7 +584,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                     descr_units.try_into().unwrap(),
                     unit,
                 )
-                .with_struct_req()
+                .with_struct_req(true)
                 .with_block_size(descriptor::BlockSize::All);
 
                 if !is_last {

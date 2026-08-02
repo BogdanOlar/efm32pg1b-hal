@@ -96,6 +96,7 @@ defmt = [
 ]
 # Module level debug features
 ## Spi
+### Print out some `info!()` about events related to Spi DMA transaction
 debug-spi-dma-defmt-info = []
 
 [profile.release]

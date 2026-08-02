@@ -46,8 +46,8 @@ impl TransferDescriptor {
         Self { descr }
     }
 
-    pub const fn with_struct_req(mut self) -> Self {
-        self.descr.struct_req_set(true);
+    pub const fn with_struct_req(mut self, is_struct_req: bool) -> Self {
+        self.descr.struct_req_set(is_struct_req);
         self
     }
 
@@ -56,8 +56,8 @@ impl TransferDescriptor {
         self
     }
 
-    pub const fn with_byte_swap(mut self) -> Self {
-        self.descr.byte_swap_set(true);
+    pub const fn with_byte_swap(mut self, is_byte_swapped: bool) -> Self {
+        self.descr.byte_swap_set(is_byte_swapped);
         self
     }
 
@@ -68,13 +68,13 @@ impl TransferDescriptor {
         self
     }
 
-    pub const fn with_req_mode_all(mut self) -> Self {
-        self.descr.req_mode_set(true);
+    pub const fn with_req_mode_all(mut self, is_req_mode_all: bool) -> Self {
+        self.descr.req_mode_set(is_req_mode_all);
         self
     }
 
-    pub const fn with_ignore_single_requests(mut self) -> Self {
-        self.descr.ignore_sreq_set(true);
+    pub const fn with_ignore_single_requests(mut self, is_ignored: bool) -> Self {
+        self.descr.ignore_sreq_set(is_ignored);
         self
     }
 
@@ -190,10 +190,10 @@ impl Descriptor {
             (struct_type as u32 & Self::CTRL_STRUCT_TYPE_MASK) << Self::CTRL_STRUCT_TYPE_OFFSET;
     }
 
-    pub(crate) const fn struct_req_set(&mut self, do_struct_req: bool) {
+    pub(crate) const fn struct_req_set(&mut self, is_struct_req: bool) {
         self.raw[Self::INDEX_CTRL] &= !(Self::CTRL_STRUCT_REQ_MASK << Self::CTRL_STRUCT_REQ_OFFSET);
         self.raw[Self::INDEX_CTRL] |=
-            (do_struct_req as u32 & Self::CTRL_STRUCT_REQ_MASK) << Self::CTRL_STRUCT_REQ_OFFSET;
+            (is_struct_req as u32 & Self::CTRL_STRUCT_REQ_MASK) << Self::CTRL_STRUCT_REQ_OFFSET;
     }
 
     pub(crate) const fn xfer_count_set(&mut self, count: u16) {
