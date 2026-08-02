@@ -400,7 +400,7 @@ fn build_drivers(p: Peripherals) -> (SpiDma<0>, Crc<u32>) {
 ///
 /// Values of `dst_buf`, `dst_len`, `dst_offset` must conform to:
 ///
-/// ```
+/// ```rs,no_run
 ///     assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset)
 /// ```
 fn test_transfer<T: SpiBus + ErrorType>(
