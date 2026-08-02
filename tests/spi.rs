@@ -269,7 +269,7 @@ fn test_spi_bus_transfer<T: SpiBus + ErrorType>(
         for (i, b) in dst[start_index..end_index].iter().enumerate() {
             if *b != FILLER_VALUE {
                 error!(
-                    "Dst filler: expected {}, found {}, at index {}",
+                    "Dst filler: expected 0x{:X}, found 0x{:X}, at index {}",
                     FILLER_VALUE,
                     *b,
                     i + start_index
