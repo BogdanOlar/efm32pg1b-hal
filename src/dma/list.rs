@@ -2,7 +2,7 @@
 ///
 use crate::dma::{
     descriptor::{
-        Addr, AddrInc, AddrMode, BlockSize, Descriptor, RawTransferDescBuilder, StructType,
+        Addr, AddrInc, AddrMode, BlockSize, Descriptor, TransferDescriptor, StructType,
         TransferCount, UnitSize,
     },
     DmaError,
@@ -148,14 +148,14 @@ impl From<ImmediateDescBuilder> for ListDescriptorBuilder {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Default, Clone, Copy)]
 pub struct TransferDescBuilder {
-    inner: RawTransferDescBuilder,
+    inner: TransferDescriptor,
 }
 
 impl TransferDescBuilder {
     /// Build a new Transfer Descriptor
     pub const fn new(src: Addr, dst: Addr, count: TransferCount, unit: UnitSize) -> Self {
         Self {
-            inner: RawTransferDescBuilder::new(src, dst, count, unit),
+            inner: TransferDescriptor::new(src, dst, count, unit),
         }
     }
 

@@ -6,7 +6,7 @@ use crate::{
         descriptor::{
             Addr,
             AddrInc::{self},
-            Descriptor, RawTransferDescBuilder, TransferCount, UnitSize,
+            Descriptor, TransferCount, TransferDescriptor, UnitSize,
         },
         list::{DescList, ImmediateDescBuilder, LoopTransferDescBuilder, TransferDescBuilder},
         ChReqSel, ChannelId, DmaChannel, DmaError,
@@ -254,7 +254,7 @@ fn reduced(
     unit_count: usize,
     is_done: bool,
     mut desc_list: DescList,
-) -> Result<(RawTransferDescBuilder, DescList), DmaError> {
+) -> Result<(TransferDescriptor, DescList), DmaError> {
     const NON_LOOP_TRANSFER_COUNT: usize = 2;
     const MAX_LOOP_COUNT: usize = u8::MAX as usize;
     const MAX_TRANSFER_COUNT: usize =
@@ -283,7 +283,7 @@ fn reduced(
             .write(|w| unsafe { w.loopcnt().bits(loop_count as u8) });
     }
 
-    let raw_desc = RawTransferDescBuilder::new(
+    let raw_desc = TransferDescriptor::new(
         Addr::Absolute(src_addr),
         Addr::Absolute(dst_addr),
         if remainder > 0 {

@@ -1,18 +1,18 @@
 //! DMA Descriptors
 //!
 
-/// XFER Descriptor builder
+/// XFER Descriptor
 ///
 /// This descriptor defines a typical data transfer which may be a Normal or Link transfer.
 ///
 /// This is the only descriptor which can be written directly into LDMA's registers
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Default, Clone, Copy)]
-pub struct RawTransferDescBuilder {
+pub struct TransferDescriptor {
     descr: Descriptor,
 }
 
-impl RawTransferDescBuilder {
+impl TransferDescriptor {
     /// Build a new Transfer Descriptor
     pub const fn new(src: Addr, dst: Addr, count: TransferCount, unit: UnitSize) -> Self {
         let mut descr = Descriptor::const_default();
@@ -341,7 +341,7 @@ impl Default for Addr {
     }
 }
 
-///Source/Destination Address Increment Size
+/// Address Increment
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u8)]
