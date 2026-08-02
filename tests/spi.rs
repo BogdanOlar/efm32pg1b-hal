@@ -62,10 +62,10 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_short_symmetric(p: Peripherals) {
+    fn transfer_u8_dma_tx_1_rx_1(p: Peripherals) {
         // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
+        const SRC_LEN: usize = 1;
+        const DST_LEN: usize = 1;
 
         // Total size of the destination buffer, including any before+after padding, which are used to test
         // under/overflow
@@ -83,10 +83,10 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_shorter_symmetric(p: Peripherals) {
+    fn transfer_u8_dma_tx_desc_1_rx_desc_1(p: Peripherals) {
         // Size of slices which will be tested
-        const SRC_LEN: usize = 1;
-        const DST_LEN: usize = 1;
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
 
         // Total size of the destination buffer, including any before+after padding, which are used to test
         // under/overflow
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_desc_2_rx_short(p: Peripherals) {
+    fn transfer_u8_dma_asymmetric_tx_desc_2_rx_1(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_short_rx_desc_2(p: Peripherals) {
+    fn transfer_u8_dma_asymmetric_tx_1_rx_desc_2(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = 1;
@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_desc_3_rx_short(p: Peripherals) {
+    fn transfer_u8_dma_asymmetric_tx_desc_3_rx_1(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_short_rx_desc_3(p: Peripherals) {
+    fn transfer_u8_dma_asymmetric_tx_1_rx_desc_3(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = 1;
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_desc_4_rx_short(p: Peripherals) {
+    fn transfer_u8_dma_asymmetric_tx_desc_4_rx_1(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_short_rx_desc_4(p: Peripherals) {
+    fn transfer_u8_dma_asymmetric_tx_1_rx_desc_4(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = 1;
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_desc_13_rx_short(p: Peripherals) {
+    fn transfer_u8_dma_asymmetric_tx_desc_13_rx_1(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 13;
@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_short_rx_desc_13(p: Peripherals) {
+    fn transfer_u8_dma_asymmetric_tx_1_rx_desc_13(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = 1;

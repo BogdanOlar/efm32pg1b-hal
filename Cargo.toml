@@ -131,6 +131,7 @@ required-features = ["defmt"]
 name = "spi"
 harness = false
 required-features = ["defmt"]
+# required-features = ["defmt", "debug-spi-dma-defmt-info"]
 
 # ==== Examples ========================================================================================================
 

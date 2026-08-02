@@ -47,7 +47,7 @@ impl<const N: u8> SpiDma<N> {
             // Set the IRQ handler for TX channel
             dma::irq::set_handler(cs, tx.id(), |id, channel_error| {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
-                info!("IRQ Tx {}", channel_error);
+                info!("IRQ Tx (error: {})", channel_error);
 
                 // signal to the main thread that transfer is resolved
                 critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_error)));
@@ -55,7 +55,7 @@ impl<const N: u8> SpiDma<N> {
             // Set the IRQ handler for RX channel
             dma::irq::set_handler(cs, rx.id(), |id, channel_error| {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
-                info!("IRQ Rx {}", channel_error);
+                info!("IRQ Rx (error: {})", channel_error);
 
                 // signal to the main thread that transfer is resolved
                 critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_error)));
@@ -205,9 +205,6 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             self.tx.set_ien();
             self.tx.set_enable();
             self.tx.start();
-
-            // // FIXME: why does this cause `tests/spi.rs` `transfer_u8_dma_short()` test to fail?! Fishy, fishy!
-            // while self.tx.busy() || self.rx.busy() {}
 
             Ok(())
         }
