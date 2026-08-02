@@ -18,7 +18,7 @@ use defmt::info;
 use embedded_hal::spi::{ErrorType, SpiBus};
 
 /// Maximum number of DMA descriptors in [`SpiDma::descriptors`]
-const DESC_COUNT: usize = 10;
+const DESC_COUNT: usize = 6;
 
 /// SPI master which implements `SpiBus` trait
 #[derive(Debug)]
