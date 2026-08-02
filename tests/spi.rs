@@ -16,7 +16,7 @@ pub use fugit::RateExtU32;
 #[cfg(test)]
 #[embedded_test::tests]
 mod tests {
-    use crate::{build_drivers, test_spi_bus_transfer};
+    use crate::{build_drivers, test_transfer};
     use defmt_rtt as _;
     use efm32pg1b_hal::{
         cmu::CmuExt,
@@ -56,7 +56,7 @@ mod tests {
         let dst_len = dst_buf.len();
         let src = &SRC_BUF;
 
-        let test_res = test_spi_bus_transfer(src, &mut dst_buf, dst_len, 0, &mut spi, &crc);
+        let test_res = test_transfer(src, &mut dst_buf, dst_len, 0, &mut spi, &crc);
         assert!(test_res.is_ok());
     }
 
@@ -77,8 +77,7 @@ mod tests {
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
-        let test_res =
-            test_spi_bus_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
         assert!(test_res.is_ok());
     }
 
@@ -99,13 +98,10 @@ mod tests {
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
-        let test_res =
-            test_spi_bus_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
         assert!(test_res.is_ok());
     }
 
-    /// SPI transfer uses just one descriptor for both TX and RX
-    /// RX slice is smaller than TX slice
     #[test]
     #[timeout(5)]
     fn transfer_u8_dma_short_asymmetric_rx_shorter(p: Peripherals) {
@@ -123,13 +119,10 @@ mod tests {
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
-        let test_res =
-            test_spi_bus_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
         assert!(test_res.is_ok());
     }
 
-    /// SPI transfer uses just one descriptor for both TX and RX
-    /// RX slice is larger than TX slice
     #[test]
     #[timeout(5)]
     fn transfer_u8_dma_short_asymmetric_rx_longer(p: Peripherals) {
@@ -147,8 +140,191 @@ mod tests {
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
-        let test_res =
-            test_spi_bus_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_asymmetric_tx_desc_2_rx_short(p: Peripherals) {
+        // Size of slices which will be tested
+        // TX
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
+        // RX
+        const DST_LEN: usize = 1;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_asymmetric_tx_short_rx_desc_2(p: Peripherals) {
+        // Size of slices which will be tested
+        // TX
+        const SRC_LEN: usize = 1;
+        // RX
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_asymmetric_tx_desc_3_rx_short(p: Peripherals) {
+        // Size of slices which will be tested
+        // TX
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
+        // RX
+        const DST_LEN: usize = 1;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_asymmetric_tx_short_rx_desc_3(p: Peripherals) {
+        // Size of slices which will be tested
+        // TX
+        const SRC_LEN: usize = 1;
+        // RX
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_asymmetric_tx_desc_4_rx_short(p: Peripherals) {
+        // Size of slices which will be tested
+        // TX
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
+        // RX
+        const DST_LEN: usize = 1;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_asymmetric_tx_short_rx_desc_4(p: Peripherals) {
+        // Size of slices which will be tested
+        // TX
+        const SRC_LEN: usize = 1;
+        // RX
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_asymmetric_tx_desc_13_rx_short(p: Peripherals) {
+        // Size of slices which will be tested
+        // TX
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 13;
+        // RX
+        const DST_LEN: usize = 1;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_asymmetric_tx_short_rx_desc_13(p: Peripherals) {
+        // Size of slices which will be tested
+        // TX
+        const SRC_LEN: usize = 1;
+        // RX
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 13;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
         assert!(test_res.is_ok());
     }
 
@@ -156,7 +332,7 @@ mod tests {
     /// TX and RX slices have the same size
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_long_symmetric(p: Peripherals) {
+    fn transfer_u8_dma_max_symmetric(p: Peripherals) {
         // Size of slices which will be tested
         const SRC_LEN: usize = SRC_BUF_SIZE;
         const DST_LEN: usize = SRC_BUF_SIZE;
@@ -171,8 +347,7 @@ mod tests {
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
-        let test_res =
-            test_spi_bus_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
         assert!(test_res.is_ok());
     }
 
@@ -221,7 +396,14 @@ fn build_drivers(p: Peripherals) -> (SpiDma<0>, Crc<u32>) {
     (spi, crc)
 }
 
-fn test_spi_bus_transfer<T: SpiBus + ErrorType>(
+/// Test [`SpiBus`] transfer
+///
+/// Values of `dst_buf`, `dst_len`, `dst_offset` must conform to:
+///
+/// ```
+///     assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset)
+/// ```
+fn test_transfer<T: SpiBus + ErrorType>(
     src: &[u8],
     dst_buf: &mut [u8],
     dst_len: usize,
@@ -230,6 +412,7 @@ fn test_spi_bus_transfer<T: SpiBus + ErrorType>(
     crc: &Crc<u32>,
 ) -> Result<(), ()> {
     const FILLER_VALUE: u8 = 0xFF;
+
     assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset);
     let dst = &mut dst_buf[dst_offset..dst_offset + dst_len];
 
