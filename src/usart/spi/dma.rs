@@ -84,11 +84,11 @@ impl<const N: u8> SpiDma<N> {
 
 impl<const N: u8> SpiBus for SpiDma<N> {
     fn read(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
-        todo!()
+        self.transfer(words, &[])
     }
 
     fn write(&mut self, words: &[u8]) -> Result<(), Self::Error> {
-        todo!()
+        self.transfer(&mut [], words)
     }
 
     fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Self::Error> {

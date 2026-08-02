@@ -16,7 +16,7 @@ pub use fugit::RateExtU32;
 #[cfg(test)]
 #[embedded_test::tests]
 mod tests {
-    use crate::{build_drivers, test_transfer};
+    use crate::{build_drivers, test_read, test_transfer, test_write};
     use defmt_rtt as _;
     use efm32pg1b_hal::{
         cmu::CmuExt,
@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8(p: Peripherals) {
+    fn transfer_u8_sync(p: Peripherals) {
         let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
         let clocks = p.cmu.split();
         let gpio = Gpio::new(p.gpio);
@@ -52,11 +52,32 @@ mod tests {
         assert!(rs_br.is_ok());
 
         // Set the `dst` length to a multiple of 1
-        let mut dst_buf: [u8; SRC_BUF_SIZE] = [0; _];
+        let mut dst_buf: [u8; Descriptor::MAX_TRANSFER_UNITS] = [0; _];
         let dst_len = dst_buf.len();
         let src = &SRC_BUF;
 
         let test_res = test_transfer(src, &mut dst_buf, dst_len, 0, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn transfer_u8_dma_tx_0_rx_0(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
         assert!(test_res.is_ok());
     }
 
@@ -188,7 +209,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_desc_2_rx_1(p: Peripherals) {
+    fn transfer_u8_dma_tx_desc_2_rx_1(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
@@ -211,7 +232,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_1_rx_desc_2(p: Peripherals) {
+    fn transfer_u8_dma_tx_1_rx_desc_2(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = 1;
@@ -234,7 +255,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_desc_3_rx_1(p: Peripherals) {
+    fn transfer_u8_dma_tx_desc_3_rx_1(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
@@ -257,7 +278,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_1_rx_desc_3(p: Peripherals) {
+    fn transfer_u8_dma_tx_1_rx_desc_3(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = 1;
@@ -280,7 +301,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_desc_4_rx_1(p: Peripherals) {
+    fn transfer_u8_dma_tx_desc_4_rx_1(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
@@ -303,7 +324,7 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_1_rx_desc_4(p: Peripherals) {
+    fn transfer_u8_dma_tx_1_rx_desc_4(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = 1;
@@ -326,10 +347,10 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_desc_13_rx_1(p: Peripherals) {
+    fn transfer_u8_dma_tx_desc_max_min_1_rx_1(p: Peripherals) {
         // Size of slices which will be tested
         // TX
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 13;
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
         // RX
         const DST_LEN: usize = 1;
 
@@ -349,12 +370,12 @@ mod tests {
 
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_asymmetric_tx_1_rx_desc_13(p: Peripherals) {
+    fn transfer_u8_dma_tx_1_rx_desc_max_min_1(p: Peripherals) {
         // Size of slices which will be tested
         // TX
         const SRC_LEN: usize = 1;
         // RX
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 13;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
 
         // Total size of the destination buffer, including any before+after padding, which are used to test
         // under/overflow
@@ -374,10 +395,10 @@ mod tests {
     /// TX and RX slices have the same size
     #[test]
     #[timeout(5)]
-    fn transfer_u8_dma_max_symmetric(p: Peripherals) {
+    fn transfer_u8_dma_max_ram(p: Peripherals) {
         // Size of slices which will be tested
-        const SRC_LEN: usize = SRC_BUF_SIZE;
-        const DST_LEN: usize = SRC_BUF_SIZE;
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
 
         // Total size of the destination buffer, including any before+after padding, which are used to test
         // under/overflow
@@ -393,11 +414,372 @@ mod tests {
         assert!(test_res.is_ok());
     }
 
+    #[test]
+    #[timeout(5)]
+    fn read_u8_dma_rx_0(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn read_u8_dma_rx_1(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = 1;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn read_u8_dma_rx_desc_1(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn read_u8_dma_rx_desc_2(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn read_u8_dma_rx_desc_3(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn read_u8_dma_rx_desc_4(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn read_u8_dma_rx_desc_max_min_1(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn read_u8_dma_rx_desc_max_ram(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn write_u8_dma_tx_0(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 0;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn write_u8_dma_tx_1(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = 1;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn write_u8_dma_tx_desc_1(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn write_u8_dma_tx_desc_2(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn write_u8_dma_tx_desc_3(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn write_u8_dma_tx_desc_4(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn write_u8_dma_tx_desc_max_min_1(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn write_u8_dma_tx_desc_max_ram(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
+    fn write_u8_dma_tx_desc_max_rom(p: Peripherals) {
+        // Size of slices which will be tested
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_ROM_TRANSFERS;
+        const DST_LEN: usize = 0;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let (mut spi, crc) = build_drivers(p);
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
     /// `Descriptor::MAX_TRANSFER_UNITS` = `0x800` = `2048` bytes
     ///
     /// The size of RAM is 32K, and since the tests may use a destination (RX) buffer of size `SRC_U8_SIZE`, then
-    /// the value needs to be smaller than 32K (probably even smaler than that)
-    const SRC_BUF_SIZE: usize = Descriptor::MAX_TRANSFER_UNITS * 14;
+    /// the value needs to be smaller than 32K (probably less than that, since the executable also uses some memory)
+    const MAX_RAM_TRANSFERS: usize = 13;
+    /// This value may need to get adjusted as we add more tests, since it occupies the vast majority of Flash
+    const MAX_ROM_TRANSFERS: usize = 100;
+    /// Huge ROM (Flash) array
+    const SRC_BUF_SIZE: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_ROM_TRANSFERS;
 
     /// ROM Src bytes with values in repeating interval [1..254]
     #[allow(clippy::large_const_arrays)]
@@ -453,8 +835,6 @@ fn test_transfer<T: SpiBus + ErrorType>(
     spi: &mut T,
     crc: &Crc<u32>,
 ) -> Result<(), ()> {
-    const FILLER_VALUE: u8 = 0xFF;
-
     assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset);
     let dst = &mut dst_buf[dst_offset..dst_offset + dst_len];
 
@@ -462,6 +842,75 @@ fn test_transfer<T: SpiBus + ErrorType>(
     assert!(ret.is_ok());
     let ret = spi.flush();
     assert!(ret.is_ok());
+
+    let ret = test_buffers(src, dst_buf, dst_len, dst_offset, crc);
+    assert!(ret.is_ok());
+
+    Ok(())
+}
+
+/// Test [`SpiBus`] read
+///
+/// Values of `dst_buf`, `dst_len`, `dst_offset` must conform to:
+///
+/// ```rs,no_run
+///     assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset)
+/// ```
+fn test_read<T: SpiBus + ErrorType>(
+    src: &[u8],
+    dst_buf: &mut [u8],
+    dst_len: usize,
+    dst_offset: usize,
+    spi: &mut T,
+    crc: &Crc<u32>,
+) -> Result<(), ()> {
+    assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset);
+    let dst = &mut dst_buf[dst_offset..dst_offset + dst_len];
+
+    let ret = spi.read(dst);
+    assert!(ret.is_ok());
+    let ret = spi.flush();
+    assert!(ret.is_ok());
+
+    let ret = test_buffers(src, dst_buf, dst_len, dst_offset, crc);
+    assert!(ret.is_ok());
+
+    Ok(())
+}
+
+/// Test [`SpiBus`] write
+///
+fn test_write<T: SpiBus + ErrorType>(
+    src: &[u8],
+    dst_buf: &mut [u8],
+    dst_len: usize,
+    dst_offset: usize,
+    spi: &mut T,
+    crc: &Crc<u32>,
+) -> Result<(), ()> {
+    let ret = spi.write(src);
+    assert!(ret.is_ok());
+    let ret = spi.flush();
+    assert!(ret.is_ok());
+
+    let ret = test_buffers(src, dst_buf, dst_len, dst_offset, crc);
+    assert!(ret.is_ok());
+
+    Ok(())
+}
+
+/// Test the buffers after the SPI operation has completed
+fn test_buffers(
+    src: &[u8],
+    dst_buf: &[u8],
+    dst_len: usize,
+    dst_offset: usize,
+    crc: &Crc<u32>,
+) -> Result<(), ()> {
+    const FILLER_VALUE: u8 = 0xFF;
+
+    assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset);
+    let dst = &dst_buf[dst_offset..dst_offset + dst_len];
 
     // Only compare the common bytes of the two slices `src` and `dst`
     let crc_len = src.len().min(dst.len());
