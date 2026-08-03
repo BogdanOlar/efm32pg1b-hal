@@ -71,7 +71,7 @@ impl<const N: u8> SpiDma<N> {
         }
     }
 
-    /// Helper function to get the appropriate peripheral sources based on SPI instance id (`N`):
+    /// Helper function to get the appropriate peripheral DMA channel trigger sources based on SPI instance id (`N`):
     /// Returns `(tx_source, rx_source)`
     const fn sources() -> (ChReqSel, ChReqSel) {
         match N {
@@ -233,6 +233,24 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             };
 
             self.busy = false;
+            self.tx.clear_enable();
+            self.tx.clear_ien();
+            self.rx.clear_enable();
+            self.rx.clear_ien();
+
+            // FIXME: While it's true that the DMA TX and RX transfers are done, the SPI peripheral may still have
+            //        bytes in its TX/RX buffers
+            //        This synchronization should be handled in the Spi driver, not with PAC peripherals
+            {
+                use efm32pg1b_pac::Peripherals;
+
+                static mut RX_SINK: u8 = 0;
+                let p = unsafe { Peripherals::steal() };
+                while p.usart0.status().read().txidle().bit_is_clear() {
+                    unsafe { RX_SINK = p.usart0.rxdata().read().rxdata().bits() };
+                }
+            }
+
             // FIXME: don't clear the peripheral source with reset, since that's set only once when the `SpiDma` is
             //        created
             // self.tx.reset();
