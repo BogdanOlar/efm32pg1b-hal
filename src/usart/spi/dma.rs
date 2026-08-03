@@ -251,8 +251,8 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 }
             }
 
-            // FIXME: don't clear the peripheral source with reset, since that's set only once when the `SpiDma` is
-            //        created
+            // WARN: don't clear the DMA peripheral trigger sources with reset, since that's set only once when the
+            //        `SpiDma` is created
             // self.tx.reset();
             // self.rx.reset();
 
