@@ -114,6 +114,10 @@ impl DmaChannel {
     pub fn set_enable(&self) {
         mmio::chen_set(self.id());
     }
+    /// Disable channel
+    pub fn clear_enable(&self) {
+        mmio::chen_clear(self.id());
+    }
 
     /// Get channel busy (if enabled)
     pub fn busy(&self) -> bool {
@@ -154,6 +158,11 @@ impl DmaChannel {
     /// Enable channel interrupt
     pub fn set_ien(&self) {
         mmio::ien_set(self.id);
+    }
+
+    /// Disable channel interrupt
+    pub fn clear_ien(&self) {
+        mmio::ien_clear(self.id);
     }
 
     /// Enable channel halt during debugger breakpoint
