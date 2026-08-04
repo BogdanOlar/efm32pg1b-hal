@@ -876,7 +876,7 @@ pub(crate) mod pins {
     /// Get the Data In for a given pin `pin` in `port`
     #[inline(always)]
     pub(crate) fn din(port: PortId, pin: PinId) -> bool {
-        ports::get(port).din().read().pins_din().bits() as u16 & (1u16 << pin as u8) != 0
+        ports::get(port).din().read().pins_din().bits() & (1u16 << pin as u8) != 0
     }
 
     /// Return `true` if Over Voltage Tolerance is enabled for a given `pin` in `port`
