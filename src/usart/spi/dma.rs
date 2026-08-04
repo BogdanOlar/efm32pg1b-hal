@@ -238,23 +238,19 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             self.rx.clear_enable();
             self.rx.clear_ien();
 
-            // FIXME: While it's true that the DMA TX and RX transfers are done, the SPI peripheral may still have
-            //        bytes in its TX/RX buffers
-            //        This synchronization should be handled in the Spi driver, not with PAC peripherals
+            // FIXME: When the RX Dma ends followed by the TX Dma, then there are still SPI TX fifo bytes being
+            //        transacted, which causes the RX Spi buffer to not be empty when the next DMA transaction starts
+            //        causing spurious bytes to be received.
+            //        This should be done on the SPI driver level, not PAC level
             {
-                use efm32pg1b_pac::Peripherals;
-
-                static mut RX_SINK: u8 = 0;
-                let p = unsafe { Peripherals::steal() };
-                while p.usart0.status().read().txidle().bit_is_clear() {
-                    unsafe { RX_SINK = p.usart0.rxdata().read().rxdata().bits() };
+                let usart = usartx::<N>();
+                // wait for SPI TX to end
+                while usart.status().read().txidle().bit_is_clear() {}
+                // flush RX SPI buffer
+                while usart.status().read().rxdatav().bit_is_set() {
+                    let _ = usart.rxdata().read().rxdata().bits();
                 }
             }
-
-            // WARN: don't clear the DMA peripheral trigger sources with reset, since that's set only once when the
-            //        `SpiDma` is created
-            // self.tx.reset();
-            // self.rx.reset();
 
             match tx_error || rx_error {
                 true => Err(SpiError::Tx),

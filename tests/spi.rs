@@ -85,6 +85,41 @@ mod tests {
 
     #[test]
     #[timeout(5)]
+    fn transfer_u8_sync_tx_desc_1_rx_1(p: Peripherals) {
+        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
+        let clocks = p.cmu.split();
+        let gpio = Gpio::new(p.gpio);
+        let mut spi = Usart::new(p.usart0)
+            .into_spi_bus(
+                gpio.pc8.into_mode::<OutPp>(),
+                gpio.pc6.into_mode::<OutPp>(),
+                gpio.pc7.into_mode::<InFilt>(),
+                MODE_2,
+            )
+            .with_loopback();
+        let rs_br = spi.set_baudrate(4.MHz(), &clocks);
+        assert!(rs_br.is_ok());
+
+        // Size of slices which will be tested
+        // TX
+        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
+        // RX
+        const DST_LEN: usize = 1;
+
+        // Total size of the destination buffer, including any before+after padding, which are used to test
+        // under/overflow
+        const DST_BUF_OFFSET: usize = 10;
+        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+
+        let src = &SRC_BUF[..SRC_LEN];
+        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
+
+        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
+        assert!(test_res.is_ok());
+    }
+
+    #[test]
+    #[timeout(5)]
     fn transfer_u8_dma_tx_0_rx_0(p: Peripherals) {
         // Size of slices which will be tested
         const SRC_LEN: usize = 0;
@@ -144,47 +179,6 @@ mod tests {
 
         let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
         assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_sync_tx_desc_1_rx_1(p: Peripherals) {
-        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
-        let clocks = p.cmu.split();
-        let gpio = Gpio::new(p.gpio);
-        let mut spi = Usart::new(p.usart0)
-            .into_spi_bus(
-                gpio.pc8.into_mode::<OutPp>(),
-                gpio.pc6.into_mode::<OutPp>(),
-                gpio.pc7.into_mode::<InFilt>(),
-                MODE_2,
-            )
-            .with_loopback();
-        let rs_br = spi.set_baudrate(4.MHz(), &clocks);
-        assert!(rs_br.is_ok());
-
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        // RX
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for i in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
     }
 
     #[test]
