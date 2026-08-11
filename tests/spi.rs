@@ -8,7 +8,7 @@ use efm32pg1b_hal::{
     dma::Dma,
     gpio::{Gpio, InFilt, OutPp},
     pac::Peripherals,
-    usart::{spi::dma::SpiDma, Usart, UsartBuild},
+    usart::spi::{dma::SpiDma, Spi},
 };
 use embedded_hal::spi::{ErrorType, SpiBus, MODE_2};
 pub use fugit::RateExtU32;
@@ -24,7 +24,7 @@ mod tests {
         dma::descriptor::Descriptor,
         gpio::{Gpio, InFilt, OutPp},
         pac::Peripherals,
-        usart::{Usart, UsartBuild},
+        usart::spi::Spi,
     };
     use embedded_hal::spi::MODE_2;
     pub use fugit::RateExtU32;
@@ -63,14 +63,14 @@ mod tests {
         let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
         let clocks = p.cmu.split();
         let gpio = Gpio::new(p.gpio);
-        let mut spi = Usart::new(p.usart0)
-            .into_spi_bus(
-                gpio.pc8.into_mode::<OutPp>(),
-                gpio.pc6.into_mode::<OutPp>(),
-                gpio.pc7.into_mode::<InFilt>(),
-                MODE_2,
-            )
-            .with_loopback();
+        let mut spi = Spi::new(
+            p.usart0,
+            gpio.pc8.into_mode::<OutPp>(),
+            gpio.pc6.into_mode::<OutPp>(),
+            gpio.pc7.into_mode::<InFilt>(),
+            MODE_2,
+        )
+        .with_loopback();
         let rs_br = spi.set_baudrate(4.MHz(), &clocks);
         assert!(rs_br.is_ok());
 
@@ -89,14 +89,14 @@ mod tests {
         let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
         let clocks = p.cmu.split();
         let gpio = Gpio::new(p.gpio);
-        let mut spi = Usart::new(p.usart0)
-            .into_spi_bus(
-                gpio.pc8.into_mode::<OutPp>(),
-                gpio.pc6.into_mode::<OutPp>(),
-                gpio.pc7.into_mode::<InFilt>(),
-                MODE_2,
-            )
-            .with_loopback();
+        let mut spi = Spi::new(
+            p.usart0,
+            gpio.pc8.into_mode::<OutPp>(),
+            gpio.pc6.into_mode::<OutPp>(),
+            gpio.pc7.into_mode::<InFilt>(),
+            MODE_2,
+        )
+        .with_loopback();
         let rs_br = spi.set_baudrate(4.MHz(), &clocks);
         assert!(rs_br.is_ok());
 
@@ -1694,14 +1694,14 @@ fn build_drivers(p: Peripherals) -> (SpiDma<0>, Crc<u32>) {
     let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
     let clocks = p.cmu.split();
     let gpio = Gpio::new(p.gpio);
-    let mut spi = Usart::new(p.usart0)
-        .into_spi_bus(
-            gpio.pc8.into_mode::<OutPp>(),
-            gpio.pc6.into_mode::<OutPp>(),
-            gpio.pc7.into_mode::<InFilt>(),
-            MODE_2,
-        )
-        .with_loopback();
+    let mut spi = Spi::new(
+        p.usart0,
+        gpio.pc8.into_mode::<OutPp>(),
+        gpio.pc6.into_mode::<OutPp>(),
+        gpio.pc7.into_mode::<InFilt>(),
+        MODE_2,
+    )
+    .with_loopback();
 
     let rs_br = spi.set_baudrate(4.MHz(), &clocks);
     assert!(rs_br.is_ok());

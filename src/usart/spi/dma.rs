@@ -11,7 +11,7 @@ use crate::{
         list::{DescList, ImmediateDescBuilder, LoopTransferDescBuilder, TransferDescBuilder},
         ChReqSel, ChannelId, DmaChannel, DmaError,
     },
-    usart::{spi::SpiError, usarts::usartx},
+    usart::{mmio, spi::SpiError},
 };
 #[cfg(feature = "debug-spi-dma-defmt-info")]
 use defmt::info;
@@ -114,7 +114,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             // FIXME: make sure the tx DMA channel gets its "done" token
             Ok(())
         } else {
-            let usart_p = usartx::<N>();
+            let usart_p = mmio::usartx::<N>();
             let mut tx_list = DescList::new(&mut self.tx_descriptors);
             let rx_list = DescList::new(&mut self.rx_descriptors);
 
@@ -243,7 +243,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             //        causing spurious bytes to be received.
             //        This should be done on the SPI driver level, not PAC level
             {
-                let usart = usartx::<N>();
+                let usart = mmio::usartx::<N>();
                 // wait for SPI TX to end
                 while usart.status().read().txidle().bit_is_clear() {}
                 // flush RX SPI buffer

@@ -28,13 +28,7 @@ fn main() -> ! {
     let rx = gpio.pc7.into_mode::<InFilt>();
     let clk = gpio.pc8.into_mode::<OutPp>();
 
-    let usart0 = Usart::new(p.usart0);
-    let usart1 = Usart::new(p.usart1);
-
-    // We're not going to use this
-    let _usart1_p = usart1.free();
-
-    let mut spi = usart0.into_spi_bus(clk, tx, rx, spi::MODE_2);
+    let mut spi = Spi::new(p.usart0, clk, tx, rx, spi::MODE_2);
     let write_orig = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
     let mut write = write_orig;
     let mut read1 = [0; 5];

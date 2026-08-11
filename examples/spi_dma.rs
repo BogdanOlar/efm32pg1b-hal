@@ -31,14 +31,14 @@ fn transfer_u8_dma_short_asymmetric_rx_longer(p: Peripherals) {
     let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
     let clocks = p.cmu.split();
     let gpio = Gpio::new(p.gpio);
-    let mut spi = Usart::new(p.usart0)
-        .into_spi_bus(
-            gpio.pc8.into_mode::<OutPp>(),
-            gpio.pc6.into_mode::<OutPp>(),
-            gpio.pc7.into_mode::<InFilt>(),
-            MODE_2,
-        )
-        .with_loopback();
+    let mut spi = Spi::new(
+        p.usart0,
+        gpio.pc8.into_mode::<OutPp>(),
+        gpio.pc6.into_mode::<OutPp>(),
+        gpio.pc7.into_mode::<InFilt>(),
+        MODE_2,
+    )
+    .with_loopback();
 
     let rs_br = spi.set_baudrate(4.MHz(), &clocks);
     assert!(rs_br.is_ok());
@@ -86,14 +86,14 @@ fn transfer_u8_dma_long_symmetric(p: Peripherals) {
     let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
     let clocks = p.cmu.split();
     let gpio = Gpio::new(p.gpio);
-    let mut spi = Usart::new(p.usart0)
-        .into_spi_bus(
-            gpio.pc8.into_mode::<OutPp>(),
-            gpio.pc6.into_mode::<OutPp>(),
-            gpio.pc7.into_mode::<InFilt>(),
-            MODE_2,
-        )
-        .with_loopback();
+    let mut spi = Spi::new(
+        p.usart0,
+        gpio.pc8.into_mode::<OutPp>(),
+        gpio.pc6.into_mode::<OutPp>(),
+        gpio.pc7.into_mode::<InFilt>(),
+        MODE_2,
+    )
+    .with_loopback();
 
     let rs_br = spi.set_baudrate(4.MHz(), &clocks);
     assert!(rs_br.is_ok());

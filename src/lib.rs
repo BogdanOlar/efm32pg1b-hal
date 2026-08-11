@@ -40,10 +40,7 @@ pub mod prelude {
             port::{DataInCtrl, DriveStrength},
             Gpio, GpioError,
         },
-        usart::{
-            spi::{Spi, SpiError},
-            Usart, UsartBuild,
-        },
+        usart::spi::{Spi, SpiError},
     };
     pub use efm32pg1b_pac as pac;
     pub use embedded_hal::{

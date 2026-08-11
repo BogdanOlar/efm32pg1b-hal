@@ -11,7 +11,7 @@ use crate::{
         mode::{InputMode, OutputMode},
         Pin,
     },
-    usart::{spi::dma::SpiDma, usarts::usartx},
+    usart::{mmio, spi::dma::SpiDma, UsartIndex},
 };
 use core::cmp::max;
 use embedded_hal::{
@@ -29,22 +29,29 @@ pub struct Spi<const N: u8, PCLK, PTX, PRX> {
     pin_rx: PRX,
 }
 
-impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX>
-where
-    PCLK: OutputPin + UsartClkPin,
-    PTX: OutputPin + UsartTxPin,
-    PRX: InputPin + UsartRxPin,
-{
+impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX> {
     const FILLER_BYTE: u8 = 0x00;
 
-    pub(crate) fn new(pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: Mode) -> Self {
-        let mut spi = Spi {
+    /// Create a new SPI instance from a USART peripheral, clock pin, TX pin, RX pin, and mode
+    pub fn new<USART>(_usart: USART, pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: Mode) -> Self
+    where
+        USART: UsartIndex<N>,
+        PCLK: OutputPin + UsartClkPin,
+        PTX: OutputPin + UsartTxPin,
+        PRX: InputPin + UsartRxPin,
+    {
+        // Enable the clock for this USART
+        mmio::cmu_usart_enable::<N>();
+        // Reset the USART registers
+        mmio::reset::<N>();
+
+        let mut spi = Spi::<N, _, _, _> {
             pin_clk,
             pin_tx,
             pin_rx,
         };
 
-        let usart_p = usartx::<N>();
+        let usart_p = mmio::usartx::<N>();
 
         spi.reset();
 
@@ -116,13 +123,14 @@ where
     }
 
     /// Release the resources used to create this SPI instance
-    pub fn free(self) -> (PCLK, PTX, PRX) {
+    /// FIXME: return the usert peripheral too
+    pub fn release(self) -> (PCLK, PTX, PRX) {
         (self.pin_clk, self.pin_tx, self.pin_rx)
     }
 
     /// Set the SPI loopback flag
     pub fn set_loopback(&mut self, enabled: bool) {
-        let usart_p = usartx::<N>();
+        let usart_p = mmio::usartx::<N>();
         usart_p.ctrl().write(|w| match enabled {
             true => w.loopbk().set_bit(),
             false => w.loopbk().clear_bit(),
@@ -137,7 +145,7 @@ where
         baudrate: HertzU32,
         clocks: &Clocks,
     ) -> Result<HertzU32, SpiError> {
-        let usart_p = usartx::<N>();
+        let usart_p = mmio::usartx::<N>();
 
         // A baudrate of 0 makes no sense
         if baudrate.raw() == 0 {
@@ -170,7 +178,7 @@ where
     ///   - [`MODE_2`](`embedded_hal::spi::MODE_2`): CPOL = 1, CPHA = 0
     ///   - [`MODE_3`](`embedded_hal::spi::MODE_3`): CPOL = 1, CPHA = 1
     pub fn set_mode(&mut self, mode: Mode) {
-        let usart_p = usartx::<N>();
+        let usart_p = mmio::usartx::<N>();
 
         usart_p.ctrl().modify(|_, w| {
             w.clkpol()
@@ -186,7 +194,7 @@ where
     }
 
     fn reset(&mut self) {
-        let usart_p = usartx::<N>();
+        let usart_p = mmio::usartx::<N>();
 
         // Use CMD first
         usart_p.cmd().write(|w| {
@@ -241,7 +249,7 @@ where
         // TODO: maybe calculate a counter based on minimum possible baudrate.
         const MAX_COUNT: u32 = 1_000_000;
         let mut bail_countdown = MAX_COUNT;
-        let usart_p = usartx::<N>();
+        let usart_p = mmio::usartx::<N>();
 
         while usart_p.status().read().txc().bit_is_clear() {
             bail_countdown -= 1;
@@ -303,7 +311,7 @@ where
 
     fn write(&mut self, words: &[u8]) -> Result<(), Self::Error> {
         let mut words_iter = words.iter();
-        let usart_p = usartx::<N>();
+        let usart_p = mmio::usartx::<N>();
 
         // This closure  waits until there are at least 2 (out of 3) bytes available in the TX buffer
         // The first position in the TX Buffer is the Shift Register, which is not accessible through registers
@@ -327,7 +335,7 @@ where
         };
 
         while let Some(b0) = words_iter.next() {
-            let usart_p = usartx::<N>();
+            let usart_p = mmio::usartx::<N>();
             wait_for_buffer_space()?;
 
             if let Some(b1) = words_iter.next() {
@@ -350,7 +358,7 @@ where
         let mut tx_iter = write.iter();
         let mut rx_iter = read.iter_mut();
         let mut rx_discard = 0;
-        let usart_p = usartx::<N>();
+        let usart_p = mmio::usartx::<N>();
 
         for (txo, rxo) in (0..max_byte_count).map(|_| (tx_iter.next(), rx_iter.next())) {
             let tx_byte = match txo {
@@ -379,7 +387,7 @@ where
         let mut words_iter = words.iter_mut();
 
         while let Some(b0) = words_iter.next() {
-            let usart_p = usartx::<N>();
+            let usart_p = mmio::usartx::<N>();
 
             if let Some(b1) = words_iter.next() {
                 // We have 2 bytes to send, use the `txdouble` register

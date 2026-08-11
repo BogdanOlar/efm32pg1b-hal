@@ -1,94 +1,25 @@
 //! Universal Synchronous Asynchronous Receiver/Transmitter
 //!
-//! Usart driver for either [`Usart0`](`crate::pac::Usart0`) or [`Usart1`](`crate::pac::Usart1`) PAC peripherals
-//!
-//! Is responsible for specialising the Usart into specific functions (SPI, UART, etc)
-//!
-//! The corresponding clock for USART0 or USART1 is only enabled when the Usart is specialised into Spi, Uart, etc, and
-//! is disabled when the Usart is freed with [`Usart::free`](`crate::usart::Usart::free`)
-
-use crate::{
-    pac::Cmu,
-    usart::{
-        spi::{Spi, UsartClkPin, UsartRxPin, UsartTxPin},
-        usarts::usartx,
-    },
-    Sealed,
-};
-use core::fmt;
-use embedded_hal::{
-    digital::{InputPin, OutputPin},
-    spi::Mode,
-};
+//! This module provides SPI drivers for the USART peripherals
 
 pub mod spi;
 
-/// Helper trait to create/free `Usart` instances from either [`Usart0`](`crate::pac::Usart0`) or
-/// [`Usart1`](`crate::pac::Usart1`)
-pub trait UsartBuild<const N: u8, USART>: Sealed {
-    /// Create a Usart driver using one of the PAC peripherals:
-    /// [`Usart0`](`crate::pac::Usart0`) or [`Usart1`](`crate::pac::Usart1`)
-    fn new(usart_p: USART) -> Self;
+/// Helper module for accessing USART register blocks
+pub(crate) mod mmio {
+    use crate::pac::{usart0::RegisterBlock, Usart0, Usart1};
 
-    /// Free the PAC peripheral used to create this driver, and disable the corresponding USART peripheral clock
-    fn free(self) -> USART;
-}
-
-impl UsartBuild<0, crate::pac::Usart0> for Usart<0> {
-    fn new(_usart_p: crate::pac::Usart0) -> Self {
-        let mut usart = Self { _p: () };
-        usart.reset();
-        usart
+    /// Get a reference to the `RegisterBlock` of either `Usart0` or `Usart1`
+    pub(crate) const fn usartx<const N: u8>() -> &'static RegisterBlock {
+        match N {
+            0 => unsafe { &*Usart0::ptr() },
+            1 => unsafe { &*Usart1::ptr() },
+            _ => unreachable!(),
+        }
     }
 
-    fn free(mut self) -> crate::pac::Usart0 {
-        self.reset();
-        self.disable();
-        unsafe { crate::pac::Usart0::steal() }
-    }
-}
-
-impl UsartBuild<1, crate::pac::Usart1> for Usart<1> {
-    fn new(_usart_p: crate::pac::Usart1) -> Self {
-        let mut usart = Self { _p: () };
-        usart.reset();
-        usart
-    }
-
-    fn free(mut self) -> crate::pac::Usart1 {
-        self.reset();
-        self.disable();
-        unsafe { crate::pac::Usart1::steal() }
-    }
-}
-
-/// Usart driver
-pub struct Usart<const N: u8> {
-    _p: (),
-}
-
-impl<const N: u8> Usart<N> {
-    /// Specialize the Usart peripheral into an SPI Master which implements the [`SpiBus`](`embedded_hal::spi::SpiBus`)
-    /// trait
-    pub fn into_spi_bus<PCLK, PTX, PRX>(
-        mut self,
-        pin_clk: PCLK,
-        pin_tx: PTX,
-        pin_rx: PRX,
-        mode: Mode,
-    ) -> Spi<N, PCLK, PTX, PRX>
-    where
-        PCLK: OutputPin + UsartClkPin,
-        PTX: OutputPin + UsartTxPin,
-        PRX: InputPin + UsartRxPin,
-    {
-        self.enable();
-        Spi::new(pin_clk, pin_tx, pin_rx, mode)
-    }
-
-    fn enable(&mut self) {
-        let cmu = unsafe { Cmu::steal() };
-
+    /// Enable the clock for a USART peripheral
+    pub(crate) fn cmu_usart_enable<const N: u8>() {
+        let cmu = unsafe { crate::pac::Cmu::steal() };
         cmu.hfperclken0().modify(|_, w| match N {
             0 => w.usart0().set_bit(),
             1 => w.usart1().set_bit(),
@@ -96,18 +27,10 @@ impl<const N: u8> Usart<N> {
         });
     }
 
-    fn disable(&mut self) {
-        let cmu = unsafe { Cmu::steal() };
-
-        cmu.hfperclken0().modify(|_, w| match N {
-            0 => w.usart0().clear_bit(),
-            1 => w.usart1().clear_bit(),
-            _ => unreachable!(),
-        });
-    }
-
-    fn reset(&mut self) {
+    /// Reset a USART peripheral's registers
+    pub(crate) fn reset<const N: u8>() {
         let usart_p = usartx::<N>();
+
         // Write disable commands first
         usart_p.cmd().write(|w| {
             w.rxdis().set_bit();
@@ -145,31 +68,9 @@ impl<const N: u8> Usart<N> {
     }
 }
 
-impl Sealed for Usart<0> {}
-impl Sealed for Usart<1> {}
+/// Marker trait to link a USART peripheral type to its const N index
+pub trait UsartIndex<const N: u8> {}
 
-impl<const N: u8> fmt::Debug for Usart<N> {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_fmt(format_args!("Usart<{N}>"))
-    }
-}
+impl UsartIndex<0> for crate::pac::Usart0 {}
 
-#[cfg(feature = "defmt")]
-impl<const N: u8> defmt::Format for Usart<N> {
-    fn format(&self, f: defmt::Formatter) {
-        defmt::write!(f, "Usart<{}>", N);
-    }
-}
-
-pub(crate) mod usarts {
-    use crate::pac::{usart0::RegisterBlock, Usart0, Usart1};
-
-    /// Get a reference to the `RegisterBlock` of either `Usart0` or `Usart1`
-    pub(crate) const fn usartx<const N: u8>() -> &'static RegisterBlock {
-        match N {
-            0 => unsafe { &*Usart0::ptr() },
-            1 => unsafe { &*Usart1::ptr() },
-            _ => unreachable!(),
-        }
-    }
-}
+impl UsartIndex<1> for crate::pac::Usart1 {}
