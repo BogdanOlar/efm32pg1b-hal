@@ -151,8 +151,8 @@ impl DmaChannel {
     }
 
     /// Write a descriptor to the channel DMA descriptor registers
-    pub fn set_descriptor(&self, descr: &Descriptor) {
-        mmio::ch_write_descriptor(self.id, descr);
+    pub fn set_descriptor(&self, descr: TransferDescriptor) {
+        mmio::ch_write_descriptor(self.id, &descr.into_inner());
     }
 
     /// Enable channel interrupt
@@ -459,7 +459,8 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
         // First descriptor is always written directly to the DMA peripheral in order to support transfers smaller than
         // the size of a descriptor (in which case we don't use descriptor linked list)
-        mmio::ch_write_descriptor(self.id, &first_descriptor);
+        // FIXME: maybe write this to the channel, not the regs directly?
+        mmio::ch_write_descriptor(self.id, &first_descriptor.into_inner());
 
         // start the transfer
         mmio::ien_set(self.id);
@@ -537,7 +538,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         last_chunk_min_units: usize,
         descriptor_list: &mut [Descriptor],
         unit: UnitSize,
-    ) -> Descriptor {
+    ) -> TransferDescriptor {
         let mut remaining_units = total_units;
 
         // Create first descriptor
@@ -566,7 +567,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                     descr_builder.with_link(Addr::Absolute(descriptor_list.as_ptr().addr()), true);
             }
 
-            descr_builder.build()
+            descr_builder
         };
 
         // Fill in the linked descriptors
@@ -586,24 +587,20 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
             let addr_offset = (total_units - remaining_units) * unit.byte_count();
 
-            let descr = {
-                let mut descr_builder = TransferDescriptor::new(
-                    Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset),
-                    Addr::Absolute(self.params.as_ref().unwrap().dst.as_ptr().addr() + addr_offset),
-                    descr_units.try_into().unwrap(),
-                    unit,
-                )
-                .with_struct_req(true)
-                .with_block_size(descriptor::BlockSize::All);
+            let mut transfer_descr = TransferDescriptor::new(
+                Addr::Absolute(self.params.as_ref().unwrap().src.as_ptr().addr() + addr_offset),
+                Addr::Absolute(self.params.as_ref().unwrap().dst.as_ptr().addr() + addr_offset),
+                descr_units.try_into().unwrap(),
+                unit,
+            )
+            .with_struct_req(true)
+            .with_block_size(descriptor::BlockSize::All);
 
-                if !is_last {
-                    descr_builder = descr_builder.with_link(Addr::Relative(1), true);
-                }
+            if !is_last {
+                transfer_descr = transfer_descr.with_link(Addr::Relative(1), true);
+            }
 
-                descr_builder.build()
-            };
-
-            *ser_descr = descr;
+            *ser_descr = transfer_descr.into_inner();
             remaining_units -= descr_units;
         }
         assert_eq!(remaining_units, 0);

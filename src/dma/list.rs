@@ -91,7 +91,7 @@ impl<'a> DescList<'a> {
                 ListDescriptorBuilder::Transfer(transfer_desc_builder) => transfer_desc_builder
                     .inner
                     .with_link(Addr::Relative(1), true)
-                    .build(),
+                    .into_inner(),
                 ListDescriptorBuilder::LoopTransfer(loop_transfer_desc_builder) => {
                     loop_transfer_desc_builder.with_link(true).build()
                 }
@@ -210,7 +210,7 @@ impl TransferDescBuilder {
     }
 
     pub(crate) const fn build(self) -> Descriptor {
-        self.inner.build()
+        self.inner.into_inner()
     }
 }
 

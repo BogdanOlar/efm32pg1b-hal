@@ -155,7 +155,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     desc = desc.with_link(Addr::Absolute(tx_list.storage_addr()), true);
                 }
 
-                self.tx.set_descriptor(&desc.build());
+                self.tx.set_descriptor(desc);
             } else if tx_filler_units > 0 {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("TX tx_filler_units {}", tx_filler_units);
@@ -171,7 +171,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     true,
                     tx_list,
                 )?;
-                self.tx.set_descriptor(&desc.build());
+                self.tx.set_descriptor(desc);
             }
 
             // RX
@@ -190,7 +190,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     true,
                     rx_list,
                 )?;
-                self.rx.set_descriptor(&desc.build());
+                self.rx.set_descriptor(desc);
             }
 
             // start the transfer

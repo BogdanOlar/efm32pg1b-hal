@@ -5,7 +5,8 @@
 ///
 /// This descriptor defines a typical data transfer which may be a Normal or Link transfer.
 ///
-/// This is the only descriptor which can be written directly into LDMA's registers
+/// This is the only descriptor which can be written directly to a LDMA Channel's registers
+/// [`crate::dma::DmaChannel::set_descriptor()`]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Default, Clone, Copy)]
 pub struct TransferDescriptor {
@@ -107,7 +108,7 @@ impl TransferDescriptor {
         self
     }
 
-    pub const fn build(self) -> Descriptor {
+    pub const fn into_inner(self) -> Descriptor {
         self.descr
     }
 }
