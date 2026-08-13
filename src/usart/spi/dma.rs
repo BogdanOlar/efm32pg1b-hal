@@ -6,9 +6,10 @@ use crate::{
         descriptor::{
             Addr,
             AddrInc::{self},
-            Descriptor, TransferCount, TransferDescriptor, UnitSize,
+            Descriptor, ImmediateDescriptor, LoopTransferDescriptor, TransferCount,
+            TransferDescriptor, UnitSize,
         },
-        list::{DescList, ImmediateDescBuilder, LoopTransferDescBuilder},
+        list::DescList,
         ChReqSel, ChannelId, DmaChannel, DmaError,
     },
     usart::{mmio, spi::SpiError},
@@ -328,8 +329,8 @@ fn reduced(
         info!("\t transfer_count: {}", &transfer_count);
 
         if iteration_count > 0 {
-            desc_list = desc_list.push(
-                LoopTransferDescBuilder::new(
+            desc_list = desc_list.push_linked(
+                LoopTransferDescriptor::new(
                     Addr::Relative(0),
                     Addr::Relative(0),
                     TransferCount::MAX,
@@ -341,7 +342,7 @@ fn reduced(
             )?;
         }
 
-        desc_list = desc_list.push(
+        desc_list = desc_list.push_linked(
             TransferDescriptor::new(
                 Addr::Relative(0),
                 Addr::Relative(0),
@@ -391,7 +392,7 @@ fn extended(
         #[cfg(feature = "debug-spi-dma-defmt-info")]
         info!("\t Loop: {}", &loop_count);
 
-        desc_list = desc_list.push(ImmediateDescBuilder::new(
+        desc_list = desc_list.push_linked(ImmediateDescriptor::new(
             (loop_count - 1) as u32,
             crate::dma::mmio::dma()
                 .ch(dma_ch_id as usize)
@@ -401,7 +402,7 @@ fn extended(
         ))?;
     }
 
-    desc_list = desc_list.push(
+    desc_list = desc_list.push_linked(
         TransferDescriptor::new(
             Addr::Absolute(src_addr),
             Addr::Absolute(dst_addr),
@@ -422,8 +423,8 @@ fn extended(
         info!("\t transfer_count: {}", &transfer_count);
 
         if loop_count > 0 {
-            desc_list = desc_list.push(
-                LoopTransferDescBuilder::new(
+            desc_list = desc_list.push_linked(
+                LoopTransferDescriptor::new(
                     Addr::Relative(0),
                     Addr::Relative(0),
                     TransferCount::MAX,
@@ -435,7 +436,7 @@ fn extended(
             )?;
         }
 
-        desc_list = desc_list.push(
+        desc_list = desc_list.push_linked(
             TransferDescriptor::new(
                 Addr::Relative(0),
                 Addr::Relative(0),
