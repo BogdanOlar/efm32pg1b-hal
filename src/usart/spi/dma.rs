@@ -329,7 +329,7 @@ fn reduced(
         info!("\t transfer_count: {}", &transfer_count);
 
         if iteration_count > 0 {
-            desc_list = desc_list.push_linked(
+            desc_list.push_linked(
                 LoopTransferDescriptor::new(
                     Addr::Relative(0),
                     Addr::Relative(0),
@@ -342,7 +342,7 @@ fn reduced(
             )?;
         }
 
-        desc_list = desc_list.push_linked(
+        desc_list.push_linked(
             TransferDescriptor::new(
                 Addr::Relative(0),
                 Addr::Relative(0),
@@ -392,7 +392,7 @@ fn extended(
         #[cfg(feature = "debug-spi-dma-defmt-info")]
         info!("\t Loop: {}", &loop_count);
 
-        desc_list = desc_list.push_linked(ImmediateDescriptor::new(
+        desc_list.push_linked(ImmediateDescriptor::new(
             (loop_count - 1) as u32,
             crate::dma::mmio::dma()
                 .ch(dma_ch_id as usize)
@@ -402,7 +402,7 @@ fn extended(
         ))?;
     }
 
-    desc_list = desc_list.push_linked(
+    desc_list.push_linked(
         TransferDescriptor::new(
             Addr::Absolute(src_addr),
             Addr::Absolute(dst_addr),
@@ -423,7 +423,7 @@ fn extended(
         info!("\t transfer_count: {}", &transfer_count);
 
         if loop_count > 0 {
-            desc_list = desc_list.push_linked(
+            desc_list.push_linked(
                 LoopTransferDescriptor::new(
                     Addr::Relative(0),
                     Addr::Relative(0),
@@ -436,7 +436,7 @@ fn extended(
             )?;
         }
 
-        desc_list = desc_list.push_linked(
+        desc_list.push_linked(
             TransferDescriptor::new(
                 Addr::Relative(0),
                 Addr::Relative(0),

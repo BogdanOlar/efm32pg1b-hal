@@ -1,67 +1,61 @@
-/// Descriptor list and the Descriptor types which can be used with it
-///
+//! Descriptor list and the Descriptor types which can be used with it
+//!
+
 use crate::dma::{
     descriptor::{
-        Addr, Descriptor, ImmediateDescriptor, LinkDescriptorBuilder, LoopTransferDescriptor,
+        Addr, AddrMode, Descriptor, ImmediateDescriptor, LoopTransferDescriptor, StructType,
         SyncDescriptor, TransferDescriptor,
     },
     DmaError,
 };
-use core::slice::IterMut;
 
-/// A descriptor list capable of storing descriptors and automatically linking them
+/// Descriptor list
 pub struct DescList<'a> {
-    prev: Option<(ListDescriptor, &'a mut Descriptor)>,
-    descriptors: IterMut<'a, Descriptor>,
-    link_descriptor: Descriptor,
-    storage_addr: usize,
+    prev: Option<ListDescriptor>,
+    descriptors: &'a mut [Descriptor],
+    index: usize,
 }
 
 impl<'a> DescList<'a> {
-    /// Create a new Descriptor List using the given `storage`
-    pub fn new(storage: &'a mut [Descriptor]) -> Self {
-        let storage_addr = storage.as_ptr().addr();
-        storage.iter_mut().for_each(|d| *d = Descriptor::default());
+    /// Create a new Descriptor List using the given `descriptors` storage
+    /// This constructor will reset `descriptors` to default
+    pub fn new(descriptors: &'a mut [Descriptor]) -> Self {
+        descriptors.fill(Descriptor::default());
         Self {
             prev: None,
-            descriptors: storage.iter_mut(),
-            link_descriptor: LinkDescriptorBuilder::new(storage_addr).into_inner(),
-            storage_addr,
+            descriptors,
+            index: usize::default(),
         }
     }
 
     /// Convenience method to [`Self::push()`] [`TransferDescBuilder`] to the descriptor list
-    pub fn push_transfer(self, desc_bld: TransferDescriptor) -> Result<Self, DmaError> {
+    pub fn push_transfer(&mut self, desc_bld: TransferDescriptor) -> Result<(), DmaError> {
         self.push(desc_bld)
     }
 
     /// Convenience method to [`Self::push()`] [`LoopTransferDescBuilder`] to the descriptor list
-    pub fn push_loop(self, desc_bld: LoopTransferDescriptor) -> Result<Self, DmaError> {
+    pub fn push_loop(&mut self, desc_bld: LoopTransferDescriptor) -> Result<(), DmaError> {
         self.push(desc_bld)
     }
 
     /// Convenience method to [`Self::push()`] [`SyncDescBuilder`] to the descriptor list
-    pub fn push_sync(self, desc_bld: SyncDescriptor) -> Result<Self, DmaError> {
+    pub fn push_sync(&mut self, desc_bld: SyncDescriptor) -> Result<(), DmaError> {
         self.push(desc_bld)
     }
 
     /// Convenience method to [`Self::push()`] [`ImmediateDescBuilder`] to the descriptor list
-    pub fn push_immediate(self, desc_bld: ImmediateDescriptor) -> Result<Self, DmaError> {
+    pub fn push_immediate(&mut self, desc_bld: ImmediateDescriptor) -> Result<(), DmaError> {
         self.push(desc_bld)
     }
 
-    /// Generic method to push any of the descriptor builders wrapped by [`ListDescriptor`]
-    pub fn push<T>(mut self, desc_bld: T) -> Result<Self, DmaError>
+    pub fn push<T>(&mut self, desc_bld: T) -> Result<(), DmaError>
     where
         T: Into<ListDescriptor> + Copy,
     {
         let desc = self
             .descriptors
-            .next()
+            .get_mut(self.index)
             .ok_or(DmaError::DescriptorListOverflow)?;
-
-        // Drop any previous descriptor
-        let _ = self.prev.take();
 
         *desc = match desc_bld.into() {
             ListDescriptor::Transfer(desc_bld) => desc_bld.into_inner(),
@@ -70,45 +64,40 @@ impl<'a> DescList<'a> {
             ListDescriptor::Immediate(desc_bld) => desc_bld.into_inner(),
         };
 
-        Ok(Self {
-            prev: None,
-            descriptors: self.descriptors,
-            link_descriptor: self.link_descriptor,
-            storage_addr: self.storage_addr,
-        })
+        self.index += 1;
+        self.prev = None;
+
+        Ok(())
     }
 
     /// Convenience method to [`Self::push()`] [`TransferDescBuilder`] to the descriptor list
-    pub fn push_linked_transfer(self, desc_bld: TransferDescriptor) -> Result<Self, DmaError> {
+    pub fn push_transfer_linked(&mut self, desc_bld: TransferDescriptor) -> Result<(), DmaError> {
         self.push_linked(desc_bld)
     }
 
     /// Convenience method to [`Self::push()`] [`LoopTransferDescBuilder`] to the descriptor list
-    pub fn push_linked_loop(self, desc_bld: LoopTransferDescriptor) -> Result<Self, DmaError> {
+    pub fn push_loop_linked(&mut self, desc_bld: LoopTransferDescriptor) -> Result<(), DmaError> {
         self.push_linked(desc_bld)
     }
 
     /// Convenience method to [`Self::push()`] [`SyncDescBuilder`] to the descriptor list
-    pub fn push_linked_sync(self, desc_bld: SyncDescriptor) -> Result<Self, DmaError> {
+    pub fn push_sync_linked(&mut self, desc_bld: SyncDescriptor) -> Result<(), DmaError> {
         self.push_linked(desc_bld)
     }
 
     /// Convenience method to [`Self::push()`] [`ImmediateDescBuilder`] to the descriptor list
-    pub fn push_linked_immediate(self, desc_bld: ImmediateDescriptor) -> Result<Self, DmaError> {
+    pub fn push_immediate_linked(&mut self, desc_bld: ImmediateDescriptor) -> Result<(), DmaError> {
         self.push_linked(desc_bld)
     }
 
-    /// Generic method to push any of the descriptor builders wrapped by [`ListDescriptor`]
-    pub fn push_linked<T>(mut self, desc_bld: T) -> Result<Self, DmaError>
+    pub fn push_linked<T>(&mut self, desc_bld: T) -> Result<(), DmaError>
     where
         T: Into<ListDescriptor> + Copy,
     {
         let desc = self
             .descriptors
-            .next()
+            .get_mut(self.index)
             .ok_or(DmaError::DescriptorListOverflow)?;
-
-        self.link_prev();
 
         *desc = match desc_bld.into() {
             ListDescriptor::Transfer(desc_bld) => desc_bld.into_inner(),
@@ -116,52 +105,85 @@ impl<'a> DescList<'a> {
             ListDescriptor::Sync(desc_bld) => desc_bld.into_inner(),
             ListDescriptor::Immediate(desc_bld) => desc_bld.into_inner(),
         };
-        Ok(Self {
-            prev: Some((desc_bld.into(), desc)),
-            descriptors: self.descriptors,
-            link_descriptor: self.link_descriptor,
-            storage_addr: self.storage_addr,
-        })
+
+        // Modify the previous descriptor (if it exists) to link to the current descriptor in the list
+        if let Some(prev_list_desc) = self.prev.take() {
+            if let Some(prev_desc) = self.descriptors.get_mut(self.index - 1) {
+                *prev_desc = match prev_list_desc {
+                    ListDescriptor::Transfer(transfer_desc) => transfer_desc
+                        .with_link(Addr::Relative(1), true)
+                        .into_inner(),
+                    ListDescriptor::LoopTransfer(loop_transfer_desc) => {
+                        loop_transfer_desc.with_link(true).into_inner()
+                    }
+                    ListDescriptor::Sync(sync_desc) => {
+                        sync_desc.with_link(Addr::Relative(1), true).into_inner()
+                    }
+                    ListDescriptor::Immediate(immediate_desc) => immediate_desc
+                        .with_link(Addr::Relative(1), true)
+                        .into_inner(),
+                };
+            }
+        }
+
+        self.index += 1;
+        self.prev = Some(desc_bld.into());
+
+        Ok(())
     }
 
-    pub fn finalize(self) -> Descriptor {
-        self.link_descriptor
+    pub fn finalize_with_transfer_descriptor(
+        self,
+        mut transfer_descriptor: TransferDescriptor,
+    ) -> FinalizedList {
+        transfer_descriptor = transfer_descriptor.with_link(
+            Addr::Absolute(self.storage_addr()),
+            // Only link if this list has some linked descriptors
+            self.index > 0,
+        );
+
+        FinalizedList {
+            size: self.index,
+            transfer_descriptor,
+        }
+    }
+
+    pub fn finalize_with_link_descriptor(self) -> FinalizedList {
+        let mut descr = Descriptor::const_default();
+        descr.struct_type_set(StructType::Transfer);
+
+        descr.link_mode_set(AddrMode::Absolute);
+        descr.link_addr_set(self.storage_addr() >> 2);
+        // Only link if this list has some linked descriptors
+        // Setting the Link flag on a Link transfer descriptor will have the effect of the linked list *NOT* being
+        // loaded when the Link flag is set on the DMA channel ( [`DmaChannel::link_load()`] )
+        descr.link_set(self.index == 0);
+
+        FinalizedList {
+            size: self.index,
+            transfer_descriptor: TransferDescriptor { descr },
+        }
     }
 
     pub(crate) fn storage_addr(&self) -> usize {
-        self.storage_addr
+        self.descriptors.as_ptr().addr()
     }
+}
 
-    /// Modify the previous descriptor (if it exists) to link to the next descriptor in the list
-    fn link_prev(&mut self) {
-        if let Some((prev_builder, prev_descr)) = self.prev.take() {
-            *prev_descr = match prev_builder {
-                ListDescriptor::Transfer(transfer_desc_builder) => transfer_desc_builder
-                    .with_link(Addr::Relative(1), true)
-                    .into_inner(),
-                ListDescriptor::LoopTransfer(loop_transfer_desc_builder) => {
-                    loop_transfer_desc_builder.with_link(true).into_inner()
-                }
-                ListDescriptor::Sync(sync_desc_builder) => sync_desc_builder
-                    .with_link(Addr::Relative(1), true)
-                    .into_inner(),
-                ListDescriptor::Immediate(immediate_desc_builder) => immediate_desc_builder
-                    .with_link(Addr::Relative(1), true)
-                    .into_inner(),
-            };
-        }
-    }
+pub struct FinalizedList {
+    pub size: usize,
+    pub transfer_descriptor: TransferDescriptor,
 }
 
 /// Wrapper for all Descriptor Builders which can be pushed to a [`DescList`]
 enum ListDescriptor {
-    /// [`TransferDescBuilder`]
+    /// [`TransferDescriptor`]
     Transfer(TransferDescriptor),
-    /// [`LoopTransferDescBuilder`]
+    /// [`LoopTransferDescriptor`]
     LoopTransfer(LoopTransferDescriptor),
-    /// [`SyncDescBuilder`]
+    /// [`SyncDescriptor`]
     Sync(SyncDescriptor),
-    /// [`ImmediateDescBuilder`]
+    /// [`ImmediateDescriptor`]
     Immediate(ImmediateDescriptor),
 }
 

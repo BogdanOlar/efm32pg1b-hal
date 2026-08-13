@@ -10,7 +10,7 @@
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Default, Clone, Copy)]
 pub struct TransferDescriptor {
-    descr: Descriptor,
+    pub(crate) descr: Descriptor,
 }
 
 impl TransferDescriptor {
