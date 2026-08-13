@@ -641,9 +641,11 @@ pub type ChannelTransferResult<'a, W> =
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DmaError {
     /// Invalid transfer size (e.g. transfer size is `0`)
-    InvalidTransferSize(ChannelId),
+    InvalidTransferSize,
     /// DMA transfer failed
     Transfer(DmaChannel),
+    /// Descriptor list is invalid (e.g empty)
+    InvalidDescriptorList,
     /// Descriptor list overflowed
     DescriptorListOverflow,
 }

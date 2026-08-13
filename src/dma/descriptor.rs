@@ -1,6 +1,8 @@
 //! DMA Descriptors
 //!
 
+use crate::dma::DmaError;
+
 /// XFER Descriptor
 ///
 /// This descriptor defines a typical data transfer which may be a Normal or Link transfer.
@@ -370,32 +372,6 @@ impl From<ImmediateDescriptor> for Descriptor {
     }
 }
 
-pub struct LinkDescriptorBuilder {
-    descr: Descriptor,
-}
-
-impl LinkDescriptorBuilder {
-    pub(crate) const fn new(addr: usize) -> Self {
-        let mut descr = Descriptor::const_default();
-        descr.struct_type_set(StructType::Transfer);
-
-        descr.link_mode_set(AddrMode::Absolute);
-        descr.link_addr_set(addr >> 2);
-
-        Self { descr }
-    }
-
-    pub const fn into_inner(self) -> Descriptor {
-        self.descr
-    }
-}
-
-impl From<LinkDescriptorBuilder> for Descriptor {
-    fn from(value: LinkDescriptorBuilder) -> Self {
-        value.into_inner()
-    }
-}
-
 /// DMA Descriptor
 #[derive(Clone, Copy, Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -745,7 +721,7 @@ impl TransferCount {
 }
 
 impl TryFrom<usize> for TransferCount {
-    type Error = ();
+    type Error = DmaError;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         if (value > 0) && (value <= Descriptor::MAX_TRANSFER_UNITS) {
@@ -753,7 +729,13 @@ impl TryFrom<usize> for TransferCount {
                 count: value as u16,
             })
         } else {
-            Err(())
+            Err(DmaError::InvalidTransferSize)
         }
+    }
+}
+
+impl From<TransferCount> for u16 {
+    fn from(value: TransferCount) -> Self {
+        value.count
     }
 }

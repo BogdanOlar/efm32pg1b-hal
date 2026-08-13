@@ -65,7 +65,7 @@ impl<'a> DescList<'a> {
         };
 
         self.index += 1;
-        self.prev = None;
+        self.prev = Some(desc_bld.into());
 
         Ok(())
     }
@@ -94,18 +94,6 @@ impl<'a> DescList<'a> {
     where
         T: Into<ListDescriptor> + Copy,
     {
-        let desc = self
-            .descriptors
-            .get_mut(self.index)
-            .ok_or(DmaError::DescriptorListOverflow)?;
-
-        *desc = match desc_bld.into() {
-            ListDescriptor::Transfer(desc_bld) => desc_bld.into_inner(),
-            ListDescriptor::LoopTransfer(desc_bld) => desc_bld.into_inner(),
-            ListDescriptor::Sync(desc_bld) => desc_bld.into_inner(),
-            ListDescriptor::Immediate(desc_bld) => desc_bld.into_inner(),
-        };
-
         // Modify the previous descriptor (if it exists) to link to the current descriptor in the list
         if let Some(prev_list_desc) = self.prev.take() {
             if let Some(prev_desc) = self.descriptors.get_mut(self.index - 1) {
@@ -126,53 +114,82 @@ impl<'a> DescList<'a> {
             }
         }
 
-        self.index += 1;
-        self.prev = Some(desc_bld.into());
-
-        Ok(())
+        self.push(desc_bld)
     }
 
-    pub fn finalize_with_transfer_descriptor(
-        self,
+    pub fn into_transfer_descriptor(
+        mut self,
         mut transfer_descriptor: TransferDescriptor,
-    ) -> FinalizedList {
-        transfer_descriptor = transfer_descriptor.with_link(
-            Addr::Absolute(self.storage_addr()),
-            // Only link if this list has some linked descriptors
-            self.index > 0,
-        );
-
-        FinalizedList {
-            size: self.index,
-            transfer_descriptor,
+    ) -> TransferDescriptor {
+        if self.set_done_ifs().is_ok() {
+            transfer_descriptor = transfer_descriptor
+                .with_link(Addr::Absolute(self.descriptors.as_ptr().addr()), true);
+        } else {
+            transfer_descriptor = transfer_descriptor
+                .with_done_ifs(true)
+                .with_link(Addr::Absolute(0), false);
         }
+
+        transfer_descriptor
     }
 
-    pub fn finalize_with_link_descriptor(self) -> FinalizedList {
+    pub fn try_into_link_descriptor(mut self) -> Result<TransferDescriptor, DmaError> {
+        self.set_done_ifs()?;
         let mut descr = Descriptor::const_default();
         descr.struct_type_set(StructType::Transfer);
 
         descr.link_mode_set(AddrMode::Absolute);
-        descr.link_addr_set(self.storage_addr() >> 2);
-        // Only link if this list has some linked descriptors
+        descr.link_addr_set(self.descriptors.as_ptr().addr() >> 2);
+
         // Setting the Link flag on a Link transfer descriptor will have the effect of the linked list *NOT* being
         // loaded when the Link flag is set on the DMA channel ( [`DmaChannel::link_load()`] )
         descr.link_set(self.index == 0);
 
-        FinalizedList {
-            size: self.index,
-            transfer_descriptor: TransferDescriptor { descr },
+        Ok(TransferDescriptor { descr })
+    }
+
+    /// Number of descriptors in the list
+    pub fn len(&self) -> usize {
+        self.index
+    }
+
+    /// Check if the descriptor list is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn set_done_ifs(&mut self) -> Result<(), DmaError> {
+        if let Some(prev_list_desc) = self.prev.take() {
+            if let Some(prev_desc) = self.descriptors.get_mut(self.index - 1) {
+                // enable the done interrupt flag on the last descriptor in the list
+                *prev_desc = match prev_list_desc {
+                    ListDescriptor::Transfer(transfer_descriptor) => {
+                        transfer_descriptor.with_done_ifs(true).into()
+                    }
+                    ListDescriptor::LoopTransfer(loop_transfer_descriptor) => {
+                        // TODO: This could be surprising for the user, since the done ISR will wire on each loop completion
+                        //       Either disallow this, or make it clear in the documentation
+                        loop_transfer_descriptor.with_loop_done_ifs(true).into()
+                    }
+                    ListDescriptor::Sync(sync_descriptor) => {
+                        sync_descriptor.with_done_ifs(true).into()
+                    }
+                    ListDescriptor::Immediate(immediate_descriptor) => {
+                        immediate_descriptor.with_done_ifs(true).into()
+                    }
+                };
+
+                return Ok(());
+            } else {
+                // `self.prev` was determined to be `Some` by the parent `if`, so we should always be able to get a
+                // valid reference to the corresponding location in `self.descriptors`
+                unreachable!();
+            }
         }
-    }
 
-    pub(crate) fn storage_addr(&self) -> usize {
-        self.descriptors.as_ptr().addr()
+        // List is empty
+        Err(DmaError::InvalidDescriptorList)
     }
-}
-
-pub struct FinalizedList {
-    pub size: usize,
-    pub transfer_descriptor: TransferDescriptor,
 }
 
 /// Wrapper for all Descriptor Builders which can be pushed to a [`DescList`]

@@ -117,62 +117,53 @@ impl<const N: u8> SpiBus for SpiDma<N> {
         } else {
             let usart_p = mmio::usartx::<N>();
             let mut tx_list = DescList::new(&mut self.tx_descriptors);
-            let rx_list = DescList::new(&mut self.rx_descriptors);
+            let mut rx_list = DescList::new(&mut self.rx_descriptors);
 
             // TX
             if tx_units > 0 {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("TX: tx_units {}", tx_units);
 
-                let (mut desc, list) = reduced(
+                let desc = reduced(
                     self.tx.id(),
-                    write.as_ptr().addr(),
-                    AddrInc::One,
-                    usart_p.txdata().as_ptr().addr(),
-                    AddrInc::None,
+                    TargetAddr::IncrementOne(write.as_ptr().addr()),
+                    TargetAddr::NoIncrement(usart_p.txdata().as_ptr().addr()),
                     unit,
                     tx_units,
-                    total_units == tx_units,
-                    tx_list,
+                    &mut tx_list,
                 )?;
-                tx_list = list;
 
                 if tx_filler_units > 0 {
                     #[cfg(feature = "debug-spi-dma-defmt-info")]
                     info!("TX tx_filler_units {}", tx_filler_units);
 
-                    let list = extended(
+                    extended(
                         self.tx.id(),
-                        (&TX_FILLER) as *const u32 as usize,
-                        AddrInc::None,
-                        usart_p.txdata().as_ptr().addr(),
-                        AddrInc::None,
+                        TargetAddr::NoIncrement((&TX_FILLER) as *const u32 as usize),
+                        TargetAddr::NoIncrement(usart_p.txdata().as_ptr().addr()),
                         unit,
                         tx_filler_units,
-                        true,
-                        tx_list,
+                        &mut tx_list,
                     )?;
-                    tx_list = list;
-                    desc = desc.with_link(Addr::Absolute(tx_list.storage_addr()), true);
                 }
 
-                self.tx.set_descriptor(desc);
+                self.tx
+                    .set_descriptor(tx_list.into_transfer_descriptor(desc));
             } else if tx_filler_units > 0 {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("TX tx_filler_units {}", tx_filler_units);
 
-                let (desc, _) = reduced(
+                let desc = reduced(
                     self.tx.id(),
-                    (&TX_FILLER) as *const u32 as usize,
-                    AddrInc::None,
-                    usart_p.txdata().as_ptr().addr(),
-                    AddrInc::None,
+                    TargetAddr::NoIncrement((&TX_FILLER) as *const u32 as usize),
+                    TargetAddr::NoIncrement(usart_p.txdata().as_ptr().addr()),
                     unit,
                     tx_filler_units,
-                    true,
-                    tx_list,
+                    &mut tx_list,
                 )?;
-                self.tx.set_descriptor(desc);
+
+                self.tx
+                    .set_descriptor(tx_list.into_transfer_descriptor(desc));
             }
 
             // RX
@@ -180,18 +171,18 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("RX: rx_units {}", rx_units);
 
-                let (desc, _) = reduced(
+                let desc = reduced(
                     self.rx.id(),
-                    usart_p.rxdata().as_ptr().addr(),
-                    AddrInc::None,
-                    read.as_ptr().addr(),
-                    AddrInc::One,
+                    TargetAddr::NoIncrement(usart_p.rxdata().as_ptr().addr()),
+                    TargetAddr::IncrementOne(read.as_ptr().addr()),
                     unit,
                     rx_units,
-                    true,
-                    rx_list,
+                    // true,
+                    &mut rx_list,
                 )?;
-                self.rx.set_descriptor(desc);
+
+                self.rx
+                    .set_descriptor(rx_list.into_transfer_descriptor(desc));
             }
 
             // start the transfer
@@ -267,68 +258,59 @@ impl<const N: u8> ErrorType for SpiDma<N> {
     type Error = SpiError;
 }
 
+/// Target address for helper functions `reduced()` and `extended()`
+enum TargetAddr {
+    /// Use given absolute address and don't increment it
+    NoIncrement(usize),
+    /// Use given absolute address and increment it by 1 unit on each copy
+    IncrementOne(usize),
+}
+
 fn reduced(
     dma_ch_id: ChannelId,
-    src_addr: usize,
-    src_addr_inc: AddrInc,
-    dst_addr: usize,
-    dst_addr_inc: AddrInc,
+    src: TargetAddr,
+    dst: TargetAddr,
     unit: UnitSize,
     unit_count: usize,
-    is_done: bool,
-    mut desc_list: DescList,
-) -> Result<(TransferDescriptor, DescList), DmaError> {
+    desc_list: &mut DescList,
+) -> Result<TransferDescriptor, DmaError> {
     const NON_LOOP_TRANSFER_COUNT: usize = 2;
     const MAX_LOOP_COUNT: usize = u8::MAX as usize;
     const MAX_TRANSFER_COUNT: usize =
         MAX_LOOP_COUNT * Descriptor::MAX_TRANSFER_UNITS + NON_LOOP_TRANSFER_COUNT;
 
-    let remainder = unit_count % Descriptor::MAX_TRANSFER_UNITS;
-    let transfer_count = if remainder == 0 {
-        unit_count / Descriptor::MAX_TRANSFER_UNITS
-    } else {
-        unit_count / Descriptor::MAX_TRANSFER_UNITS + 1
-    };
+    let transfer_count = unit_count.div_ceil(Descriptor::MAX_TRANSFER_UNITS);
 
     if transfer_count > MAX_TRANSFER_COUNT {
-        return Err(DmaError::InvalidTransferSize(dma_ch_id));
+        return Err(DmaError::InvalidTransferSize);
     }
 
-    let iteration_count = transfer_count.saturating_sub(NON_LOOP_TRANSFER_COUNT);
+    let (src_addr, src_addr_inc) = match src {
+        TargetAddr::NoIncrement(addr) => (addr, AddrInc::None),
+        TargetAddr::IncrementOne(addr) => (addr, AddrInc::One),
+    };
 
-    // Write DMA channel loop count
-    if iteration_count > 0 {
-        let loop_count = iteration_count - 1;
-
-        #[cfg(feature = "debug-spi-dma-defmt-info")]
-        info!("\t loop_count: {}", loop_count);
-
-        crate::dma::mmio::dma()
-            .ch(dma_ch_id as usize)
-            .loop_()
-            .write(|w| unsafe { w.loopcnt().bits(loop_count as u8) });
-    }
-
-    let raw_desc = TransferDescriptor::new(
-        Addr::Absolute(src_addr),
-        Addr::Absolute(dst_addr),
-        if remainder > 0 {
-            remainder.try_into().unwrap()
-        } else {
-            TransferCount::MAX
-        },
-        unit,
-    )
-    .with_src_inc(src_addr_inc)
-    .with_dst_inc(dst_addr_inc)
-    .with_done_ifs((transfer_count == 1) && is_done)
-    .with_link(Addr::Absolute(desc_list.storage_addr()), transfer_count > 1);
+    let (dst_addr, dst_addr_inc) = match dst {
+        TargetAddr::NoIncrement(addr) => (addr, AddrInc::None),
+        TargetAddr::IncrementOne(addr) => (addr, AddrInc::One),
+    };
 
     if transfer_count > 1 {
         #[cfg(feature = "debug-spi-dma-defmt-info")]
         info!("\t transfer_count: {}", &transfer_count);
 
-        if iteration_count > 0 {
+        let loop_count = transfer_count.saturating_sub(NON_LOOP_TRANSFER_COUNT);
+
+        if loop_count > 0 {
+            #[cfg(feature = "debug-spi-dma-defmt-info")]
+            info!("\t loop_count: {}", loop_count);
+
+            // Write DMA channel loop count
+            crate::dma::mmio::dma()
+                .ch(dma_ch_id as usize)
+                .loop_()
+                .write(|w| unsafe { w.loopcnt().bits((loop_count - 1) as u8) });
+
             desc_list.push_linked(
                 LoopTransferDescriptor::new(
                     Addr::Relative(0),
@@ -350,44 +332,66 @@ fn reduced(
                 unit,
             )
             .with_src_inc(src_addr_inc)
-            .with_dst_inc(dst_addr_inc)
-            .with_done_ifs(is_done),
+            .with_dst_inc(dst_addr_inc),
         )?;
     }
 
-    Ok((raw_desc, desc_list))
+    Ok(TransferDescriptor::new(
+        Addr::Absolute(src_addr),
+        Addr::Absolute(dst_addr),
+        // As a happy coincidence, calling `TransferCount::try_into` with a `unit_count` of 0 will result in an
+        // error, so we can use that to set the unit count to `TransferCount::MAX` instead of doing
+        // ```
+        //  if (unit_count % Descriptor::MAX_TRANSFER_UNITS) == 0 {
+        //      Descriptor::MAX_TRANSFER_UNITS
+        //  } else {
+        //      unit_count % Descriptor::MAX_TRANSFER_UNITS
+        //  }
+        // ```
+        (unit_count % Descriptor::MAX_TRANSFER_UNITS)
+            .try_into()
+            .unwrap_or(TransferCount::MAX),
+        unit,
+    )
+    .with_src_inc(src_addr_inc)
+    .with_dst_inc(dst_addr_inc))
 }
 
 fn extended(
     dma_ch_id: ChannelId,
-    src_addr: usize,
-    src_addr_inc: AddrInc,
-    dst_addr: usize,
-    dst_addr_inc: AddrInc,
+    src: TargetAddr,
+    dst: TargetAddr,
     unit: UnitSize,
     unit_count: usize,
-    is_done: bool,
-    mut desc_list: DescList,
-) -> Result<DescList, DmaError> {
+    desc_list: &mut DescList,
+) -> Result<(), DmaError> {
     const NON_LOOP_TRANSFER_COUNT: usize = 2;
     const MAX_TRANSFER_COUNT: usize =
         u8::MAX as usize * Descriptor::MAX_TRANSFER_UNITS + NON_LOOP_TRANSFER_COUNT;
 
-    let remainder = unit_count % Descriptor::MAX_TRANSFER_UNITS;
-    let transfer_count = if remainder == 0 {
-        unit_count / Descriptor::MAX_TRANSFER_UNITS
-    } else {
-        unit_count / Descriptor::MAX_TRANSFER_UNITS + 1
-    };
+    let transfer_count = unit_count.div_ceil(Descriptor::MAX_TRANSFER_UNITS);
 
     if transfer_count > MAX_TRANSFER_COUNT {
-        return Err(DmaError::InvalidTransferSize(dma_ch_id));
+        return Err(DmaError::InvalidTransferSize);
     }
+
+    let (src_addr, src_addr_inc) = match src {
+        TargetAddr::NoIncrement(addr) => (addr, AddrInc::None),
+        TargetAddr::IncrementOne(addr) => (addr, AddrInc::One),
+    };
+
+    let (dst_addr, dst_addr_inc) = match dst {
+        TargetAddr::NoIncrement(addr) => (addr, AddrInc::None),
+        TargetAddr::IncrementOne(addr) => (addr, AddrInc::One),
+    };
 
     let loop_count = transfer_count.saturating_sub(NON_LOOP_TRANSFER_COUNT);
 
-    // Immediate Transfer needs to be written before the first Transfer because the first Transfer will
-    // set the absolute address of the buffer, so that the rest of the Transfers can use relative addressing
+    // Immediate Transfer needs to be written _before_ the first Transfer because it will change the SRC and DST
+    // registers of the DMA Channels.
+    // This way the first Transfer will set the absolute address of the buffer, and the subsequent Transfers can use
+    // relative addressing. This is particularly important if the second Transfer is a Loop descriptor which can't use
+    // an absolute address
     if loop_count > 0 {
         #[cfg(feature = "debug-spi-dma-defmt-info")]
         info!("\t Loop: {}", &loop_count);
@@ -406,16 +410,22 @@ fn extended(
         TransferDescriptor::new(
             Addr::Absolute(src_addr),
             Addr::Absolute(dst_addr),
-            if remainder > 0 {
-                remainder.try_into().unwrap()
-            } else {
-                TransferCount::MAX
-            },
+            // As a happy coincidence, calling `TransferCount::try_into` with a `unit_count` of 0 will result in an
+            // error, so we can use that to set the unit count to `TransferCount::MAX` instead of doing
+            // ```
+            //  if (unit_count % Descriptor::MAX_TRANSFER_UNITS) == 0 {
+            //      Descriptor::MAX_TRANSFER_UNITS
+            //  } else {
+            //      unit_count % Descriptor::MAX_TRANSFER_UNITS
+            //  }
+            // ```
+            (unit_count % Descriptor::MAX_TRANSFER_UNITS)
+                .try_into()
+                .unwrap_or(TransferCount::MAX),
             unit,
         )
         .with_src_inc(src_addr_inc)
-        .with_dst_inc(dst_addr_inc)
-        .with_done_ifs((transfer_count == 1) && is_done),
+        .with_dst_inc(dst_addr_inc),
     )?;
 
     if transfer_count > 1 {
@@ -444,10 +454,9 @@ fn extended(
                 unit,
             )
             .with_src_inc(src_addr_inc)
-            .with_dst_inc(dst_addr_inc)
-            .with_done_ifs(is_done),
+            .with_dst_inc(dst_addr_inc),
         )?;
     }
 
-    Ok(desc_list)
+    Ok(())
 }
