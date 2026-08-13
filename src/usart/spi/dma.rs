@@ -8,7 +8,7 @@ use crate::{
             AddrInc::{self},
             Descriptor, TransferCount, TransferDescriptor, UnitSize,
         },
-        list::{DescList, ImmediateDescBuilder, LoopTransferDescBuilder, TransferDescBuilder},
+        list::{DescList, ImmediateDescBuilder, LoopTransferDescBuilder},
         ChReqSel, ChannelId, DmaChannel, DmaError,
     },
     usart::{mmio, spi::SpiError},
@@ -342,7 +342,7 @@ fn reduced(
         }
 
         desc_list = desc_list.push(
-            TransferDescBuilder::new(
+            TransferDescriptor::new(
                 Addr::Relative(0),
                 Addr::Relative(0),
                 TransferCount::MAX,
@@ -402,7 +402,7 @@ fn extended(
     }
 
     desc_list = desc_list.push(
-        TransferDescBuilder::new(
+        TransferDescriptor::new(
             Addr::Absolute(src_addr),
             Addr::Absolute(dst_addr),
             if remainder > 0 {
@@ -436,7 +436,7 @@ fn extended(
         }
 
         desc_list = desc_list.push(
-            TransferDescBuilder::new(
+            TransferDescriptor::new(
                 Addr::Relative(0),
                 Addr::Relative(0),
                 TransferCount::MAX,

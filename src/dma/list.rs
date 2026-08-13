@@ -31,7 +31,7 @@ impl<'a> DescList<'a> {
     }
 
     /// Convenience method to [`Self::push()`] [`TransferDescBuilder`] to the descriptor list
-    pub fn push_transfer(self, desc_bld: TransferDescBuilder) -> Result<Self, DmaError> {
+    pub fn push_transfer(self, desc_bld: TransferDescriptor) -> Result<Self, DmaError> {
         self.push(desc_bld)
     }
 
@@ -63,7 +63,7 @@ impl<'a> DescList<'a> {
         self.link_prev();
 
         *desc = match desc_bld.into() {
-            ListDescriptorBuilder::Transfer(desc_bld) => desc_bld.build(),
+            ListDescriptorBuilder::Transfer(desc_bld) => desc_bld.into_inner(),
             ListDescriptorBuilder::LoopTransfer(desc_bld) => desc_bld.build(),
             ListDescriptorBuilder::Sync(desc_bld) => desc_bld.build(),
             ListDescriptorBuilder::Immediate(desc_bld) => desc_bld.build(),
@@ -89,7 +89,6 @@ impl<'a> DescList<'a> {
         if let Some((prev_builder, prev_descr)) = self.prev.take() {
             *prev_descr = match prev_builder {
                 ListDescriptorBuilder::Transfer(transfer_desc_builder) => transfer_desc_builder
-                    .inner
                     .with_link(Addr::Relative(1), true)
                     .into_inner(),
                 ListDescriptorBuilder::LoopTransfer(loop_transfer_desc_builder) => {
@@ -109,7 +108,7 @@ impl<'a> DescList<'a> {
 /// Wrapper for all Descriptor Builders which can be pushed to a [`DescList`]
 pub enum ListDescriptorBuilder {
     /// [`TransferDescBuilder`]
-    Transfer(TransferDescBuilder),
+    Transfer(TransferDescriptor),
     /// [`LoopTransferDescBuilder`]
     LoopTransfer(LoopTransferDescBuilder),
     /// [`SyncDescBuilder`]
@@ -118,8 +117,8 @@ pub enum ListDescriptorBuilder {
     Immediate(ImmediateDescBuilder),
 }
 
-impl From<TransferDescBuilder> for ListDescriptorBuilder {
-    fn from(value: TransferDescBuilder) -> Self {
+impl From<TransferDescriptor> for ListDescriptorBuilder {
+    fn from(value: TransferDescriptor) -> Self {
         Self::Transfer(value)
     }
 }
@@ -139,78 +138,6 @@ impl From<SyncDescBuilder> for ListDescriptorBuilder {
 impl From<ImmediateDescBuilder> for ListDescriptorBuilder {
     fn from(value: ImmediateDescBuilder) -> Self {
         Self::Immediate(value)
-    }
-}
-
-/// XFER Descriptor builder
-///
-/// This descriptor defines a typical data transfer which may be a Normal or Link transfer.
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Default, Clone, Copy)]
-pub struct TransferDescBuilder {
-    inner: TransferDescriptor,
-}
-
-impl TransferDescBuilder {
-    /// Build a new Transfer Descriptor
-    pub const fn new(src: Addr, dst: Addr, count: TransferCount, unit: UnitSize) -> Self {
-        Self {
-            inner: TransferDescriptor::new(src, dst, count, unit),
-        }
-    }
-
-    pub const fn with_struct_req(self, is_struct_req: bool) -> Self {
-        Self {
-            inner: self.inner.with_struct_req(is_struct_req),
-        }
-    }
-
-    pub const fn with_block_size(self, block_size: BlockSize) -> Self {
-        Self {
-            inner: self.inner.with_block_size(block_size),
-        }
-    }
-
-    pub const fn with_byte_swap(self, is_byte_swapped: bool) -> Self {
-        Self {
-            inner: self.inner.with_byte_swap(is_byte_swapped),
-        }
-    }
-
-    /// Setting this bit will set the interrupt flag when the transfer is done, or linked in the case where the LINK bit
-    /// is set, or synchronized in the case of a SYNC transfer.
-    pub const fn with_done_ifs(self, is_done: bool) -> Self {
-        Self {
-            inner: self.inner.with_done_ifs(is_done),
-        }
-    }
-
-    pub const fn with_req_mode_all(self, is_req_mode_all: bool) -> Self {
-        Self {
-            inner: self.inner.with_req_mode_all(is_req_mode_all),
-        }
-    }
-
-    pub const fn with_ignore_single_requests(self, is_ignored: bool) -> Self {
-        Self {
-            inner: self.inner.with_ignore_single_requests(is_ignored),
-        }
-    }
-
-    pub const fn with_src_inc(self, addr_inc: AddrInc) -> Self {
-        Self {
-            inner: self.inner.with_src_inc(addr_inc),
-        }
-    }
-
-    pub const fn with_dst_inc(self, addr_inc: AddrInc) -> Self {
-        Self {
-            inner: self.inner.with_dst_inc(addr_inc),
-        }
-    }
-
-    pub(crate) const fn build(self) -> Descriptor {
-        self.inner.into_inner()
     }
 }
 
