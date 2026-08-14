@@ -239,7 +239,7 @@ pub(crate) enum TargetAddr {
 /// Construct the `TransferDescriptor` for a given number of DMA units. The returned descriptor is meant to be written
 /// directly to the DMA Channel registers.
 ///
-/// If necessary, we'll use the DMA Channel loop counter to repeatedly execute a `TransferDescriptor` and a separate
+/// If necessary, we'll use the DMA Channel loop counter to repeatedly execute a `LoopTransferDescriptor` and a separate
 /// `TransferDescriptor` to end the DMA copy and set the Interrupt Done Flag. This is "reduced" because the linked
 /// descriptor list does not need an `ImmediateDescriptor` to write the loop count since the counter is written directly
 /// to the DMA Channel at the beginning of the DMA Transfer
@@ -378,7 +378,7 @@ pub(crate) fn extended(
     let loop_count = transfer_count.saturating_sub(NON_LOOP_TRANSFER_COUNT);
 
     // Immediate Transfer needs to be written _before_ the first Transfer because it will change the SRC and DST
-    // registers of the DMA Channels.
+    // registers of the DMA Channel.
     // This way the first Transfer will set the absolute address of the buffer, and the subsequent Transfers can use
     // relative addressing. This is particularly important if the second Transfer is a Loop descriptor which can't use
     // an absolute address
@@ -397,8 +397,9 @@ pub(crate) fn extended(
         TransferDescriptor::new(
             Addr::Absolute(src_addr),
             Addr::Absolute(dst_addr),
-            // As a happy coincidence, calling `TransferCount::try_into` with a `unit_count` of 0 will result in an
-            // error, so we can use that to set the unit count to `TransferCount::MAX` instead of doing
+            // As a happy coincidence, calling `TransferCount::try_into` with a `unit_count` of `0` will result in an
+            // error (DMA transfer count may not be 0), so we can use that to set the unit count to `TransferCount::MAX`
+            // instead of doing
             // ```
             //  if (unit_count % Descriptor::MAX_TRANSFER_UNITS) == 0 {
             //      Descriptor::MAX_TRANSFER_UNITS
