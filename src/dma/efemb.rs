@@ -1,7 +1,7 @@
 //! Embassy support dor DMA
 //!
 
-use crate::dma::{self, ChannelTransfer, ChannelTransferResult, DmaChannel};
+use crate::dma::{self, transfer::ChannelTransferResult, ChannelTransfer, DmaChannel};
 use core::{future::Future, task::Poll};
 use embassy_sync::waitqueue::AtomicWaker;
 
@@ -46,7 +46,7 @@ impl<'a, W: Sized> Future for ChannelTransferFuture<'a, W> {
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Self::Output> {
-        DMA_WAKERS[self.transfer.id as usize].register(cx.waker());
+        DMA_WAKERS[self.transfer.id() as usize].register(cx.waker());
 
         if let Some(transfer_result) = self.transfer.check_done() {
             Poll::Ready(transfer_result)
