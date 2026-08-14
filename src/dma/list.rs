@@ -137,13 +137,9 @@ impl<'a> DescList<'a> {
         self.set_done_ifs()?;
         let mut descr = Descriptor::const_default();
         descr.struct_type_set(StructType::Transfer);
-
         descr.link_mode_set(AddrMode::Absolute);
         descr.link_addr_set(self.descriptors.as_ptr().addr() >> 2);
-
-        // Setting the Link flag on a Link transfer descriptor will have the effect of the linked list *NOT* being
-        // loaded when the Link flag is set on the DMA channel ( [`DmaChannel::link_load()`] )
-        descr.link_set(self.index == 0);
+        descr.link_set(true);
 
         Ok(TransferDescriptor { descr })
     }

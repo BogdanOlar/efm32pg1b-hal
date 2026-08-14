@@ -148,6 +148,13 @@ required-features = [
 ]
 
 [[example]]
+name = "dma_examples"
+required-features = [
+    "defmt",
+    "efemb-timdrv-letim0-hz-32_768"
+]
+
+[[example]]
 name = "em_exti"
 required-features = ["defmt", "qfn48"]
 

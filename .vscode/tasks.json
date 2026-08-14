@@ -40,6 +40,27 @@
             }
         },
         {
+            "label": "cargo build example dma_examples",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--example",
+                "dma_examples",
+                "--features='defmt qfn48 efemb efemb-timdrv-letim0-hz-32_768'"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "presentation": {
+                "clear": true
+            },
+            "group": {
+                "kind": "build",
+                // "isDefault": true
+            }
+        },
+        {
             "label": "cargo build example em_exti",
             "type": "shell",
             "command": "cargo",

@@ -33,6 +33,36 @@
             }
         },
         {
+            "name": "JLink dma_examples example",
+            /* Configuration for the STM32F303 Discovery board */
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "jlink",
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "cargo build example dma_examples",
+            "runToEntryPoint": "main",
+            "executable": "./target/thumbv7em-none-eabihf/debug/examples/dma_examples",
+            "device": "EFM32PG1B200F256GM48",
+            "svdFile": "${workspaceRoot}/EFM32PG1B.svd",
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 4
+            },
+            "swoConfig": {
+                "enabled": true,
+                "cpuFrequency": 8000000,
+                "swoFrequency": 2000000,
+                "source": "probe",
+                "decoders": [
+                    {
+                        "type": "console",
+                        "label": "ITM",
+                        "port": 0
+                    }
+                ]
+            }
+        },
+        {
             "name": "JLink gpio example",
             /* Configuration for the STM32F303 Discovery board */
             "type": "cortex-debug",

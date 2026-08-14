@@ -49,16 +49,19 @@ impl TransferDescriptor {
         Self { descr }
     }
 
+    /// When a linked descriptor is loaded with this bit set, it will immediately trigger a transfer.
     pub const fn with_struct_req(mut self, is_struct_req: bool) -> Self {
         self.descr.struct_req_set(is_struct_req);
         self
     }
 
+    /// This bit-field controls the number of unit data transfers per arbitration cycle
     pub const fn with_block_size(mut self, block_size: BlockSize) -> Self {
         self.descr.block_size_set(block_size);
         self
     }
 
+    /// For word and half-word transfers, setting this bit will swap all bytes of each word or half-word.
     pub const fn with_byte_swap(mut self, is_byte_swapped: bool) -> Self {
         self.descr.byte_swap_set(is_byte_swapped);
         self
@@ -71,11 +74,15 @@ impl TransferDescriptor {
         self
     }
 
+    /// `true`: One transfer request transfers all units as defined by the XFRCNT field.
+    /// `false`: The LDMA transfers one BLOCKSIZE per transfer request.
     pub const fn with_req_mode_all(mut self, is_req_mode_all: bool) -> Self {
         self.descr.req_mode_set(is_req_mode_all);
         self
     }
 
+    /// The channel arbiter will ignore single requests (SREQ) and only respond to multiple requests (REQ) when this bit
+    /// is set.
     pub const fn with_ignore_single_requests(mut self, is_ignored: bool) -> Self {
         self.descr.ignore_sreq_set(is_ignored);
         self
