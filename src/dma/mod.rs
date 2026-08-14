@@ -170,10 +170,17 @@ impl DmaChannel {
         mmio::dbghalt_set(self.id);
     }
 
+    /// Start the DMA transfer by executing the `TransferDescriptor` written to the DMA Channel
+    ///
+    /// If a descriptor list is linked, it will be executed after the `TransferDescriptor` has finished
     pub fn start(&self) {
         mmio::swreq(self.id);
     }
 
+    /// Start the DMA transfer by executing the Transfer LINK Descriptor written to the DMA Channel
+    ///
+    /// This which will trigger loading the first descriptor in the descriptor list whose address is in the LINK
+    /// register
     pub fn link_load(&self) {
         mmio::ch_link_load(self.id)
     }

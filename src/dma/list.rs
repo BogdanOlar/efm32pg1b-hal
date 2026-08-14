@@ -3,10 +3,10 @@
 
 use crate::dma::{
     descriptor::{
-        Addr, AddrMode, Descriptor, ImmediateDescriptor, LoopTransferDescriptor, StructType,
-        SyncDescriptor, TransferDescriptor,
+        Addr, AddrInc, AddrMode, Descriptor, ImmediateDescriptor, LoopTransferDescriptor,
+        StructType, SyncDescriptor, TransferCount, TransferDescriptor, UnitSize,
     },
-    DmaError,
+    ChannelId, DmaError,
 };
 
 /// Descriptor list
@@ -226,4 +226,221 @@ impl From<ImmediateDescriptor> for ListDescriptor {
     fn from(value: ImmediateDescriptor) -> Self {
         Self::Immediate(value)
     }
+}
+
+/// Target address for helper functions `reduced()` and `extended()`
+pub(crate) enum TargetAddr {
+    /// Use given absolute address and don't increment it
+    Fixed(usize),
+    /// Use given absolute address and increment it by 1 unit on each copy
+    IncrementOne(usize),
+}
+
+/// Construct the `TransferDescriptor` for a given number of DMA units. The returned descriptor is meant to be written
+/// directly to the DMA Channel registers.
+///
+/// If necessary, we'll use the DMA Channel loop counter to repeatedly execute a `TransferDescriptor` and a separate
+/// `TransferDescriptor` to end the DMA copy and set the Interrupt Done Flag. This is "reduced" because the linked
+/// descriptor list does not need an `ImmediateDescriptor` to write the loop count since the counter is written directly
+/// to the DMA Channel at the beginning of the DMA Transfer
+///
+/// **DMA Channel registers**:
+///     - `TransferDescriptor`
+///     - loop count written to the DMA Channel `LDMA_CHx_LOOP` register if necessary
+///
+/// **Descriptor list**:
+///     - `LoopTransferDescriptor` -> `TransferDescriptor`
+pub(crate) fn reduced(
+    dma_ch_id: ChannelId,
+    src: TargetAddr,
+    dst: TargetAddr,
+    unit: UnitSize,
+    unit_count: usize,
+    desc_list: &mut DescList,
+) -> Result<TransferDescriptor, DmaError> {
+    const NON_LOOP_TRANSFER_COUNT: usize = 2;
+    const MAX_LOOP_COUNT: usize = u8::MAX as usize;
+    const MAX_TRANSFER_COUNT: usize =
+        MAX_LOOP_COUNT * Descriptor::MAX_TRANSFER_UNITS + NON_LOOP_TRANSFER_COUNT;
+
+    let transfer_count = unit_count.div_ceil(Descriptor::MAX_TRANSFER_UNITS);
+
+    if transfer_count > MAX_TRANSFER_COUNT {
+        return Err(DmaError::InvalidTransferSize);
+    }
+
+    let (src_addr, src_addr_inc) = match src {
+        TargetAddr::Fixed(addr) => (addr, AddrInc::None),
+        TargetAddr::IncrementOne(addr) => (addr, AddrInc::One),
+    };
+
+    let (dst_addr, dst_addr_inc) = match dst {
+        TargetAddr::Fixed(addr) => (addr, AddrInc::None),
+        TargetAddr::IncrementOne(addr) => (addr, AddrInc::One),
+    };
+
+    if transfer_count > 1 {
+        let loop_count = transfer_count.saturating_sub(NON_LOOP_TRANSFER_COUNT);
+
+        if loop_count > 0 {
+            // Write DMA channel loop count
+            crate::dma::mmio::dma()
+                .ch(dma_ch_id as usize)
+                .loop_()
+                .write(|w| unsafe { w.loopcnt().bits((loop_count - 1) as u8) });
+
+            desc_list.push_linked(
+                LoopTransferDescriptor::new(
+                    Addr::Relative(0),
+                    Addr::Relative(0),
+                    TransferCount::MAX,
+                    Addr::Relative(0),
+                    unit,
+                )
+                .with_src_inc(src_addr_inc)
+                .with_dst_inc(dst_addr_inc),
+            )?;
+        }
+
+        desc_list.push_linked(
+            TransferDescriptor::new(
+                Addr::Relative(0),
+                Addr::Relative(0),
+                TransferCount::MAX,
+                unit,
+            )
+            .with_src_inc(src_addr_inc)
+            .with_dst_inc(dst_addr_inc),
+        )?;
+    }
+
+    Ok(TransferDescriptor::new(
+        Addr::Absolute(src_addr),
+        Addr::Absolute(dst_addr),
+        // As a happy coincidence, calling `TransferCount::try_into` with a `unit_count` of 0 will result in an
+        // error, so we can use that to set the unit count to `TransferCount::MAX` instead of doing
+        // ```
+        //  if (unit_count % Descriptor::MAX_TRANSFER_UNITS) == 0 {
+        //      Descriptor::MAX_TRANSFER_UNITS
+        //  } else {
+        //      unit_count % Descriptor::MAX_TRANSFER_UNITS
+        //  }
+        // ```
+        (unit_count % Descriptor::MAX_TRANSFER_UNITS)
+            .try_into()
+            .unwrap_or(TransferCount::MAX),
+        unit,
+    )
+    .with_src_inc(src_addr_inc)
+    .with_dst_inc(dst_addr_inc))
+}
+
+/// Construct an "extended" descriptor list and return a Transfer LINK Descriptor suitable to be written to the DMA
+/// Channel in order to trigger the transfer with [`crate::dma::DmaChannel::link_load()`].
+///
+/// This is "extended" because it can use an `ImmediateDescriptor` to write the loop count value to the DMA Channel if
+/// necessary.
+///
+/// **DMA Channel registers**:
+///     - LINK `TransferDescriptor`
+///
+/// **Descriptor list**:
+///     - `ImmediateDescriptor` (write to `LDMA_CHx_LOOP`) -> `TransferDescriptor` -> `LoopTransferDescriptor`
+///       -> `TransferDescriptor`
+pub(crate) fn extended(
+    dma_ch_id: ChannelId,
+    src: TargetAddr,
+    dst: TargetAddr,
+    unit: UnitSize,
+    unit_count: usize,
+    desc_list: &mut DescList,
+) -> Result<(), DmaError> {
+    const NON_LOOP_TRANSFER_COUNT: usize = 2;
+    const MAX_TRANSFER_COUNT: usize =
+        u8::MAX as usize * Descriptor::MAX_TRANSFER_UNITS + NON_LOOP_TRANSFER_COUNT;
+
+    let transfer_count = unit_count.div_ceil(Descriptor::MAX_TRANSFER_UNITS);
+
+    if transfer_count > MAX_TRANSFER_COUNT {
+        return Err(DmaError::InvalidTransferSize);
+    }
+
+    let (src_addr, src_addr_inc) = match src {
+        TargetAddr::Fixed(addr) => (addr, AddrInc::None),
+        TargetAddr::IncrementOne(addr) => (addr, AddrInc::One),
+    };
+
+    let (dst_addr, dst_addr_inc) = match dst {
+        TargetAddr::Fixed(addr) => (addr, AddrInc::None),
+        TargetAddr::IncrementOne(addr) => (addr, AddrInc::One),
+    };
+
+    let loop_count = transfer_count.saturating_sub(NON_LOOP_TRANSFER_COUNT);
+
+    // Immediate Transfer needs to be written _before_ the first Transfer because it will change the SRC and DST
+    // registers of the DMA Channels.
+    // This way the first Transfer will set the absolute address of the buffer, and the subsequent Transfers can use
+    // relative addressing. This is particularly important if the second Transfer is a Loop descriptor which can't use
+    // an absolute address
+    if loop_count > 0 {
+        desc_list.push_linked(ImmediateDescriptor::new(
+            (loop_count - 1) as u32,
+            crate::dma::mmio::dma()
+                .ch(dma_ch_id as usize)
+                .loop_()
+                .as_ptr()
+                .addr(),
+        ))?;
+    }
+
+    desc_list.push_linked(
+        TransferDescriptor::new(
+            Addr::Absolute(src_addr),
+            Addr::Absolute(dst_addr),
+            // As a happy coincidence, calling `TransferCount::try_into` with a `unit_count` of 0 will result in an
+            // error, so we can use that to set the unit count to `TransferCount::MAX` instead of doing
+            // ```
+            //  if (unit_count % Descriptor::MAX_TRANSFER_UNITS) == 0 {
+            //      Descriptor::MAX_TRANSFER_UNITS
+            //  } else {
+            //      unit_count % Descriptor::MAX_TRANSFER_UNITS
+            //  }
+            // ```
+            (unit_count % Descriptor::MAX_TRANSFER_UNITS)
+                .try_into()
+                .unwrap_or(TransferCount::MAX),
+            unit,
+        )
+        .with_src_inc(src_addr_inc)
+        .with_dst_inc(dst_addr_inc),
+    )?;
+
+    if transfer_count > 1 {
+        if loop_count > 0 {
+            desc_list.push_linked(
+                LoopTransferDescriptor::new(
+                    Addr::Relative(0),
+                    Addr::Relative(0),
+                    TransferCount::MAX,
+                    Addr::Relative(0),
+                    unit,
+                )
+                .with_src_inc(src_addr_inc)
+                .with_dst_inc(dst_addr_inc),
+            )?;
+        }
+
+        desc_list.push_linked(
+            TransferDescriptor::new(
+                Addr::Relative(0),
+                Addr::Relative(0),
+                TransferCount::MAX,
+                unit,
+            )
+            .with_src_inc(src_addr_inc)
+            .with_dst_inc(dst_addr_inc),
+        )?;
+    }
+
+    Ok(())
 }
