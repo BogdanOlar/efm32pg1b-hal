@@ -68,7 +68,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         mmio::ien_clear(self.id);
         mmio::ifc_set(self.id);
         mmio::chen_clear(self.id);
-        mmio::chdone_clear(self.id);
+        mmio::ch_done_clear(self.id);
 
         critical_section::with(|cs| {
             // Clear any existing content in the IRQ channel of this DMA channel
@@ -182,7 +182,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 mmio::ien_clear(self.id);
                 mmio::ifc_set(self.id);
                 mmio::chen_clear(self.id);
-                mmio::chdone_clear(self.id);
+                mmio::ch_done_clear(self.id);
                 // Clear DMA channel handler
                 critical_section::with(|cs| irq::clear_handler(cs, self.id));
 

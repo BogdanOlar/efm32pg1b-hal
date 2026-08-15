@@ -10,7 +10,7 @@ use crate::dma::DmaError;
 /// This is the only descriptor which can be written directly to a LDMA Channel's registers
 /// [`crate::dma::DmaChannel::set_descriptor()`]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct TransferDescriptor {
     pub(crate) descr: Descriptor,
 }
@@ -88,11 +88,15 @@ impl TransferDescriptor {
         self
     }
 
+    /// This bit-field specifies the stride or number of unit data addresses to increment the source address after each
+    /// [`UnitSize`] of data is transferred.
     pub const fn with_src_inc(mut self, addr_inc: AddrInc) -> Self {
         self.descr.src_inc_set(addr_inc);
         self
     }
 
+    /// This bit-field specifies the stride or number of unit data addresses to increment the destination address after
+    /// each [`UnitSize`] of data is transferred.
     pub const fn with_dst_inc(mut self, addr_inc: AddrInc) -> Self {
         self.descr.dst_inc_set(addr_inc);
         self
@@ -117,6 +121,7 @@ impl TransferDescriptor {
         self
     }
 
+    /// Convert into a raw [`Descriptor`]
     pub const fn into_inner(self) -> Descriptor {
         self.descr
     }
@@ -134,8 +139,8 @@ impl From<TransferDescriptor> for Descriptor {
 ///
 /// # TODO
 /// constrain the [`DescList`] to never end with a Loop descriptor which is Link
+#[derive(Default, Clone, Copy, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Default, Clone, Copy)]
 pub struct LoopTransferDescriptor {
     descr: Descriptor,
 }
@@ -239,6 +244,7 @@ impl LoopTransferDescriptor {
         self
     }
 
+    /// Convert into a raw [`Descriptor`]
     pub const fn into_inner(self) -> Descriptor {
         self.descr
     }
@@ -255,7 +261,8 @@ impl From<LoopTransferDescriptor> for Descriptor {
 /// This descriptor defines an intra-channel synchronizing structure.
 ///
 /// This descriptor can only be linked from memory (e.g written to a [`DescList`])
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SyncDescriptor {
     descr: Descriptor,
 }
@@ -312,6 +319,7 @@ impl SyncDescriptor {
         self
     }
 
+    /// Convert into a [`Descriptor`]
     pub const fn into_inner(self) -> Descriptor {
         self.descr
     }
@@ -328,7 +336,8 @@ impl From<SyncDescriptor> for Descriptor {
 /// This descriptor defines a write-immediate structure.
 ///
 /// This descriptor can only be linked from memory (e.g written to a [`DescList`])
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ImmediateDescriptor {
     descr: Descriptor,
 }
@@ -368,6 +377,7 @@ impl ImmediateDescriptor {
         self
     }
 
+    /// Convert into a [`Descriptor`]
     pub const fn into_inner(self) -> Descriptor {
         self.descr
     }
@@ -379,7 +389,7 @@ impl From<ImmediateDescriptor> for Descriptor {
     }
 }
 
-/// DMA Descriptor
+/// Raw DMA Descriptor
 #[derive(Clone, Copy, Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(C)]
@@ -640,6 +650,7 @@ pub enum UnitSize {
 }
 
 impl UnitSize {
+    /// Get the width (in bytes) of this [`UnitSize`]
     pub const fn byte_count(self) -> usize {
         match self {
             UnitSize::Byte => 1,
@@ -650,9 +661,9 @@ impl UnitSize {
 }
 
 /// Descriptor address mode
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[repr(u8)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub(crate) enum AddrMode {
     /// Absolute addressing
     #[default]

@@ -12,6 +12,8 @@ use crate::dma::{
 };
 
 /// Descriptor list
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DescList<'a> {
     prev: Option<ListDescriptor>,
     descriptors: &'a mut [Descriptor],
@@ -210,6 +212,8 @@ impl<'a> DescList<'a> {
 }
 
 /// Wrapper for all Descriptor Builders which can be pushed to a [`DescList`]
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 enum ListDescriptor {
     /// [`TransferDescriptor`]
     Transfer(TransferDescriptor),
@@ -246,6 +250,8 @@ impl From<ImmediateDescriptor> for ListDescriptor {
 }
 
 /// Descriptor list finalize mode
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum FinMode {
     /// No action
     None,
@@ -254,6 +260,8 @@ pub enum FinMode {
 }
 
 /// Target address for helper functions `reduced()` and `extended()`
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub(crate) enum TargetAddr {
     /// Use given absolute address and don't increment it
     Fixed(usize),

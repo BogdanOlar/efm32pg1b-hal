@@ -54,4 +54,5 @@
             // "type": "text"
         },
     },
+    "cortex-debug.variableUseNaturalFormat": false,
 }

@@ -33,8 +33,8 @@ impl<const N: u8> SpiDma<N> {
         rx.reset();
 
         let (tx_sel, rx_sel) = Self::sources();
-        tx.set_per_req(tx_sel);
-        rx.set_per_req(rx_sel);
+        tx.set_peripheral_req(tx_sel);
+        rx.set_peripheral_req(rx_sel);
 
         critical_section::with(|cs| {
             // Clear any existing content in the IRQ channel of the DMA channels
@@ -184,13 +184,13 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             self.busy = true;
 
             // self.rx.set_dbg_halt();
-            self.rx.set_ien();
-            self.rx.set_enable();
+            self.rx.set_ien(true);
+            self.rx.set_enabled(true);
             self.tx.start();
 
             // self.tx.set_dbg_halt();
-            self.tx.set_ien();
-            self.tx.set_enable();
+            self.tx.set_ien(true);
+            self.tx.set_enabled(true);
             self.tx.start();
 
             Ok(())
@@ -220,10 +220,10 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             };
 
             self.busy = false;
-            self.tx.clear_enable();
-            self.tx.clear_ien();
-            self.rx.clear_enable();
-            self.rx.clear_ien();
+            self.tx.set_enabled(false);
+            self.tx.set_ien(false);
+            self.rx.set_enabled(false);
+            self.rx.set_ien(false);
 
             // FIXME: When the RX Dma ends followed by the TX Dma, then there are still SPI TX fifo bytes being
             //        transacted, which causes the RX Spi buffer to not be empty when the next DMA transaction starts

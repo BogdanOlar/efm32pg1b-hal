@@ -83,7 +83,7 @@ impl DmaChannel {
         mmio::chen_clear(self.id);
         mmio::ien_clear(self.id);
         mmio::ifc_set(self.id);
-        mmio::chdone_clear(self.id);
+        mmio::ch_done_clear(self.id);
 
         mmio::ctrl_syncprsseten_clear(self.id);
         mmio::ctrl_syncprsclren_clear(self.id);
@@ -91,7 +91,7 @@ impl DmaChannel {
         mmio::dbghalt_clear(self.id);
         mmio::reqdis_clear(self.id);
         mmio::reqclear_set(self.id);
-        mmio::reqsel_set(self.id, ChReqSel::None);
+        mmio::set_reqsel(self.id, ChReqSel::None);
 
         // TODO: LDMA_CHx_CFG, LDMA_CHx_LOOP
     }
@@ -106,18 +106,96 @@ impl DmaChannel {
         mmio::chen(self.id)
     }
 
-    /// Enable channel
-    pub fn set_enable(&self) {
-        mmio::chen_set(self.id());
-    }
-    /// Disable channel
-    pub fn clear_enable(&self) {
-        mmio::chen_clear(self.id());
+    /// Set channel enabled
+    pub fn set_enabled(&self, is_enabled: bool) {
+        if is_enabled {
+            mmio::chen_set(self.id());
+        } else {
+            mmio::chen_clear(self.id());
+        }
     }
 
-    /// Get channel busy (if enabled)
+    /// Get channel busy
     pub fn busy(&self) -> bool {
-        self.enabled() && mmio::ch_busy(self.id)
+        mmio::ch_busy(self.id)
+    }
+
+    /// Get channel done
+    pub fn done(&self) -> bool {
+        mmio::ch_done(self.id)
+    }
+
+    /// Set channel done
+    pub fn set_done(&self, is_done: bool) {
+        if is_done {
+            mmio::ch_done_set(self.id)
+        } else {
+            mmio::ch_done_clear(self.id)
+        }
+    }
+
+    /// Get the channel Peripheral Request selection
+    pub fn peripheral_req(&self) -> ChReqSel {
+        // # Safety
+        //
+        // The `LDMA_CHx_REQSEL` can only be written with a safe function from this crate.
+        // If the retrieved value is invalid (cannot be converted to `ChReqSel`), then it is reasonable to assume it
+        // will have no effect on the peripheral so returning `ChReqSel::None` (the default for `ChReqSel`) makes sense
+        mmio::reqsel(self.id).unwrap_or_default()
+    }
+
+    /// Set the channel Peripheral Request selection
+    pub fn set_peripheral_req(&self, source: ChReqSel) {
+        mmio::set_reqsel(self.id, source);
+    }
+
+    /// Get channel interrupt enabled
+    pub fn ien(&self) -> bool {
+        mmio::ien(self.id)
+    }
+
+    /// Set channel interrupt enabled
+    pub fn set_ien(&self, is_enabled: bool) {
+        if is_enabled {
+            mmio::ien_set(self.id);
+        } else {
+            mmio::ien_clear(self.id);
+        }
+    }
+
+    /// Enable channel halt during debugger breakpoint
+    pub fn set_dbg_halt(&self) {
+        mmio::dbghalt_set(self.id);
+    }
+
+    /// Get channel loop count value
+    pub fn ch_loop(&self) -> u8 {
+        mmio::ch_loop(self.id)
+    }
+
+    /// Set channel loop count value
+    pub fn set_ch_loop(&self, loop_count: u8) {
+        mmio::ch_loop_set(self.id, loop_count);
+    }
+
+    /// Start the DMA transfer by executing the `TransferDescriptor` written to the DMA Channel
+    ///
+    /// If a descriptor list is linked, it will be executed after the `TransferDescriptor` has finished
+    pub fn start(&self) {
+        mmio::swreq(self.id);
+    }
+
+    /// Start the DMA transfer by executing the Transfer LINK Descriptor written to the DMA Channel
+    ///
+    /// This which will trigger loading the first descriptor in the descriptor list whose address is in the LINK
+    /// register
+    pub fn link_load(&self) {
+        mmio::ch_link_load(self.id)
+    }
+
+    /// Write a descriptor to the channel DMA descriptor registers
+    pub fn set_descriptor(&self, descr: TransferDescriptor) {
+        mmio::ch_write_descriptor(self.id, &descr.into_inner());
     }
 
     /// Start a memory-to-memory transfer
@@ -139,51 +217,6 @@ impl DmaChannel {
         let mut transfer = ChannelTransfer::new(self, src, dst);
         transfer.start();
         transfer
-    }
-
-    /// Set the channel Peripheral Request selection
-    pub fn set_per_req(&self, source: ChReqSel) {
-        mmio::reqsel_set(self.id, source);
-    }
-
-    /// Write a descriptor to the channel DMA descriptor registers
-    pub fn set_descriptor(&self, descr: TransferDescriptor) {
-        mmio::ch_write_descriptor(self.id, &descr.into_inner());
-    }
-
-    /// Enable channel interrupt
-    pub fn set_ien(&self) {
-        mmio::ien_set(self.id);
-    }
-
-    /// Disable channel interrupt
-    pub fn clear_ien(&self) {
-        mmio::ien_clear(self.id);
-    }
-
-    /// Enable channel halt during debugger breakpoint
-    pub fn set_dbg_halt(&self) {
-        mmio::dbghalt_set(self.id);
-    }
-
-    /// Start the DMA transfer by executing the `TransferDescriptor` written to the DMA Channel
-    ///
-    /// If a descriptor list is linked, it will be executed after the `TransferDescriptor` has finished
-    pub fn start(&self) {
-        mmio::swreq(self.id);
-    }
-
-    /// Start the DMA transfer by executing the Transfer LINK Descriptor written to the DMA Channel
-    ///
-    /// This which will trigger loading the first descriptor in the descriptor list whose address is in the LINK
-    /// register
-    pub fn link_load(&self) {
-        mmio::ch_link_load(self.id)
-    }
-
-    /// Set channel loop count value
-    pub fn set_ch_loop(&self, loop_count: u8) {
-        mmio::ch_loop_set(self.id, loop_count);
     }
 }
 
@@ -240,11 +273,12 @@ impl ChannelId {
 }
 
 /// Channel Peripheral Request Select
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[repr(u16)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ChReqSel {
     /// No source selected
+    #[default]
     None = 0,
     /// Peripheral Reflex System, PRSREQ0
     PrsReq0 = 0x10,
@@ -340,10 +374,55 @@ pub enum ChReqSel {
     CryptoData1Rd = 0x314,
 }
 
+impl TryFrom<u16> for ChReqSel {
+    type Error = DmaError;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::None),
+            0x10 => Ok(Self::PrsReq0),
+            0x11 => Ok(Self::PrsReq1),
+            0x80 => Ok(Self::Adc0Single),
+            0x81 => Ok(Self::Adc0Scan),
+            0xC0 => Ok(Self::Usart0RxDataAvl),
+            0xC1 => Ok(Self::Usart0TxBl),
+            0xC2 => Ok(Self::Usart0TxEmpty),
+            0xD0 => Ok(Self::Usart1RxDataAvl),
+            0xD1 => Ok(Self::Usart1TxBl),
+            0xD2 => Ok(Self::Usart1TxEmpty),
+            0xD3 => Ok(Self::Usart1RxDataAvlRight),
+            0xD4 => Ok(Self::Usart1TxBlRight),
+            0x100 => Ok(Self::LeUart0RxDataAvl),
+            0x101 => Ok(Self::LeUart0TxBl),
+            0x102 => Ok(Self::LeUart0TxEmpty),
+            0x140 => Ok(Self::I2C0RxDataAvl),
+            0x141 => Ok(Self::I2C0TxBl),
+            0x180 => Ok(Self::Timer0UfOf),
+            0x181 => Ok(Self::Timer0Cc0),
+            0x182 => Ok(Self::Timer0Cc1),
+            0x183 => Ok(Self::Timer0Cc2),
+            0x190 => Ok(Self::Timer1UfOf),
+            0x191 => Ok(Self::Timer1Cc0),
+            0x192 => Ok(Self::Timer1Cc1),
+            0x193 => Ok(Self::Timer1Cc2),
+            0x194 => Ok(Self::Timer1Cc3),
+            0x300 => Ok(Self::MscWData),
+            0x310 => Ok(Self::CryptoData0Wr),
+            0x311 => Ok(Self::CryptoData0XWr),
+            0x312 => Ok(Self::CryptoData0Rd),
+            0x313 => Ok(Self::CryptoData1Wr),
+            0x314 => Ok(Self::CryptoData1Rd),
+            _ => Err(DmaError::InvalidMMIO),
+        }
+    }
+}
+
 /// DMA Error
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DmaError {
+    /// The value in a DMA MMIO register is invalid
+    InvalidMMIO,
     /// Invalid transfer size (e.g. transfer size is `0`)
     InvalidTransferSize,
     /// DMA transfer failed
@@ -416,7 +495,7 @@ pub mod irq {
 /// Register-level DMA functions
 pub(crate) mod mmio {
     use crate::dma::descriptor::Descriptor;
-    use crate::dma::{ChReqSel, ChannelId, DmaChannel};
+    use crate::dma::{ChReqSel, ChannelId, DmaChannel, DmaError};
     use crate::pac::Ldma;
     use crate::SingleCycleRMW;
 
@@ -457,7 +536,7 @@ pub(crate) mod mmio {
         dma().chdone().sc_set(1 << id as u8);
     }
 
-    pub(crate) fn chdone_clear(id: ChannelId) {
+    pub(crate) fn ch_done_clear(id: ChannelId) {
         dma().chdone().sc_clear(1 << id as u8);
     }
 
@@ -485,14 +564,21 @@ pub(crate) mod mmio {
         dma().chbusy().read().busy().bits() & (1 << id as u8) != 0
     }
 
+    pub(crate) fn ien(id: ChannelId) -> bool {
+        (dma().ien().read().bits() & (1 << id as u8)) != 0
+    }
+
+    /// Set IEN flag for channel (single-cycle read-modify-write)
     pub(crate) fn ien_set(id: ChannelId) {
         dma().ien().sc_set(1 << id as u8);
     }
 
+    /// Clear IEN flag for channel (single-cycle read-modify-write)
     pub(crate) fn ien_clear(id: ChannelId) {
         dma().ien().sc_clear(1 << id as u8);
     }
 
+    /// Clear interrupt flag for channel (single-cycle read-modify-write)
     pub(crate) fn ifc_set(id: ChannelId) {
         dma().ifc().sc_set(1 << id as u8);
     }
@@ -517,6 +603,10 @@ pub(crate) mod mmio {
             .write(|w| unsafe { w.swreq().bits(1 << id as u8) });
     }
 
+    pub(crate) fn ch_loop(id: ChannelId) -> u8 {
+        dma().ch(id as usize).loop_().read().loopcnt().bits()
+    }
+
     pub(crate) fn ch_loop_set(id: ChannelId, loop_count: u8) {
         dma()
             .ch(id as usize)
@@ -525,7 +615,16 @@ pub(crate) mod mmio {
     }
 
     /// Set Channel Peripheral Request Select
-    pub(crate) fn reqsel_set(id: ChannelId, source: ChReqSel) {
+    pub(crate) fn reqsel(id: ChannelId) -> Result<ChReqSel, DmaError> {
+        let sig = dma().ch(id as usize).reqsel().read().sigsel().bits();
+        let source = dma().ch(id as usize).reqsel().read().sourcesel().bits();
+        let raw = ((sig as u16) << 6) | source as u16;
+
+        raw.try_into()
+    }
+
+    /// Set Channel Peripheral Request Select
+    pub(crate) fn set_reqsel(id: ChannelId, source: ChReqSel) {
         let sig = ((source as u16) & 0b1111) as u8;
         let source = (((source as u16) >> 4) & 0b111111) as u8;
 
