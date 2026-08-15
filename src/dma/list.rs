@@ -1,6 +1,8 @@
 //! Descriptor list and the Descriptor types which can be used with it
 //!
 
+use cortex_m::asm;
+
 use crate::dma::{
     descriptor::{
         Addr, AddrInc, AddrMode, Descriptor, ImmediateDescriptor, LoopTransferDescriptor,
@@ -48,6 +50,7 @@ impl<'a> DescList<'a> {
         self.push(desc_bld)
     }
 
+    /// Add the given descriptor to the list
     pub fn push<T>(&mut self, desc_bld: T) -> Result<(), DmaError>
     where
         T: Into<ListDescriptor> + Copy,
@@ -90,6 +93,7 @@ impl<'a> DescList<'a> {
         self.push_linked(desc_bld)
     }
 
+    /// Add the given descriptor to the list, and link it to the previous descriptor
     pub fn push_linked<T>(&mut self, desc_bld: T) -> Result<(), DmaError>
     where
         T: Into<ListDescriptor> + Copy,
@@ -117,11 +121,13 @@ impl<'a> DescList<'a> {
         self.push(desc_bld)
     }
 
+    /// Finalize the descriptor list and link it to the given Transfer descriptor
     pub fn into_transfer_descriptor(
         mut self,
         mut transfer_descriptor: TransferDescriptor,
+        mode: FinMode,
     ) -> TransferDescriptor {
-        if self.set_done_ifs().is_ok() {
+        if self.finalize(mode).is_ok() {
             transfer_descriptor = transfer_descriptor
                 .with_link(Addr::Absolute(self.descriptors.as_ptr().addr()), true);
         } else {
@@ -133,8 +139,12 @@ impl<'a> DescList<'a> {
         transfer_descriptor
     }
 
-    pub fn try_into_link_descriptor(mut self) -> Result<TransferDescriptor, DmaError> {
-        self.set_done_ifs()?;
+    /// Finalize the descriptor list and return a Transfer Link descriptor which can be written to the DMA Channel regs
+    pub fn try_into_link_descriptor(
+        mut self,
+        mode: FinMode,
+    ) -> Result<TransferDescriptor, DmaError> {
+        self.finalize(mode)?;
         let mut descr = Descriptor::const_default();
         descr.struct_type_set(StructType::Transfer);
         descr.link_mode_set(AddrMode::Absolute);
@@ -154,26 +164,37 @@ impl<'a> DescList<'a> {
         self.len() == 0
     }
 
-    fn set_done_ifs(&mut self) -> Result<(), DmaError> {
+    /// Set the Done Interrupt-Flag-Set on the last descriptor in the list
+    ///
+    /// # Errors
+    ///
+    /// If the list is empty, `DmaError::InvalidDescriptorList` is returned
+    fn finalize(&mut self, mode: FinMode) -> Result<(), DmaError> {
         if let Some(prev_list_desc) = self.prev.take() {
             if let Some(prev_desc) = self.descriptors.get_mut(self.index - 1) {
-                // enable the done interrupt flag on the last descriptor in the list
-                *prev_desc = match prev_list_desc {
-                    ListDescriptor::Transfer(transfer_descriptor) => {
-                        transfer_descriptor.with_done_ifs(true).into()
+                match mode {
+                    FinMode::None => {}
+                    FinMode::DoneIFS => {
+                        *prev_desc = match prev_list_desc {
+                            ListDescriptor::Transfer(transfer_descriptor) => {
+                                transfer_descriptor.with_done_ifs(true).into()
+                            }
+                            ListDescriptor::LoopTransfer(loop_transfer_descriptor) => {
+                                // TODO: This could be surprising for the user, since the done ISR will wire on each loop completion
+                                //       Either disallow this, or make it clear in the documentation
+                                loop_transfer_descriptor.with_loop_done_ifs(true).into()
+                            }
+                            ListDescriptor::Sync(sync_descriptor) => {
+                                sync_descriptor.with_done_ifs(true).into()
+                            }
+                            ListDescriptor::Immediate(immediate_descriptor) => {
+                                immediate_descriptor.with_done_ifs(true).into()
+                            }
+                        };
+
+                        asm::dsb();
                     }
-                    ListDescriptor::LoopTransfer(loop_transfer_descriptor) => {
-                        // TODO: This could be surprising for the user, since the done ISR will wire on each loop completion
-                        //       Either disallow this, or make it clear in the documentation
-                        loop_transfer_descriptor.with_loop_done_ifs(true).into()
-                    }
-                    ListDescriptor::Sync(sync_descriptor) => {
-                        sync_descriptor.with_done_ifs(true).into()
-                    }
-                    ListDescriptor::Immediate(immediate_descriptor) => {
-                        immediate_descriptor.with_done_ifs(true).into()
-                    }
-                };
+                }
 
                 return Ok(());
             } else {
@@ -222,6 +243,14 @@ impl From<ImmediateDescriptor> for ListDescriptor {
     fn from(value: ImmediateDescriptor) -> Self {
         Self::Immediate(value)
     }
+}
+
+/// Descriptor list finalize mode
+pub enum FinMode {
+    /// No action
+    None,
+    /// Add the done interrupt flag set to the last descriptor in the list
+    DoneIFS,
 }
 
 /// Target address for helper functions `reduced()` and `extended()`

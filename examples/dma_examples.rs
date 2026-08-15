@@ -16,7 +16,7 @@ use efm32pg1b_hal::{
             Addr, AddrInc, BlockSize, Descriptor, SyncDescriptor, TransferCount,
             TransferDescriptor, UnitSize,
         },
-        list::DescList,
+        list::{DescList, FinMode},
         Dma, DmaChannel, DmaError,
     },
     prelude::*,
@@ -25,18 +25,6 @@ use efm32pg1b_hal::{
 use panic_probe as _;
 // @note: `use embassy_time` is required in some form in order for defmt timestamps provided by `embassy-time` to work
 use embassy_time::Timer as _;
-
-const SRC_LEN: usize = 1024 * 10;
-static SRC_U8: [u8; SRC_LEN] = {
-    let mut seq = [0; SRC_LEN];
-    let mut i = 0;
-    // Fill the buffer with values from 1 to 254
-    while i < SRC_LEN {
-        seq[i] = 1 + (i % (u8::MAX - 1) as usize) as u8;
-        i += 1;
-    }
-    seq
-};
 
 #[entry]
 fn main() -> ! {
@@ -79,9 +67,9 @@ fn simple_inter_channel_synchronization(
     ch1.set_dbg_halt();
 
     let mut ch0_descriptors = [Descriptor::const_default(); 3];
-    let mut ch0_desc_list = DescList::new(&mut ch0_descriptors);
+    let mut ch0_list = DescList::new(&mut ch0_descriptors);
     let mut ch1_descriptors = [Descriptor::const_default(); 2];
-    let mut ch1_desc_list = DescList::new(&mut ch1_descriptors);
+    let mut ch1_list = DescList::new(&mut ch1_descriptors);
 
     const TR_SIZE: usize = 10;
     let src_a = &SRC_U8[0..TR_SIZE];
@@ -95,7 +83,7 @@ fn simple_inter_channel_synchronization(
     let dst_y = &mut dst_buf_y;
 
     // Descriptor `a`
-    ch0_desc_list.push_linked(
+    ch0_list.push_linked(
         TransferDescriptor::new(
             Addr::Absolute(src_a.as_ptr().addr()),
             Addr::Absolute(dst_a.as_ptr().addr()),
@@ -107,10 +95,10 @@ fn simple_inter_channel_synchronization(
     )?;
 
     // Descriptor `b`
-    ch0_desc_list.push_linked(SyncDescriptor::new().with_matchen(0x80).with_matchval(0x80))?;
+    ch0_list.push_linked(SyncDescriptor::new().with_matchen(0x80).with_matchval(0x80))?;
 
     // Descriptor `c`
-    ch0_desc_list.push_linked(
+    ch0_list.push_linked(
         TransferDescriptor::new(
             Addr::Absolute(src_c.as_ptr().addr()),
             Addr::Absolute(dst_c.as_ptr().addr()),
@@ -122,7 +110,7 @@ fn simple_inter_channel_synchronization(
     )?;
 
     // Descriptor `y`
-    ch1_desc_list.push_linked(
+    ch1_list.push_linked(
         TransferDescriptor::new(
             Addr::Absolute(src_y.as_ptr().addr()),
             Addr::Absolute(dst_y.as_ptr().addr()),
@@ -134,26 +122,31 @@ fn simple_inter_channel_synchronization(
     )?;
 
     // Descriptor `z`
-    ch1_desc_list.push_linked(SyncDescriptor::new().with_syncclr(0x00).with_syncset(0x80))?;
+    ch1_list.push_linked(SyncDescriptor::new().with_syncclr(0x00).with_syncset(0x80))?;
 
     // Link the descriptor lists for the Channels
-    ch0.set_descriptor(ch0_desc_list.try_into_link_descriptor()?);
-    ch1.set_descriptor(ch1_desc_list.try_into_link_descriptor()?);
+    ch0.set_descriptor(ch0_list.try_into_link_descriptor(FinMode::None)?);
+    ch1.set_descriptor(ch1_list.try_into_link_descriptor(FinMode::None)?);
 
     // Start Channel 0
     ch0.set_enable();
     ch0.set_ien();
     ch0.link_load();
 
-    info!("dst_a: {}", dst_a);
-    info!("dst_c: {}", dst_c);
-    info!("dst_y: {}", dst_y);
+    // wait ~1 second, plenty of time for ch0 to get to the sync descriptor
+    for _ in 0..5_000_000 {
+        asm::nop();
+    }
 
     // At this point Channel 0 has started, descriptor `a` was executed, and the channel is waiting for the Sync coming
     // from Channel 1, which hasn't started yet. This expains why `dst_c` (descriptor `c` on Channel 0) is still `0`:
     //      dst_a: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     //      dst_c: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     //      dst_y: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    info!(
+        "\n\tdst_a: {}\n\tdst_c: {}\n\tdst_y: {}",
+        dst_a, dst_c, dst_y
+    );
 
     // Start Channel 1
     ch1.set_ien();
@@ -164,15 +157,27 @@ fn simple_inter_channel_synchronization(
         asm::nop();
     }
 
-    info!("dst_a: {}", dst_a);
-    info!("dst_c: {}", dst_c);
-    info!("dst_y: {}", dst_y);
-
     // Channel 1 has started and finished with the sync descriptor, which caused Channel 0 to advance to the `c`
     // descriptor:
     //      dst_a: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     //      dst_c: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     //      dst_y: [21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    info!(
+        "\n\tdst_a: {}\n\tdst_c: {}\n\tdst_y: {}",
+        dst_a, dst_c, dst_y
+    );
 
     Ok((ch0, ch1))
 }
+
+const SRC_LEN: usize = 1024 * 10;
+static SRC_U8: [u8; SRC_LEN] = {
+    let mut seq = [0; SRC_LEN];
+    let mut i = 0;
+    // Fill the buffer with values from 1 to 254
+    while i < SRC_LEN {
+        seq[i] = 1 + (i % (u8::MAX - 1) as usize) as u8;
+        i += 1;
+    }
+    seq
+};

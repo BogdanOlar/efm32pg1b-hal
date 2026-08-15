@@ -4,7 +4,7 @@ use crate::{
     dma::{
         self,
         descriptor::{Descriptor, UnitSize},
-        list::{DescList, TargetAddr},
+        list::{DescList, FinMode, TargetAddr},
         ChReqSel, DmaChannel,
     },
     usart::{mmio, spi::SpiError},
@@ -143,7 +143,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 }
 
                 self.tx
-                    .set_descriptor(tx_list.into_transfer_descriptor(desc));
+                    .set_descriptor(tx_list.into_transfer_descriptor(desc, FinMode::DoneIFS));
             } else if tx_filler_units > 0 {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("TX tx_filler_units {}", tx_filler_units);
@@ -158,7 +158,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 )?;
 
                 self.tx
-                    .set_descriptor(tx_list.into_transfer_descriptor(desc));
+                    .set_descriptor(tx_list.into_transfer_descriptor(desc, FinMode::DoneIFS));
             }
 
             // RX
@@ -177,7 +177,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 )?;
 
                 self.rx
-                    .set_descriptor(rx_list.into_transfer_descriptor(desc));
+                    .set_descriptor(rx_list.into_transfer_descriptor(desc, FinMode::DoneIFS));
             }
 
             // start the transfer
