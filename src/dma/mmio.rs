@@ -62,10 +62,6 @@ pub(crate) fn reqclear_set(id: ChannelId) {
     dma().reqclear().sc_set(1 << id as u8);
 }
 
-pub(crate) fn ch_error(id: ChannelId) -> bool {
-    dma().status().read().cherror().bits() == id as u8
-}
-
 pub(crate) fn ch_busy(id: ChannelId) -> bool {
     dma().chbusy().read().busy().bits() & (1 << id as u8) != 0
 }
@@ -89,7 +85,7 @@ pub(crate) fn ifc_set(id: ChannelId) {
     dma().ifc().sc_set(1 << id as u8);
 }
 
-pub(crate) fn if_error() -> Option<ChannelId> {
+pub(crate) fn ch_error() -> Option<ChannelId> {
     if dma().if_().read().error().bit_is_set() {
         Some(ChannelId::from_u8_unchecked(
             dma().status().read().cherror().bits(),

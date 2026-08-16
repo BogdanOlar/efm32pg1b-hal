@@ -5,7 +5,7 @@ use crate::{
         self,
         descriptor::{Descriptor, UnitSize},
         list::{DescList, FinMode, TargetAddr},
-        ChReqSel, DmaChannel,
+        ChReqSel, DmaChannel, DmaError,
     },
     usart::{mmio, spi::SpiError},
 };
@@ -38,8 +38,8 @@ impl<const N: u8> SpiDma<N> {
 
         critical_section::with(|cs| {
             // Clear any existing content in the IRQ channel of the DMA channels
-            dma::irq::irq_ch_take(cs, tx.id());
-            dma::irq::irq_ch_take(cs, rx.id());
+            let _ = dma::irq::irq_ch_take(cs, tx.id());
+            let _ = dma::irq::irq_ch_take(cs, rx.id());
             // Set the IRQ handler for TX channel
             dma::irq::set_handler(cs, tx.id(), |id, channel_error| {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
@@ -203,19 +203,19 @@ impl<const N: u8> SpiBus for SpiDma<N> {
 
     fn flush(&mut self) -> Result<(), Self::Error> {
         if self.busy {
-            let tx_error = loop {
-                if let Some(is_error) =
+            let tx_result = loop {
+                if let Some(result) =
                     critical_section::with(|cs| dma::irq::irq_ch_take(cs, self.tx.id()))
                 {
-                    break is_error;
+                    break result;
                 }
             };
 
-            let rx_error = loop {
-                if let Some(is_error) =
+            let rx_result = loop {
+                if let Some(result) =
                     critical_section::with(|cs| dma::irq::irq_ch_take(cs, self.rx.id()))
                 {
-                    break is_error;
+                    break result;
                 }
             };
 
@@ -239,9 +239,10 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                 }
             }
 
-            match tx_error || rx_error {
-                true => Err(SpiError::Tx),
-                false => Ok(()),
+            if tx_result.is_ok() && rx_result.is_ok() {
+                Ok(())
+            } else {
+                Err(SpiError::Dma(DmaError::Transfer))
             }
         } else {
             Ok(())

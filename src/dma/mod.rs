@@ -419,7 +419,7 @@ impl TryFrom<u16> for ChReqSel {
 }
 
 /// DMA Error
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DmaError {
     /// The value in a DMA MMIO register is invalid
@@ -427,7 +427,7 @@ pub enum DmaError {
     /// Invalid transfer size (e.g. transfer size is `0`)
     InvalidTransferSize,
     /// DMA transfer failed
-    Transfer(DmaChannel),
+    Transfer,
     /// Descriptor list is invalid (e.g empty)
     InvalidDescriptorList,
     /// Descriptor list overflowed
@@ -437,31 +437,35 @@ pub enum DmaError {
 /// DMA interrupt handling
 pub mod irq {
     use crate::{
-        dma::{mmio, ChannelId, DmaChannel},
+        dma::{mmio, ChannelId, DmaChannel, DmaError},
         pac::interrupt,
     };
     use core::cell::RefCell;
     use critical_section::{CriticalSection, Mutex};
 
     /// Handler function for a DMA interrupt
-    type DmaIrqHandler = fn(ChannelId, bool);
+    type DmaIrqHandler = fn(ChannelId, Result<(), DmaError>);
 
     /// Handler which does nothing
-    const fn default_handler(_: ChannelId, _: bool) {}
+    const fn default_handler(_: ChannelId, _: Result<(), DmaError>) {}
 
     /// Communication channels between DMA IRQ and the main thread. One for each `DmaChannel`
-    static IRQ_CHANNELS: Mutex<RefCell<[Option<bool>; DmaChannel::COUNT]>> =
+    static IRQ_CHANNELS: Mutex<RefCell<[Option<Result<(), DmaError>>; DmaChannel::COUNT]>> =
         Mutex::new(RefCell::new([None; _]));
 
     /// Interrupt handlers for each DMA Channel
     static HANDLERS: Mutex<RefCell<[DmaIrqHandler; DmaChannel::COUNT]>> =
         Mutex::new(RefCell::new([default_handler; _]));
 
-    pub(crate) fn irq_ch_take(cs: CriticalSection, id: ChannelId) -> Option<bool> {
+    pub(crate) fn irq_ch_take(cs: CriticalSection, id: ChannelId) -> Option<Result<(), DmaError>> {
         IRQ_CHANNELS.borrow(cs).borrow_mut()[id as usize].take()
     }
 
-    pub(crate) fn irq_ch_set(cs: CriticalSection, id: ChannelId, new: Option<bool>) {
+    pub(crate) fn irq_ch_set(
+        cs: CriticalSection,
+        id: ChannelId,
+        new: Option<Result<(), DmaError>>,
+    ) {
         IRQ_CHANNELS.borrow(cs).borrow_mut()[id as usize] = new;
     }
 
@@ -478,17 +482,18 @@ pub mod irq {
     #[interrupt]
     fn LDMA() {
         // process any channel error
-        if let Some(id) = mmio::if_error() {
+        if let Some(id) = mmio::ch_error() {
             mmio::if_error_clear();
+            mmio::ifc_set(id);
             let handle = critical_section::with(|cs| HANDLERS.borrow(cs).borrow()[id as usize]);
-            handle(id, true);
+            handle(id, Err(DmaError::Transfer));
         }
 
         // process channel done flags
         for id in mmio::if_raised() {
             mmio::ifc_set(id);
             let handle = critical_section::with(|cs| HANDLERS.borrow(cs).borrow()[id as usize]);
-            handle(id, false);
+            handle(id, Ok(()));
         }
     }
 }

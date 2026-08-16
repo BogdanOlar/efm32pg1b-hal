@@ -59,7 +59,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         // handle 0 sized transfers
         if self.byte_count == 0 {
             // Set a dummy success token in the IRQ channel for this DMA channel
-            critical_section::with(|cs| irq::irq_ch_set(cs, self.id, Some(false)));
+            critical_section::with(|cs| irq::irq_ch_set(cs, self.id, Some(Ok(()))));
 
             // skip the rest of the init
             return;
@@ -72,7 +72,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
 
         critical_section::with(|cs| {
             // Clear any existing content in the IRQ channel of this DMA channel
-            irq::irq_ch_take(cs, self.id);
+            let _ = irq::irq_ch_take(cs, self.id);
         });
 
         let dst: &mut [u8] = unsafe {
@@ -176,7 +176,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
     ///     }
     /// ```
     pub fn check_done(&mut self) -> Option<ChannelTransferResult<'a, W>> {
-        if let Some(ch_error) = critical_section::with(|cs| irq::irq_ch_take(cs, self.id)) {
+        if let Some(transfer_result) = critical_section::with(|cs| irq::irq_ch_take(cs, self.id)) {
             if let Some(params) = self.params.take() {
                 // Disable channel
                 mmio::ien_clear(self.id);
@@ -186,9 +186,9 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 // Clear DMA channel handler
                 critical_section::with(|cs| irq::clear_handler(cs, self.id));
 
-                match ch_error {
-                    true => Some(Err(params)),
-                    false => Some(Ok((params, self.byte_count))),
+                match transfer_result {
+                    Err(_) => Some(Err(params)),
+                    Ok(_) => Some(Ok((params, self.byte_count))),
                 }
             } else {
                 None
