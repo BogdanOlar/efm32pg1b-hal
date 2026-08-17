@@ -41,20 +41,20 @@ impl<const N: u8> SpiDma<N> {
             let _ = dma::irq::irq_ch_take(cs, tx.id());
             let _ = dma::irq::irq_ch_take(cs, rx.id());
             // Set the IRQ handler for TX channel
-            dma::irq::set_handler(cs, tx.id(), |id, channel_error| {
+            dma::irq::set_handler(cs, tx.id(), |id, channel_result| {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
-                info!("IRQ Tx (error: {})", channel_error);
+                info!("IRQ Tx: {}", channel_result);
 
                 // signal to the main thread that transfer is resolved
-                critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_error)));
+                critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_result)));
             });
             // Set the IRQ handler for RX channel
-            dma::irq::set_handler(cs, rx.id(), |id, channel_error| {
+            dma::irq::set_handler(cs, rx.id(), |id, channel_result| {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
-                info!("IRQ Rx (error: {})", channel_error);
+                info!("IRQ Rx: {}", channel_result);
 
                 // signal to the main thread that transfer is resolved
-                critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_error)));
+                critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_result)));
             });
         });
 
