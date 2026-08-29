@@ -110,9 +110,13 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             // FIXME: make sure the tx DMA channel gets its "done" token
             Ok(())
         } else {
+            assert!(total_units > 0);
+
             let usart_p = mmio::usartx::<N>();
             let mut tx_list = DescList::new(&mut self.tx_descriptors);
             let mut rx_list = DescList::new(&mut self.rx_descriptors);
+            let rx_filler_units = total_units - rx_units;
+            static mut RX_SINK: u32 = 0;
 
             // TX
             if tx_units > 0 {
@@ -144,7 +148,7 @@ impl<const N: u8> SpiBus for SpiDma<N> {
 
                 self.tx
                     .set_descriptor(tx_list.into_transfer_descriptor(desc, FinMode::DoneIFS));
-            } else if tx_filler_units > 0 {
+            } else {
                 #[cfg(feature = "debug-spi-dma-defmt-info")]
                 info!("TX tx_filler_units {}", tx_filler_units);
 
@@ -176,6 +180,35 @@ impl<const N: u8> SpiBus for SpiDma<N> {
                     &mut rx_list,
                 )?;
 
+                if rx_filler_units > 0 {
+                    #[cfg(feature = "debug-spi-dma-defmt-info")]
+                    info!("RX rx_filler_units {}", tx_filler_units);
+
+                    dma::list::extended(
+                        self.rx.id(),
+                        TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
+                        TargetAddr::Fixed((&raw const RX_SINK) as usize),
+                        unit,
+                        rx_filler_units,
+                        &mut rx_list,
+                    )?;
+                }
+
+                self.rx
+                    .set_descriptor(rx_list.into_transfer_descriptor(desc, FinMode::DoneIFS));
+            } else {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
+                info!("RX tx_filler_units {}", tx_filler_units);
+
+                let desc = dma::list::reduced(
+                    self.rx.id(),
+                    TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
+                    TargetAddr::Fixed((&raw const RX_SINK) as usize),
+                    unit,
+                    rx_filler_units,
+                    &mut rx_list,
+                )?;
+
                 self.rx
                     .set_descriptor(rx_list.into_transfer_descriptor(desc, FinMode::DoneIFS));
             }
@@ -186,7 +219,6 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             // self.rx.set_dbg_halt();
             self.rx.set_ien(true);
             self.rx.set_enabled(true);
-            self.tx.start();
 
             // self.tx.set_dbg_halt();
             self.tx.set_ien(true);
@@ -224,20 +256,6 @@ impl<const N: u8> SpiBus for SpiDma<N> {
             self.tx.set_ien(false);
             self.rx.set_enabled(false);
             self.rx.set_ien(false);
-
-            // FIXME: When the RX Dma ends followed by the TX Dma, then there are still SPI TX fifo bytes being
-            //        transacted, which causes the RX Spi buffer to not be empty when the next DMA transaction starts
-            //        causing spurious bytes to be received.
-            //        This should be done on the SPI driver level, not PAC level
-            {
-                let usart = mmio::usartx::<N>();
-                // wait for SPI TX to end
-                while usart.status().read().txidle().bit_is_clear() {}
-                // flush RX SPI buffer
-                while usart.status().read().rxdatav().bit_is_set() {
-                    let _ = usart.rxdata().read().rxdata().bits();
-                }
-            }
 
             if tx_result.is_ok() && rx_result.is_ok() {
                 Ok(())
