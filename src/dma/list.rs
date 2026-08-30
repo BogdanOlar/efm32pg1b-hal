@@ -31,22 +31,22 @@ impl<'a> DescList<'a> {
         }
     }
 
-    /// Convenience method to [`Self::push()`] [`TransferDescBuilder`] to the descriptor list
+    /// Convenience method to [`DescList::push()`] [`TransferDescriptor`] to the descriptor list
     pub fn push_transfer(&mut self, desc_bld: TransferDescriptor) -> Result<(), DmaError> {
         self.push(desc_bld)
     }
 
-    /// Convenience method to [`Self::push()`] [`LoopTransferDescBuilder`] to the descriptor list
+    /// Convenience method to [`DescList::push()`] [`LoopTransferDescriptor`] to the descriptor list
     pub fn push_loop(&mut self, desc_bld: LoopTransferDescriptor) -> Result<(), DmaError> {
         self.push(desc_bld)
     }
 
-    /// Convenience method to [`Self::push()`] [`SyncDescBuilder`] to the descriptor list
+    /// Convenience method to [`DescList::push()`] [`SyncDescriptor`] to the descriptor list
     pub fn push_sync(&mut self, desc_bld: SyncDescriptor) -> Result<(), DmaError> {
         self.push(desc_bld)
     }
 
-    /// Convenience method to [`Self::push()`] [`ImmediateDescBuilder`] to the descriptor list
+    /// Convenience method to [`DescList::push()`] [`ImmediateDescriptor`] to the descriptor list
     pub fn push_immediate(&mut self, desc_bld: ImmediateDescriptor) -> Result<(), DmaError> {
         self.push(desc_bld)
     }
@@ -74,22 +74,22 @@ impl<'a> DescList<'a> {
         Ok(())
     }
 
-    /// Convenience method to [`Self::push()`] [`TransferDescBuilder`] to the descriptor list
+    /// Convenience method to [`DescList::push_linked()`] [`TransferDescriptor`] to the descriptor list
     pub fn push_transfer_linked(&mut self, desc_bld: TransferDescriptor) -> Result<(), DmaError> {
         self.push_linked(desc_bld)
     }
 
-    /// Convenience method to [`Self::push()`] [`LoopTransferDescBuilder`] to the descriptor list
+    /// Convenience method to [`DescList::push_linked()`] [`LoopTransferDescriptor`] to the descriptor list
     pub fn push_loop_linked(&mut self, desc_bld: LoopTransferDescriptor) -> Result<(), DmaError> {
         self.push_linked(desc_bld)
     }
 
-    /// Convenience method to [`Self::push()`] [`SyncDescBuilder`] to the descriptor list
+    /// Convenience method to [`DescList::push_linked()`] [`SyncDescriptor`] to the descriptor list
     pub fn push_sync_linked(&mut self, desc_bld: SyncDescriptor) -> Result<(), DmaError> {
         self.push_linked(desc_bld)
     }
 
-    /// Convenience method to [`Self::push()`] [`ImmediateDescBuilder`] to the descriptor list
+    /// Convenience method to [`DescList::push_linked()`] [`ImmediateDescriptor`] to the descriptor list
     pub fn push_immediate_linked(&mut self, desc_bld: ImmediateDescriptor) -> Result<(), DmaError> {
         self.push_linked(desc_bld)
     }
