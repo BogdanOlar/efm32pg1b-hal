@@ -12,7 +12,8 @@
         "efemb-timdrv-letim0-hz-32_768",
         // "efemb-timdrv-letim0-hz-1_000",
         // "efemb-timdrv-letim0-dbg-pins",
-        "crc-lib-compat"
+        "crc-lib-compat",
+        "debug-spi-dma-defmt-info"
     ],
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer",

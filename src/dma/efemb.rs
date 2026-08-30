@@ -1,7 +1,9 @@
 //! Embassy support dor DMA
 //!
 
-use crate::dma::{descriptor::TransferDescriptor, irq, DmaChannel, DmaError, CHANNEL_COUNT};
+use crate::dma::{descriptor::TransferDescriptor, irq, DmaChannel, DmaResult, CHANNEL_COUNT};
+#[cfg(feature = "debug-spi-dma-defmt-info")]
+use defmt::info;
 use embassy_sync::waitqueue::AtomicWaker;
 
 /// Embassy task wakers for each DMA channel
@@ -15,12 +17,14 @@ impl DmaChannel {
         &mut self,
         desc: &TransferDescriptor,
         with_sw_trigger: bool,
-    ) -> Result<(), DmaError> {
+    ) -> DmaResult {
         self.cancel();
 
         // Set the async IRQ handler
         critical_section::with(|cs| {
             irq::set_handler(cs, self.id(), |id, transfer_result| {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
+                info!("IRQ {}: {}", id, transfer_result);
                 // signal to the main thread that transfer is resolved
                 critical_section::with(|cs_inner| {
                     irq::irq_ch_set(cs_inner, id, Some(transfer_result))
@@ -47,7 +51,7 @@ impl<'a> TransferFuture<'a> {
 }
 
 impl<'a> core::future::Future for TransferFuture<'a> {
-    type Output = Result<(), DmaError>;
+    type Output = DmaResult;
 
     fn poll(
         mut self: core::pin::Pin<&mut Self>,

@@ -7,7 +7,10 @@ use crate::{
         list::{DescList, FinMode, TargetAddr},
         ChReqSel, DmaChannel, DmaError,
     },
-    usart::{mmio, spi::SpiError},
+    usart::{
+        mmio,
+        spi::{SpiError, TX_FILLER_BYTE},
+    },
 };
 #[cfg(feature = "debug-spi-dma-defmt-info")]
 use defmt::info;
@@ -156,7 +159,12 @@ impl<const N: u8> SpiDma<N> {
         let tx_filler_units = total_units - tx_units;
         let rx_filler_units = total_units - rx_units;
 
-        static TX_FILLER: u32 = 0xFFFFFFFF;
+        static TX_FILLER: u32 = u32::from_le_bytes([
+            TX_FILLER_BYTE,
+            TX_FILLER_BYTE,
+            TX_FILLER_BYTE,
+            TX_FILLER_BYTE,
+        ]);
         static mut RX_SINK: u32 = 0;
 
         let per_tx_addr = usart_p.txdata().as_ptr().addr();

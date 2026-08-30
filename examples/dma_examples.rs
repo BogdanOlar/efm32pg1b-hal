@@ -52,7 +52,7 @@ fn main() -> ! {
 /// transfer structures, and channel 1 just one, but channel 0 must wait until channel 1 has completed its transfer
 /// before it starts its second transfer structure.
 ///
-/// See: doc/efm32pg1-rm.pdf#page138
+/// See: [/doc/efm32pg1-rm.pdf#page138]
 fn simple_inter_channel_synchronization(
     mut ch0: DmaChannel,
     mut ch1: DmaChannel,

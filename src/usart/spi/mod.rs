@@ -22,6 +22,11 @@ use embedded_hal::{
 };
 pub use fugit::{HertzU32, RateExtU32};
 
+/// SPI filler byte
+///
+/// Used when the SPI only needs to receive, in which case it will clock out this byte on MOSI
+pub const TX_FILLER_BYTE: u8 = 0xFF;
+
 /// SPI master which implements `SpiBus` trait
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -32,8 +37,6 @@ pub struct Spi<const N: u8, PCLK, PTX, PRX> {
 }
 
 impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX> {
-    const FILLER_BYTE: u8 = 0x00;
-
     /// Create a new SPI instance from a USART peripheral, clock pin, TX pin, RX pin, and mode
     pub fn new<USART>(_usart: USART, pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: Mode) -> Self
     where
@@ -367,7 +370,7 @@ where
         for (txo, rxo) in (0..max_byte_count).map(|_| (tx_iter.next(), rx_iter.next())) {
             let tx_byte = match txo {
                 Some(txr) => *txr,
-                None => Self::FILLER_BYTE,
+                None => TX_FILLER_BYTE,
             };
 
             let rx_byte = match rxo {
