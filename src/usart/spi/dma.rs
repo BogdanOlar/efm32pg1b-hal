@@ -20,11 +20,11 @@ const DESC_COUNT: usize = 6;
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SpiDma<const N: u8> {
-    tx: DmaChannel,
-    rx: DmaChannel,
-    busy: bool,
-    tx_descriptors: [Descriptor; DESC_COUNT],
-    rx_descriptors: [Descriptor; DESC_COUNT],
+    pub(crate) tx: DmaChannel,
+    pub(crate) rx: DmaChannel,
+    pub(crate) busy: bool,
+    pub(crate) tx_descriptors: [Descriptor; DESC_COUNT],
+    pub(crate) rx_descriptors: [Descriptor; DESC_COUNT],
 }
 
 impl<const N: u8> SpiDma<N> {
@@ -47,48 +47,42 @@ impl<const N: u8> SpiDma<N> {
         }
     }
 
-    fn transfer_nb<Word: Copy + 'static>(
+    /// Start an SPI transaction.
+    ///
+    /// `write` is written to the slave on MOSI and words received on MISO are stored in `read`.
+    pub fn transfer_nb<Word: Copy + 'static>(
         &mut self,
         read: &mut [Word],
         write: &[Word],
     ) -> Result<(), SpiError> {
-        // Decide which unit/type the transfer may use
-        let write_addr = write.as_ptr().addr();
-        let write_unit = Self::get_unit(write_addr, write.len());
-        let read_addr = read.as_ptr().addr();
-        let read_unit = Self::get_unit(read_addr, read.len());
-        let unit = write_unit.min(read_unit);
-
         // FIXME: unit is limited to Byte until we convince the Spi to accept other `UnitSize`s
         let unit = UnitSize::Byte;
-
+        let write_addr = write.as_ptr().addr();
         let write_bytes = core::mem::size_of_val(write);
-        let write_units = write_bytes / unit.byte_count();
+        let read_addr = read.as_ptr().addr();
         let read_bytes = core::mem::size_of_val(read);
-        let read_units = read_bytes / unit.byte_count();
 
-        // Zero-sized transfers return OK() immediately without starting DMA
-        if write_units.max(read_units) > 0 {
-            self.busy = true;
-
-            let (tx_desc, rx_desc) =
-                self.build_descriptors(unit, write_addr, write_units, read_addr, read_units)?;
-
-            unsafe { self.rx.transfer(&rx_desc, false) };
-            unsafe { self.tx.transfer(&tx_desc, true) };
-        }
-
-        Ok(())
+        self.transfer_inner(unit, write_addr, write_bytes, read_addr, read_bytes)
     }
 
-    fn transfer_in_place_nb<Word: Copy + 'static>(
+    /// Start an SPI transaction.
+    ///
+    /// The contents of `words` are written to the slave, and the received words are stored into the same `words`
+    /// buffer, overwriting it.
+    pub fn transfer_in_place_nb<Word: Copy + 'static>(
         &mut self,
         words: &mut [Word],
     ) -> Result<(), SpiError> {
-        todo!()
+        // FIXME: unit is limited to Byte until we convince the Spi to accept other `UnitSize`s
+        let unit = UnitSize::Byte;
+        let addr = words.as_ptr().addr();
+        let bytes = core::mem::size_of_val(words);
+
+        self.transfer_inner(unit, addr, bytes, addr, bytes)
     }
 
-    fn flush_blocking(&mut self) -> Result<(), SpiError> {
+    /// Wait until all operations have completed and the bus is idle.
+    pub fn flush_blocking(&mut self) -> Result<(), SpiError> {
         if self.busy {
             let tx_result = loop {
                 if let Some(result) = self.tx.try_resolve() {
@@ -112,7 +106,36 @@ impl<const N: u8> SpiDma<N> {
         }
     }
 
-    fn build_descriptors(
+    /// Helpher method to start the transfer without involving the read/write slices, just their address and size
+    fn transfer_inner(
+        &mut self,
+        unit: UnitSize,
+        write_addr: usize,
+        write_bytes: usize,
+        read_addr: usize,
+        read_bytes: usize,
+    ) -> Result<(), SpiError> {
+        let write_units = write_bytes / unit.byte_count();
+        let read_units = read_bytes / unit.byte_count();
+
+        // Only start DMA transfers if there is something to transfer
+        if write_units.max(read_units) > 0 {
+            self.busy = true;
+
+            let (tx_desc, rx_desc) =
+                self.build_descriptors(unit, write_addr, write_units, read_addr, read_units)?;
+
+            unsafe { self.rx.transfer(&rx_desc, false) };
+            unsafe { self.tx.transfer(&tx_desc, true) };
+        }
+
+        Ok(())
+    }
+
+    /// Helper method to create the descriptor list for an SPI transaction
+    ///
+    /// Returns the TX and RX descriptors which can be used to start DMA transfers
+    pub(crate) fn build_descriptors(
         &mut self,
         unit: UnitSize,
         tx_addr: usize,
@@ -228,16 +251,6 @@ impl<const N: u8> SpiDma<N> {
         };
 
         Ok((tx_desc, rx_desc))
-    }
-
-    fn get_unit(ptr: usize, len: usize) -> UnitSize {
-        if ptr.is_multiple_of(size_of::<u32>()) && len.is_multiple_of(size_of::<u32>()) {
-            UnitSize::Word
-        } else if ptr.is_multiple_of(size_of::<u16>()) && len.is_multiple_of(size_of::<u16>()) {
-            UnitSize::Halfword
-        } else {
-            UnitSize::Byte
-        }
     }
 
     /// Helper function to get the appropriate peripheral DMA channel trigger sources based on SPI instance id (`N`):

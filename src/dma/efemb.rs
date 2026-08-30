@@ -8,7 +8,14 @@ use embassy_sync::waitqueue::AtomicWaker;
 static DMA_WAKERS: [AtomicWaker; CHANNEL_COUNT] = [const { AtomicWaker::new() }; _];
 
 impl DmaChannel {
-    pub async fn transfer_async(&mut self, desc: &TransferDescriptor, with_sw_trigger: bool) {
+    /// Perform an async DMA transfer with the given Descriptor.
+    ///
+    /// If `with_sw_trigger` is set then the DMA transfer will immediatelly be software-triggered.
+    pub async fn transfer_async(
+        &mut self,
+        desc: &TransferDescriptor,
+        with_sw_trigger: bool,
+    ) -> Result<(), DmaError> {
         self.cancel();
 
         // Set the async IRQ handler
@@ -25,7 +32,7 @@ impl DmaChannel {
 
         unsafe { self.start(desc, with_sw_trigger) };
 
-        TransferFuture::new(self).await;
+        TransferFuture::new(self).await
     }
 }
 

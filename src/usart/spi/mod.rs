@@ -3,6 +3,8 @@
 //! Specialize USART peripherals into SPI peripherals
 
 pub mod dma;
+#[cfg(feature = "efemb")]
+pub mod efemb;
 
 use crate::{
     cmu::Clocks,
@@ -278,6 +280,8 @@ pub enum SpiError {
     Tx,
     /// RX Error
     Rx,
+    /// TX and RX Error
+    TxRx,
     /// SPI DMA error
     Dma(DmaError),
 }
