@@ -96,11 +96,8 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         let last_chunk_min_units = (arr_end - last_descr_addr) / unit_byte_size;
         assert_eq!((arr_end - last_descr_addr) % unit_byte_size, 0);
 
-        let descr_count = if total_units.is_multiple_of(Descriptor::MAX_TRANSFER_UNITS) {
-            total_units / Descriptor::MAX_TRANSFER_UNITS
-        } else {
-            (total_units / Descriptor::MAX_TRANSFER_UNITS) + 1
-        };
+        let descr_count = total_units.div_ceil(Descriptor::MAX_TRANSFER_UNITS);
+
         // First descriptor will be written to DMA channel register, not to the descriptor list
         let linked_list_count = descr_count - 1;
         let linked_list_start_addr =
@@ -112,26 +109,13 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
                 linked_list_count,
             )
         };
-        let first_descriptor = match self.unit {
-            UnitSize::Byte => self.build_descriptors(
-                total_units,
-                last_chunk_min_units,
-                descriptor_list,
-                UnitSize::Byte,
-            ),
-            UnitSize::Halfword => self.build_descriptors(
-                total_units,
-                last_chunk_min_units,
-                descriptor_list,
-                UnitSize::Halfword,
-            ),
-            UnitSize::Word => self.build_descriptors(
-                total_units,
-                last_chunk_min_units,
-                descriptor_list,
-                UnitSize::Word,
-            ),
-        };
+
+        let first_descriptor = self.build_descriptors(
+            total_units,
+            last_chunk_min_units,
+            descriptor_list,
+            self.unit,
+        );
 
         // First descriptor is always written directly to the DMA peripheral in order to support transfers smaller than
         // the size of a descriptor (in which case we don't use descriptor linked list)

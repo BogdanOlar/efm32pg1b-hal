@@ -1,7 +1,7 @@
 //! Register-level DMA functions
 
 use crate::dma::descriptor::Descriptor;
-use crate::dma::{ChReqSel, ChannelId, DmaChannel, DmaError};
+use crate::dma::{ChReqSel, ChannelId, DmaError, CHANNEL_COUNT};
 use crate::pac::Ldma;
 use crate::SingleCycleRMW;
 
@@ -12,7 +12,7 @@ pub(crate) fn ctrl_syncprsseten_clear(id: ChannelId) {
 
 /// Disable "Synchronization PRS Clear Enable"
 pub(crate) fn ctrl_syncprsclren_clear(id: ChannelId) {
-    dma().ctrl().sc_clear((1 << id as u8) << DmaChannel::COUNT);
+    dma().ctrl().sc_clear((1 << id as u8) << CHANNEL_COUNT);
 }
 
 pub(crate) fn sync_clear(id: ChannelId) {
@@ -194,7 +194,7 @@ pub(crate) fn ch_write_descriptor(id: ChannelId, descr: &Descriptor) {
 pub(crate) fn if_raised() -> impl Iterator<Item = ChannelId> {
     let cached_flags = dma().if_().read().done().bits();
 
-    (0..DmaChannel::COUNT as u8)
+    (0..CHANNEL_COUNT as u8)
         .filter(move |i| ((1 << *i) & cached_flags) != 0)
         .map(ChannelId::from_u8_unchecked)
 }

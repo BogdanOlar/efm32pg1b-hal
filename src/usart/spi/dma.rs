@@ -3,7 +3,7 @@
 use crate::{
     dma::{
         self,
-        descriptor::{Descriptor, UnitSize},
+        descriptor::{Descriptor, TransferDescriptor, UnitSize},
         list::{DescList, FinMode, TargetAddr},
         ChReqSel, DmaChannel, DmaError,
     },
@@ -32,31 +32,9 @@ impl<const N: u8> SpiDma<N> {
         tx.reset();
         rx.reset();
 
-        let (tx_sel, rx_sel) = Self::sources();
+        let (tx_sel, rx_sel) = Self::dma_sources();
         tx.set_peripheral_req(tx_sel);
         rx.set_peripheral_req(rx_sel);
-
-        critical_section::with(|cs| {
-            // Clear any existing content in the IRQ channel of the DMA channels
-            let _ = dma::irq::irq_ch_take(cs, tx.id());
-            let _ = dma::irq::irq_ch_take(cs, rx.id());
-            // Set the IRQ handler for TX channel
-            dma::irq::set_handler(cs, tx.id(), |id, channel_result| {
-                #[cfg(feature = "debug-spi-dma-defmt-info")]
-                info!("IRQ Tx: {}", channel_result);
-
-                // signal to the main thread that transfer is resolved
-                critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_result)));
-            });
-            // Set the IRQ handler for RX channel
-            dma::irq::set_handler(cs, rx.id(), |id, channel_result| {
-                #[cfg(feature = "debug-spi-dma-defmt-info")]
-                info!("IRQ Rx: {}", channel_result);
-
-                // signal to the main thread that transfer is resolved
-                critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(channel_result)));
-            });
-        });
 
         Self {
             tx,
@@ -67,9 +45,196 @@ impl<const N: u8> SpiDma<N> {
         }
     }
 
+    fn transfer_nb<Word: Copy + 'static>(
+        &mut self,
+        read: &mut [Word],
+        write: &[Word],
+    ) -> Result<(), SpiError> {
+        // Decide which unit/type the transfer may use
+        let write_addr = write.as_ptr().addr();
+        let write_unit = Self::get_unit(write_addr, write.len());
+        let read_addr = read.as_ptr().addr();
+        let read_unit = Self::get_unit(read_addr, read.len());
+        let unit = write_unit.min(read_unit);
+
+        // FIXME: unit is limited to Byte until we convince the Spi to accept other `UnitSize`s
+        let unit = UnitSize::Byte;
+
+        let write_bytes = core::mem::size_of_val(write);
+        let write_units = write_bytes / unit.byte_count();
+        let read_bytes = core::mem::size_of_val(read);
+        let read_units = read_bytes / unit.byte_count();
+
+        if write_units.max(read_units) == 0 {
+            return Ok(());
+        }
+
+        let (tx_desc, rx_desc) =
+            self.build_descriptors(unit, write_addr, write_units, read_addr, read_units)?;
+
+        self.busy = true;
+        unsafe { self.rx.transfer(&rx_desc, false) };
+        unsafe { self.tx.transfer(&tx_desc, true) };
+
+        Ok(())
+    }
+
+    fn transfer_in_place_nb<Word: Copy + 'static>(
+        &mut self,
+        words: &mut [Word],
+    ) -> Result<(), SpiError> {
+        todo!()
+    }
+
+    fn flush_blocking(&mut self) -> Result<(), SpiError> {
+        if self.busy {
+            let tx_result = loop {
+                if let Some(result) = self.tx.try_resolve() {
+                    break result;
+                }
+            };
+
+            let rx_result = loop {
+                if let Some(result) = self.rx.try_resolve() {
+                    break result;
+                }
+            };
+
+            if tx_result.is_ok() && rx_result.is_ok() {
+                Ok(())
+            } else {
+                Err(SpiError::Dma(DmaError::Transfer))
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    fn build_descriptors(
+        &mut self,
+        unit: UnitSize,
+        tx_addr: usize,
+        tx_units: usize,
+        rx_addr: usize,
+        rx_units: usize,
+    ) -> Result<(TransferDescriptor, TransferDescriptor), SpiError> {
+        let total_units = tx_units.max(rx_units);
+        assert_ne!(total_units, 0);
+
+        let usart_p = mmio::usartx::<N>();
+        let mut tx_list = DescList::new(&mut self.tx_descriptors);
+        let mut rx_list = DescList::new(&mut self.rx_descriptors);
+
+        let tx_filler_units = total_units - tx_units;
+        let rx_filler_units = total_units - rx_units;
+
+        static TX_FILLER: u32 = 0xFFFFFFFF;
+        static mut RX_SINK: u32 = 0;
+
+        let tx_desc = if tx_units > 0 {
+            #[cfg(feature = "debug-spi-dma-defmt-info")]
+            info!("TX: tx_units {}", tx_units);
+
+            let desc = dma::list::reduced(
+                self.tx.id(),
+                TargetAddr::IncrementOne(tx_addr),
+                TargetAddr::Fixed(usart_p.txdata().as_ptr().addr()),
+                unit,
+                tx_units,
+                &mut tx_list,
+            )?;
+
+            if tx_filler_units > 0 {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
+                info!("TX tx_filler_units {}", tx_filler_units);
+
+                dma::list::extended(
+                    self.tx.id(),
+                    TargetAddr::Fixed((&TX_FILLER) as *const u32 as usize),
+                    TargetAddr::Fixed(usart_p.txdata().as_ptr().addr()),
+                    unit,
+                    tx_filler_units,
+                    &mut tx_list,
+                )?;
+            }
+
+            tx_list.into_transfer_descriptor(desc, FinMode::DoneIFS)
+        } else {
+            #[cfg(feature = "debug-spi-dma-defmt-info")]
+            info!("TX tx_filler_units {}", tx_filler_units);
+
+            let desc = dma::list::reduced(
+                self.tx.id(),
+                TargetAddr::Fixed((&TX_FILLER) as *const u32 as usize),
+                TargetAddr::Fixed(usart_p.txdata().as_ptr().addr()),
+                unit,
+                tx_filler_units,
+                &mut tx_list,
+            )?;
+
+            tx_list.into_transfer_descriptor(desc, FinMode::DoneIFS)
+        };
+
+        let rx_desc = if rx_units > 0 {
+            #[cfg(feature = "debug-spi-dma-defmt-info")]
+            info!("RX: rx_units {}", rx_units);
+
+            let desc = dma::list::reduced(
+                self.rx.id(),
+                TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
+                TargetAddr::IncrementOne(rx_addr),
+                unit,
+                rx_units,
+                &mut rx_list,
+            )?;
+
+            if rx_filler_units > 0 {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
+                info!("RX rx_filler_units {}", tx_filler_units);
+
+                dma::list::extended(
+                    self.rx.id(),
+                    TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
+                    TargetAddr::Fixed((&raw const RX_SINK) as usize),
+                    unit,
+                    rx_filler_units,
+                    &mut rx_list,
+                )?;
+            }
+
+            rx_list.into_transfer_descriptor(desc, FinMode::DoneIFS)
+        } else {
+            #[cfg(feature = "debug-spi-dma-defmt-info")]
+            info!("RX tx_filler_units {}", tx_filler_units);
+
+            let desc = dma::list::reduced(
+                self.rx.id(),
+                TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
+                TargetAddr::Fixed((&raw const RX_SINK) as usize),
+                unit,
+                rx_filler_units,
+                &mut rx_list,
+            )?;
+
+            rx_list.into_transfer_descriptor(desc, FinMode::DoneIFS)
+        };
+
+        Ok((tx_desc, rx_desc))
+    }
+
+    fn get_unit(ptr: usize, len: usize) -> UnitSize {
+        if ptr.is_multiple_of(size_of::<u32>()) && len.is_multiple_of(size_of::<u32>()) {
+            UnitSize::Word
+        } else if ptr.is_multiple_of(size_of::<u16>()) && len.is_multiple_of(size_of::<u16>()) {
+            UnitSize::Halfword
+        } else {
+            UnitSize::Byte
+        }
+    }
+
     /// Helper function to get the appropriate peripheral DMA channel trigger sources based on SPI instance id (`N`):
     /// Returns `(tx_source, rx_source)`
-    const fn sources() -> (ChReqSel, ChReqSel) {
+    pub(crate) const fn dma_sources() -> (ChReqSel, ChReqSel) {
         match N {
             0 => (ChReqSel::Usart0TxBl, ChReqSel::Usart0RxDataAvl),
             1 => (ChReqSel::Usart1TxBl, ChReqSel::Usart1RxDataAvl),
@@ -88,183 +253,15 @@ impl<const N: u8> SpiBus for SpiDma<N> {
     }
 
     fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Self::Error> {
-        // We may want to make this a generic algo, so let's not hardcode `UnitByte`, or `UnitHalfword`, etc
-        let unit = UnitSize::Byte;
-        // TX Filler
-        static TX_FILLER: u32 = 0xFFFFFFFF;
-
-        let tx_units = write.len() / unit.byte_count();
-        assert_eq!(write.len() % unit.byte_count(), 0);
-        let rx_units = read.len() / unit.byte_count();
-        assert_eq!(read.len() % unit.byte_count(), 0);
-        let tx_filler_units = rx_units.saturating_sub(tx_units);
-        let total_units = tx_units + tx_filler_units;
-        assert_eq!(total_units, rx_units.max(tx_units));
-
-        if self.busy {
-            // FIXME: [`embedded_hal::spi::SpiBus`] docs disallow returning a `Busy` error, though it's not clear to me
-            //        what the implementation should do. Enqueueing the request is problematic because if one of the
-            //        queued transfer fails, then how is the user supposed to know which one failed?
-            Err(SpiError::Busy)
-        } else if total_units == 0 {
-            // FIXME: make sure the tx DMA channel gets its "done" token
-            Ok(())
-        } else {
-            assert!(total_units > 0);
-
-            let usart_p = mmio::usartx::<N>();
-            let mut tx_list = DescList::new(&mut self.tx_descriptors);
-            let mut rx_list = DescList::new(&mut self.rx_descriptors);
-            let rx_filler_units = total_units - rx_units;
-            static mut RX_SINK: u32 = 0;
-
-            // TX
-            if tx_units > 0 {
-                #[cfg(feature = "debug-spi-dma-defmt-info")]
-                info!("TX: tx_units {}", tx_units);
-
-                let desc = dma::list::reduced(
-                    self.tx.id(),
-                    TargetAddr::IncrementOne(write.as_ptr().addr()),
-                    TargetAddr::Fixed(usart_p.txdata().as_ptr().addr()),
-                    unit,
-                    tx_units,
-                    &mut tx_list,
-                )?;
-
-                if tx_filler_units > 0 {
-                    #[cfg(feature = "debug-spi-dma-defmt-info")]
-                    info!("TX tx_filler_units {}", tx_filler_units);
-
-                    dma::list::extended(
-                        self.tx.id(),
-                        TargetAddr::Fixed((&TX_FILLER) as *const u32 as usize),
-                        TargetAddr::Fixed(usart_p.txdata().as_ptr().addr()),
-                        unit,
-                        tx_filler_units,
-                        &mut tx_list,
-                    )?;
-                }
-
-                self.tx
-                    .set_descriptor(tx_list.into_transfer_descriptor(desc, FinMode::DoneIFS));
-            } else {
-                #[cfg(feature = "debug-spi-dma-defmt-info")]
-                info!("TX tx_filler_units {}", tx_filler_units);
-
-                let desc = dma::list::reduced(
-                    self.tx.id(),
-                    TargetAddr::Fixed((&TX_FILLER) as *const u32 as usize),
-                    TargetAddr::Fixed(usart_p.txdata().as_ptr().addr()),
-                    unit,
-                    tx_filler_units,
-                    &mut tx_list,
-                )?;
-
-                self.tx
-                    .set_descriptor(tx_list.into_transfer_descriptor(desc, FinMode::DoneIFS));
-            }
-
-            // RX
-            if rx_units > 0 {
-                #[cfg(feature = "debug-spi-dma-defmt-info")]
-                info!("RX: rx_units {}", rx_units);
-
-                let desc = dma::list::reduced(
-                    self.rx.id(),
-                    TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
-                    TargetAddr::IncrementOne(read.as_ptr().addr()),
-                    unit,
-                    rx_units,
-                    // true,
-                    &mut rx_list,
-                )?;
-
-                if rx_filler_units > 0 {
-                    #[cfg(feature = "debug-spi-dma-defmt-info")]
-                    info!("RX rx_filler_units {}", tx_filler_units);
-
-                    dma::list::extended(
-                        self.rx.id(),
-                        TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
-                        TargetAddr::Fixed((&raw const RX_SINK) as usize),
-                        unit,
-                        rx_filler_units,
-                        &mut rx_list,
-                    )?;
-                }
-
-                self.rx
-                    .set_descriptor(rx_list.into_transfer_descriptor(desc, FinMode::DoneIFS));
-            } else {
-                #[cfg(feature = "debug-spi-dma-defmt-info")]
-                info!("RX tx_filler_units {}", tx_filler_units);
-
-                let desc = dma::list::reduced(
-                    self.rx.id(),
-                    TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
-                    TargetAddr::Fixed((&raw const RX_SINK) as usize),
-                    unit,
-                    rx_filler_units,
-                    &mut rx_list,
-                )?;
-
-                self.rx
-                    .set_descriptor(rx_list.into_transfer_descriptor(desc, FinMode::DoneIFS));
-            }
-
-            // start the transfer
-            self.busy = true;
-
-            // self.rx.set_dbg_halt();
-            self.rx.set_ien(true);
-            self.rx.set_enabled(true);
-
-            // self.tx.set_dbg_halt();
-            self.tx.set_ien(true);
-            self.tx.set_enabled(true);
-            self.tx.start();
-
-            Ok(())
-        }
+        self.transfer_nb(read, write)
     }
 
     fn transfer_in_place(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
-        todo!()
+        self.transfer_in_place_nb(words)
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        if self.busy {
-            let tx_result = loop {
-                if let Some(result) =
-                    critical_section::with(|cs| dma::irq::irq_ch_take(cs, self.tx.id()))
-                {
-                    break result;
-                }
-            };
-
-            let rx_result = loop {
-                if let Some(result) =
-                    critical_section::with(|cs| dma::irq::irq_ch_take(cs, self.rx.id()))
-                {
-                    break result;
-                }
-            };
-
-            self.busy = false;
-            self.tx.set_enabled(false);
-            self.tx.set_ien(false);
-            self.rx.set_enabled(false);
-            self.rx.set_ien(false);
-
-            if tx_result.is_ok() && rx_result.is_ok() {
-                Ok(())
-            } else {
-                Err(SpiError::Dma(DmaError::Transfer))
-            }
-        } else {
-            Ok(())
-        }
+        self.flush_blocking()
     }
 }
 

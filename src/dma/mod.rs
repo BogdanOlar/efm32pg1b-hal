@@ -17,9 +17,12 @@ pub mod transfer;
 pub mod efemb;
 
 use crate::{
-    dma::{descriptor::TransferDescriptor, irq::set_handler, transfer::ChannelTransfer},
+    dma::{descriptor::TransferDescriptor, irq::set_handler},
     pac::{Interrupt, Ldma, NVIC},
 };
+
+/// Number of DMA channels
+const CHANNEL_COUNT: usize = 1 << 3;
 
 /// DMA driver
 #[derive(Debug)]
@@ -76,15 +79,10 @@ pub struct DmaChannel {
 }
 
 impl DmaChannel {
-    /// Number of DMA channels
-    const COUNT: usize = 1 << 3;
-
     /// Reset channel to a known state
     pub fn reset(&mut self) {
-        mmio::chen_clear(self.id);
-        mmio::ien_clear(self.id);
-        mmio::ifc_set(self.id);
-        mmio::ch_done_clear(self.id);
+        // Cancel any on-going transfer
+        self.cancel();
 
         mmio::ctrl_syncprsseten_clear(self.id);
         mmio::ctrl_syncprsclren_clear(self.id);
@@ -108,7 +106,7 @@ impl DmaChannel {
     }
 
     /// Set channel enabled
-    pub fn set_enabled(&self, is_enabled: bool) {
+    fn set_enabled(&self, is_enabled: bool) {
         if is_enabled {
             mmio::chen_set(self.id());
         } else {
@@ -164,6 +162,11 @@ impl DmaChannel {
         }
     }
 
+    /// Clear the interrupt flag for this channel
+    pub fn set_ifc(&self) {
+        mmio::ifc_set(self.id);
+    }
+
     /// Enable channel halt during debugger breakpoint
     pub fn set_dbg_halt(&self) {
         mmio::dbghalt_set(self.id);
@@ -179,13 +182,6 @@ impl DmaChannel {
         mmio::ch_loop_set(self.id, loop_count);
     }
 
-    /// Start the DMA transfer by executing the `TransferDescriptor` written to the DMA Channel
-    ///
-    /// If a descriptor list is linked, it will be executed after the `TransferDescriptor` has finished
-    pub fn start(&self) {
-        mmio::swreq(self.id);
-    }
-
     /// Start the DMA transfer by executing the Transfer LINK Descriptor written to the DMA Channel
     ///
     /// This which will trigger loading the first descriptor in the descriptor list whose address is in the LINK
@@ -195,29 +191,85 @@ impl DmaChannel {
     }
 
     /// Write a descriptor to the channel DMA descriptor registers
-    pub fn set_descriptor(&self, descr: TransferDescriptor) {
-        mmio::ch_write_descriptor(self.id, &descr.into_inner());
+    pub fn set_descriptor(&self, desc: TransferDescriptor) {
+        mmio::ch_write_descriptor(self.id, &desc.into_inner());
     }
 
-    /// Start a memory-to-memory transfer
-    pub fn into_transfer<'a, W: Sized>(
-        self,
-        src: &'a [W],
-        dst: &'a mut [W],
-    ) -> ChannelTransfer<'a, W> {
-        let id = self.id;
+    /// Enable the transfer and optionally triggering it
+    pub unsafe fn transfer(&mut self, desc: &TransferDescriptor, with_sw_trigger: bool) {
+        // cancel any on-going transfers
+        self.cancel();
 
-        // Set the IRQ handler for this channel transfer
+        // Set the non-blocking IRQ handler
         critical_section::with(|cs| {
-            set_handler(cs, id, |id, channel_error| {
+            set_handler(cs, self.id(), |id, transfer_result| {
                 // signal to the main thread that transfer is resolved
-                critical_section::with(|csd| irq::irq_ch_set(csd, id, Some(channel_error)));
+                critical_section::with(|csd| irq::irq_ch_set(csd, id, Some(transfer_result)));
             })
         });
 
-        let mut transfer = ChannelTransfer::new(self, src, dst);
-        transfer.start();
-        transfer
+        self.start(desc, with_sw_trigger);
+    }
+
+    pub fn try_resolve(&mut self) -> Option<Result<(), DmaError>> {
+        if let Some(transfer_result) = critical_section::with(|cs| irq::irq_ch_take(cs, self.id)) {
+            self.stop();
+
+            Some(transfer_result)
+        } else {
+            None
+        }
+    }
+
+    // /// Start a memory-to-memory transfer
+    // pub fn into_transfer<'a, W: Sized>(
+    //     self,
+    //     src: &'a [W],
+    //     dst: &'a mut [W],
+    // ) -> ChannelTransfer<'a, W> {
+    //     let id = self.id;
+
+    //     // Set the IRQ handler for this channel transfer
+    //     critical_section::with(|cs| {
+    //         set_handler(cs, id, |id, transfer_result| {
+    //             // signal to the main thread that transfer is resolved
+    //             critical_section::with(|csd| irq::irq_ch_set(csd, id, Some(transfer_result)));
+    //         })
+    //     });
+
+    //     let mut transfer = ChannelTransfer::new(self, src, dst);
+    //     transfer.start();
+    //     transfer
+    // }
+
+    /// Cancel any on-going transfer
+    fn cancel(&mut self) {
+        self.stop();
+        // Clear any existing content in the IRQ channel of this DMA channel
+        critical_section::with(|cs| irq::irq_ch_take(cs, self.id));
+    }
+
+    unsafe fn start(&mut self, desc: &TransferDescriptor, with_sw_trigger: bool) {
+        self.set_descriptor(*desc);
+        self.set_ien(true);
+        self.set_enabled(true);
+        if with_sw_trigger {
+            self.trigger();
+        }
+    }
+
+    /// Start the DMA transfer by executing the `TransferDescriptor` written to the DMA Channel
+    ///
+    /// If a descriptor list is linked, it will be executed after the `TransferDescriptor` has finished
+    fn trigger(&self) {
+        mmio::swreq(self.id);
+    }
+
+    fn stop(&mut self) {
+        self.set_ien(false);
+        self.set_ifc();
+        self.set_enabled(false);
+        self.set_done(false);
     }
 }
 
@@ -248,11 +300,11 @@ impl ChannelId {
     /// Bitmask for the maximum value of a `ChannelId`
     const MASK_VALUE: u8 = {
         assert!(
-            DmaChannel::COUNT.count_ones() == 1,
-            "DmaChannel::COUNT must be a power of `2` otherwise the subtraction below won't work"
+            CHANNEL_COUNT.count_ones() == 1,
+            "CHANNEL_COUNT must be a power of `2` otherwise the subtraction below won't work"
         );
 
-        DmaChannel::COUNT as u8 - 1
+        CHANNEL_COUNT as u8 - 1
     };
 
     /// Get a `ChannelId` from a u8
@@ -437,7 +489,7 @@ pub enum DmaError {
 /// DMA interrupt handling
 pub mod irq {
     use crate::{
-        dma::{mmio, ChannelId, DmaChannel, DmaError},
+        dma::{mmio, ChannelId, DmaError, CHANNEL_COUNT},
         pac::interrupt,
     };
     use core::cell::RefCell;
@@ -450,11 +502,11 @@ pub mod irq {
     const fn default_handler(_: ChannelId, _: Result<(), DmaError>) {}
 
     /// Communication channels between DMA IRQ and the main thread. One for each `DmaChannel`
-    static IRQ_CHANNELS: Mutex<RefCell<[Option<Result<(), DmaError>>; DmaChannel::COUNT]>> =
+    static IRQ_CHANNELS: Mutex<RefCell<[Option<Result<(), DmaError>>; CHANNEL_COUNT]>> =
         Mutex::new(RefCell::new([None; _]));
 
     /// Interrupt handlers for each DMA Channel
-    static HANDLERS: Mutex<RefCell<[DmaIrqHandler; DmaChannel::COUNT]>> =
+    static HANDLERS: Mutex<RefCell<[DmaIrqHandler; CHANNEL_COUNT]>> =
         Mutex::new(RefCell::new([default_handler; _]));
 
     pub(crate) fn irq_ch_take(cs: CriticalSection, id: ChannelId) -> Option<Result<(), DmaError>> {

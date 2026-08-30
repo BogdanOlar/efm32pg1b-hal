@@ -637,7 +637,7 @@ pub enum AddrInc {
 
 /// Unit Data Transfer Size
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum UnitSize {
     /// 8-bit transfer unit
