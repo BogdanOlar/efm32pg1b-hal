@@ -1,8 +1,6 @@
 //! Descriptor list and the Descriptor types which can be used with it
 //!
 
-use cortex_m::asm;
-
 use crate::dma::{
     descriptor::{
         Addr, AddrInc, AddrMode, Descriptor, ImmediateDescriptor, LoopTransferDescriptor,
@@ -10,6 +8,7 @@ use crate::dma::{
     },
     ChannelId, DmaError,
 };
+use cortex_m::asm;
 
 /// Descriptor list
 #[derive(Debug)]
@@ -124,6 +123,10 @@ impl<'a> DescList<'a> {
     }
 
     /// Finalize the descriptor list and link it to the given Transfer descriptor
+    ///
+    /// NOTE: if the last added descriptor is a `LoopTransferDescriptor` and the finalize mode is `DoneIFS`, then the
+    ///       done IRQ will fire on each loop completion. Usually, that's probably not what you want, so maybe add
+    ///       another non-loop transfer descriptor to trigger the DONE interrupt
     pub fn into_transfer_descriptor(
         mut self,
         mut transfer_descriptor: TransferDescriptor,
@@ -142,6 +145,15 @@ impl<'a> DescList<'a> {
     }
 
     /// Finalize the descriptor list and return a Transfer Link descriptor which can be written to the DMA Channel regs
+    ///
+    /// NOTE: if the last added descriptor is a [`LoopTransferDescriptor`] and the finalize mode is [`FinMode::DoneIFS`]
+    ///       , then the done IRQ will fire on each loop completion. Usually, that's probably not what you want, so
+    ///       maybe add another non-loop transfer descriptor to trigger the DONE interrupt
+    ///
+    /// # Errors
+    ///
+    /// This returns a `DmaError::InvalidDescriptorList` if the list is empty. Makes no sense to use a Link Descriptor
+    /// which links to an empty list.
     pub fn try_into_link_descriptor(
         mut self,
         mode: FinMode,
@@ -182,8 +194,6 @@ impl<'a> DescList<'a> {
                                 transfer_descriptor.with_done_ifs(true).into()
                             }
                             ListDescriptor::LoopTransfer(loop_transfer_descriptor) => {
-                                // TODO: This could be surprising for the user, since the done ISR will wire on each loop completion
-                                //       Either disallow this, or make it clear in the documentation
                                 loop_transfer_descriptor.with_loop_done_ifs(true).into()
                             }
                             ListDescriptor::Sync(sync_descriptor) => {
@@ -211,10 +221,10 @@ impl<'a> DescList<'a> {
     }
 }
 
-/// Wrapper for all Descriptor Builders which can be pushed to a [`DescList`]
+/// Wrapper for all Descriptor types which can be pushed to a [`DescList`]
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum ListDescriptor {
+pub enum ListDescriptor {
     /// [`TransferDescriptor`]
     Transfer(TransferDescriptor),
     /// [`LoopTransferDescriptor`]
