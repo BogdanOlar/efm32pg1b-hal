@@ -34,7 +34,9 @@ impl<const N: u8> SpiDma<N> {
 
         let (tx_sel, rx_sel) = Self::dma_sources();
         tx.set_peripheral_req(tx_sel);
+        tx.set_ignore_single_req(true);
         rx.set_peripheral_req(rx_sel);
+        rx.set_ignore_single_req(true);
 
         Self {
             tx,
@@ -65,16 +67,16 @@ impl<const N: u8> SpiDma<N> {
         let read_bytes = core::mem::size_of_val(read);
         let read_units = read_bytes / unit.byte_count();
 
-        if write_units.max(read_units) == 0 {
-            return Ok(());
+        // Zero-sized transfers return OK() immediately without starting DMA
+        if write_units.max(read_units) > 0 {
+            self.busy = true;
+
+            let (tx_desc, rx_desc) =
+                self.build_descriptors(unit, write_addr, write_units, read_addr, read_units)?;
+
+            unsafe { self.rx.transfer(&rx_desc, false) };
+            unsafe { self.tx.transfer(&tx_desc, true) };
         }
-
-        let (tx_desc, rx_desc) =
-            self.build_descriptors(unit, write_addr, write_units, read_addr, read_units)?;
-
-        self.busy = true;
-        unsafe { self.rx.transfer(&rx_desc, false) };
-        unsafe { self.tx.transfer(&tx_desc, true) };
 
         Ok(())
     }
@@ -121,6 +123,9 @@ impl<const N: u8> SpiDma<N> {
         let total_units = tx_units.max(rx_units);
         assert_ne!(total_units, 0);
 
+        #[cfg(feature = "debug-spi-dma-defmt-info")]
+        info!("UNIT {}", unit);
+
         let usart_p = mmio::usartx::<N>();
         let mut tx_list = DescList::new(&mut self.tx_descriptors);
         let mut rx_list = DescList::new(&mut self.rx_descriptors);
@@ -131,6 +136,9 @@ impl<const N: u8> SpiDma<N> {
         static TX_FILLER: u32 = 0xFFFFFFFF;
         static mut RX_SINK: u32 = 0;
 
+        let per_tx_addr = usart_p.txdata().as_ptr().addr();
+        let per_rx_addr = usart_p.rxdata().as_ptr().addr();
+
         let tx_desc = if tx_units > 0 {
             #[cfg(feature = "debug-spi-dma-defmt-info")]
             info!("TX: tx_units {}", tx_units);
@@ -138,7 +146,7 @@ impl<const N: u8> SpiDma<N> {
             let desc = dma::list::reduced(
                 self.tx.id(),
                 TargetAddr::IncrementOne(tx_addr),
-                TargetAddr::Fixed(usart_p.txdata().as_ptr().addr()),
+                TargetAddr::Fixed(per_tx_addr),
                 unit,
                 tx_units,
                 &mut tx_list,
@@ -151,7 +159,7 @@ impl<const N: u8> SpiDma<N> {
                 dma::list::extended(
                     self.tx.id(),
                     TargetAddr::Fixed((&TX_FILLER) as *const u32 as usize),
-                    TargetAddr::Fixed(usart_p.txdata().as_ptr().addr()),
+                    TargetAddr::Fixed(per_tx_addr),
                     unit,
                     tx_filler_units,
                     &mut tx_list,
@@ -166,7 +174,7 @@ impl<const N: u8> SpiDma<N> {
             let desc = dma::list::reduced(
                 self.tx.id(),
                 TargetAddr::Fixed((&TX_FILLER) as *const u32 as usize),
-                TargetAddr::Fixed(usart_p.txdata().as_ptr().addr()),
+                TargetAddr::Fixed(per_tx_addr),
                 unit,
                 tx_filler_units,
                 &mut tx_list,
@@ -181,7 +189,7 @@ impl<const N: u8> SpiDma<N> {
 
             let desc = dma::list::reduced(
                 self.rx.id(),
-                TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
+                TargetAddr::Fixed(per_rx_addr),
                 TargetAddr::IncrementOne(rx_addr),
                 unit,
                 rx_units,
@@ -194,7 +202,7 @@ impl<const N: u8> SpiDma<N> {
 
                 dma::list::extended(
                     self.rx.id(),
-                    TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
+                    TargetAddr::Fixed(per_rx_addr),
                     TargetAddr::Fixed((&raw const RX_SINK) as usize),
                     unit,
                     rx_filler_units,
@@ -209,7 +217,7 @@ impl<const N: u8> SpiDma<N> {
 
             let desc = dma::list::reduced(
                 self.rx.id(),
-                TargetAddr::Fixed(usart_p.rxdata().as_ptr().addr()),
+                TargetAddr::Fixed(per_rx_addr),
                 TargetAddr::Fixed((&raw const RX_SINK) as usize),
                 unit,
                 rx_filler_units,

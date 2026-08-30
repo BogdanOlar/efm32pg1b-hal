@@ -182,6 +182,20 @@ impl DmaChannel {
         mmio::ch_loop_set(self.id, loop_count);
     }
 
+    /// Set/clear the ignore single requests flag.
+    ///
+    /// The channel arbiter will ignore single requests (SREQ) and only respond to multiple requests (REQ) when this bit
+    /// is set.
+    pub fn set_ignore_single_req(&self, is_ignored: bool) {
+        mmio::dma().ch(self.id as usize).ctrl().modify(|_, w| {
+            if is_ignored {
+                w.ignoresreq().set_bit()
+            } else {
+                w.ignoresreq().clear_bit()
+            }
+        });
+    }
+
     /// Start the DMA transfer by executing the Transfer LINK Descriptor written to the DMA Channel
     ///
     /// This which will trigger loading the first descriptor in the descriptor list whose address is in the LINK
