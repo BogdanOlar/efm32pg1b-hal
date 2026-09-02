@@ -8,9 +8,7 @@ use efm32pg1b_hal::{crc::Crc, usart::spi, usart::spi::dma::SpiDma};
 // HAL's LeTimer0 time driver, which `#[init]` starts via `Ticker::init()` before any test runs, so
 // `Instant::now()` returns real monotonic microseconds from then on (and `0` until then). This
 // satisfies the `{t}` placeholder in the probe-rs log format.
-defmt::timestamp!("{=u64:us}", {
-    embassy_time::Instant::now().as_micros()
-});
+defmt::timestamp!("{=u64:us}", { embassy_time::Instant::now().as_micros() });
 
 #[cfg(test)]
 #[embedded_test::tests]
@@ -20,13 +18,11 @@ mod tests {
     use efm32pg1b_hal::{
         cmu::{CmuExt, LfClockSource},
         crc::{algos::CRC_32_CKSUM, Crc, CrcDriver},
-        dma::descriptor::Descriptor,
-        dma::Dma,
+        dma::{descriptor::Descriptor, Dma},
         gpio::{Gpio, InFilt, OutPp},
         pac::Peripherals,
         timer_le::efemb::Ticker,
-        usart::spi::{Config, SpiPins},
-        usart::spi::dma::SpiDma,
+        usart::spi::{dma::SpiDma, Config, SpiPins},
     };
     use embedded_hal::spi::MODE_2;
 

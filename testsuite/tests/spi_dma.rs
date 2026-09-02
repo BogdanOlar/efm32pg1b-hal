@@ -16,8 +16,8 @@ mod tests {
         dma::Dma,
         gpio::{Gpio, InFilt, OutPp},
         pac::Peripherals,
-        usart::spi::{Config, SpiPins},
         usart::spi::dma::SpiDma,
+        usart::spi::{Config, SpiPins},
     };
     use embedded_hal::spi::MODE_2;
 
@@ -75,7 +75,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -94,7 +93,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -115,7 +113,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -134,7 +131,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -155,7 +151,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -175,7 +170,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -194,7 +188,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -217,7 +210,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -238,7 +230,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -261,7 +252,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -282,7 +272,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -305,7 +294,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -326,7 +314,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -349,7 +336,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -371,7 +357,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -390,7 +375,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 0;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -411,7 +395,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -430,7 +413,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -451,7 +433,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -470,7 +451,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -491,7 +471,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -510,7 +489,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -531,7 +509,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -550,7 +527,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -571,7 +547,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -590,7 +565,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -611,7 +585,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -630,7 +603,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -651,7 +623,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -670,7 +641,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -691,7 +661,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -710,7 +679,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -731,7 +699,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -750,7 +717,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -776,7 +742,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -800,7 +765,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -826,7 +790,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -850,7 +813,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -876,7 +838,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -900,7 +861,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -928,7 +888,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -954,7 +913,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -982,7 +940,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1008,7 +965,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -1036,7 +992,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1062,7 +1017,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -1090,7 +1044,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1117,7 +1070,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1141,7 +1093,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 0;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -1167,7 +1118,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1190,7 +1140,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -1215,7 +1164,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1238,7 +1186,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -1263,7 +1210,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1286,7 +1232,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -1311,7 +1256,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1334,7 +1278,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -1359,7 +1302,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1382,7 +1324,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -1407,7 +1348,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1430,7 +1370,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -1455,7 +1394,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1478,7 +1416,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
@@ -1503,7 +1440,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1527,7 +1463,6 @@ mod tests {
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
 
-
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
 
@@ -1550,7 +1485,6 @@ mod tests {
         // under/overflow
         const DST_BUF_OFFSET: usize = 10;
         const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
 
         let src = &SRC_BUF[..SRC_LEN];
         let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
