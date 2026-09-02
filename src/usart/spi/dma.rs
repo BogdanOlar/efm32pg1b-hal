@@ -9,7 +9,8 @@ use crate::{
     },
     usart::{
         mmio,
-        spi::{SpiError, TX_FILLER_BYTE},
+        spi::{Spi, SpiError, TX_FILLER_BYTE},
+        UsartId,
     },
 };
 #[cfg(feature = "debug-spi-dma-defmt-info")]
@@ -20,9 +21,14 @@ use embedded_hal::spi::{ErrorType, SpiBus};
 const DESC_COUNT: usize = 6;
 
 /// SPI master which implements `SpiBus` trait
+///
+/// Owns the [`Spi`](super::Spi) it was created from (extracting its [`UsartId`](super::super::UsartId)
+/// for register access), plus two DMA channels and their descriptor pools. Created from an
+/// [`Spi`](super::Spi) via [`Spi::into_spi_dma`](super::Spi::into_spi_dma).
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct SpiDma<const N: u8> {
+pub struct SpiDma {
+    pub(crate) spi: Spi,
     pub(crate) tx: DmaChannel,
     pub(crate) rx: DmaChannel,
     pub(crate) busy: bool,
@@ -30,18 +36,19 @@ pub struct SpiDma<const N: u8> {
     pub(crate) rx_descriptors: [Descriptor; DESC_COUNT],
 }
 
-impl<const N: u8> SpiDma<N> {
-    pub(crate) fn new(mut tx: DmaChannel, mut rx: DmaChannel) -> Self {
+impl SpiDma {
+    pub(crate) fn new(spi: Spi, mut tx: DmaChannel, mut rx: DmaChannel) -> Self {
         tx.reset();
         rx.reset();
 
-        let (tx_sel, rx_sel) = Self::dma_sources();
+        let (tx_sel, rx_sel) = Self::dma_sources(spi.id());
         tx.set_peripheral_req(tx_sel);
         tx.set_ignore_single_req(true);
         rx.set_peripheral_req(rx_sel);
         rx.set_ignore_single_req(true);
 
         Self {
+            spi,
             tx,
             rx,
             busy: false,
@@ -152,7 +159,7 @@ impl<const N: u8> SpiDma<N> {
         #[cfg(feature = "debug-spi-dma-defmt-info")]
         info!("UNIT {}", unit);
 
-        let usart_p = mmio::usartx::<N>();
+        let usart_p = mmio::usartx(self.spi.id());
         let mut tx_list = DescList::new(&mut self.tx_descriptors);
         let mut rx_list = DescList::new(&mut self.rx_descriptors);
 
@@ -261,18 +268,17 @@ impl<const N: u8> SpiDma<N> {
         Ok((tx_desc, rx_desc))
     }
 
-    /// Helper function to get the appropriate peripheral DMA channel trigger sources based on SPI instance id (`N`):
-    /// Returns `(tx_source, rx_source)`
-    pub(crate) const fn dma_sources() -> (ChReqSel, ChReqSel) {
-        match N {
-            0 => (ChReqSel::Usart0TxBl, ChReqSel::Usart0RxDataAvl),
-            1 => (ChReqSel::Usart1TxBl, ChReqSel::Usart1RxDataAvl),
-            _ => unreachable!(),
+    /// Helper function to get the appropriate peripheral DMA channel trigger sources based on
+    /// the USART peripheral [`UsartId`]. Returns `(tx_source, rx_source)`.
+    pub(crate) const fn dma_sources(id: UsartId) -> (ChReqSel, ChReqSel) {
+        match id {
+            UsartId::Usart0 => (ChReqSel::Usart0TxBl, ChReqSel::Usart0RxDataAvl),
+            UsartId::Usart1 => (ChReqSel::Usart1TxBl, ChReqSel::Usart1RxDataAvl),
         }
     }
 }
 
-impl<const N: u8> SpiBus for SpiDma<N> {
+impl SpiBus for SpiDma {
     fn read(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
         self.transfer(words, &[])
     }
@@ -294,6 +300,6 @@ impl<const N: u8> SpiBus for SpiDma<N> {
     }
 }
 
-impl<const N: u8> ErrorType for SpiDma<N> {
+impl ErrorType for SpiDma {
     type Error = SpiError;
 }

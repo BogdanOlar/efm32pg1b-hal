@@ -4,8 +4,8 @@
 //!
 //! Memory-to-memory transfer
 //!
-//! **WARNING**: May panic if the `ChannelTransfer` is dropped while the DMA channel is still active.
-//!              Use `ChannelTransfer::check_done()` to determine if the DMA transfer completed.
+//! If a `ChannelTransfer` is dropped while the DMA channel is still active, the transfer
+//! is automatically aborted and the channel is stopped.
 //!
 
 pub mod descriptor;
@@ -166,7 +166,7 @@ impl DmaChannel {
     }
 
     /// Clear the interrupt flag for this channel
-    pub fn set_ifc(&self) {
+    pub fn clear_interrupt_flags(&self) {
         mmio::ifc_set(self.id);
     }
 
@@ -203,12 +203,26 @@ impl DmaChannel {
     ///
     /// This which will trigger loading the first descriptor in the descriptor list whose address is in the LINK
     /// register
-    pub fn link_load(&self) {
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for ensuring the descriptor is valid (addresses point
+    /// to accessible memory, transfer size does not exceed buffer bounds, link (if it exists) points to a valid
+    /// descriptor list, etc).
+    pub unsafe fn link_load(&self) {
         mmio::ch_link_load(self.id)
     }
 
-    /// Write a descriptor to the channel DMA descriptor registers
-    pub fn set_descriptor(&self, desc: TransferDescriptor) {
+    /// Write a descriptor to the channel DMA descriptor registers.
+    ///
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for ensuring the descriptor is valid (addresses point
+    /// to accessible memory, transfer size does not exceed buffer bounds, link (if it exists) points to a valid
+    /// descriptor list, etc).
+    ///
+    pub unsafe fn set_descriptor(&self, desc: TransferDescriptor) {
         mmio::ch_write_descriptor(self.id, &desc.into_inner());
     }
 
@@ -261,6 +275,42 @@ impl DmaChannel {
         critical_section::with(|cs| irq::irq_ch_take(cs, self.id));
     }
 
+    /// Start a memory-to-memory DMA transfer.
+    ///
+    /// Takes a mutable reference to the channel, preventing its use while the transfer is ongoing.
+    /// Returns a [`ChannelTransfer`](transfer::ChannelTransfer) token which can be used to check the
+    /// transfer status via [`ChannelTransfer::try_resolve`](transfer::ChannelTransfer::try_resolve).
+    ///
+    /// The transfer unit size (byte, half-word, word) is determined automatically from the alignment
+    /// and length of `src` and `dst`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DmaError::BufferMismatch`] if `src` and `dst` have different lengths.
+    pub fn memory_transfer<'a, W: Sized>(
+        &'a mut self,
+        src: &'a [W],
+        dst: &'a mut [W],
+    ) -> Result<transfer::ChannelTransfer<'a, W>, DmaError> {
+        if src.len() != dst.len() {
+            return Err(DmaError::BufferMismatch);
+        }
+
+        // Set the IRQ handler for this channel transfer
+        critical_section::with(|cs| {
+            set_handler(cs, self.id(), |id, transfer_result| {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
+                info!("IRQ {}: {}", id, transfer_result);
+
+                // signal to the main thread that transfer is resolved
+                critical_section::with(|csd| irq::irq_ch_set(csd, id, Some(transfer_result)));
+            })
+        });
+
+        let transfer = transfer::ChannelTransfer::new(self, src, dst);
+        Ok(transfer)
+    }
+
     /// Enable the DMA transfer by executing the `TransferDescriptor` written to the DMA Channel, and software-trigger
     /// it if `with_sw_trigger` is set.
     ///
@@ -277,7 +327,7 @@ impl DmaChannel {
     /// Disable the DMA transfer.
     fn stop(&mut self) {
         self.set_ien(false);
-        self.set_ifc();
+        self.clear_interrupt_flags();
         self.set_enabled(false);
         self.set_done(false);
     }
@@ -494,6 +544,8 @@ pub enum DmaError {
     InvalidDescriptorList,
     /// Descriptor list overflowed
     DescriptorListOverflow,
+    /// Source and destination buffers have different lengths
+    BufferMismatch,
 }
 
 /// DMA interrupt handling

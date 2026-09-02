@@ -10,7 +10,7 @@ use defmt::info;
 use embassy_futures::join::join;
 use embedded_hal_async::spi::SpiBus;
 
-impl<const N: u8> SpiDma<N> {
+impl SpiDma {
     /// Do an async SPI transaction.
     ///
     /// `write` is written to the slave on MOSI and words received on MISO are stored in `read`.
@@ -88,7 +88,7 @@ impl<const N: u8> SpiDma<N> {
     }
 }
 
-impl<const N: u8> SpiBus for SpiDma<N> {
+impl SpiBus for SpiDma {
     async fn read(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
         self.transfer_async(words, &[]).await
     }

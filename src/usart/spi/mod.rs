@@ -7,20 +7,22 @@ pub mod dma;
 pub mod efemb;
 
 use crate::{
-    cmu::Clocks,
     dma::{DmaChannel, DmaError},
-    gpio::pin::{
-        mode::{InputMode, OutputMode},
-        Pin,
+    gpio::{
+        dynamic::DynamicPin,
+        pin::{
+            mode::{InputMode, OutputMode},
+            Pin, PinId, PinInfo,
+        },
+        port::PortId,
     },
-    usart::{mmio, spi::dma::SpiDma, UsartIndex},
+    usart::{mmio, spi::dma::SpiDma, UsartId, UsartIndex},
 };
 use core::cmp::max;
 use embedded_hal::{
     digital::{InputPin, OutputPin},
     spi::{Error, ErrorKind, ErrorType, Mode, Phase, Polarity, SpiBus},
 };
-pub use fugit::{HertzU32, RateExtU32};
 
 /// SPI filler byte
 ///
@@ -28,48 +30,59 @@ pub use fugit::{HertzU32, RateExtU32};
 pub const TX_FILLER_BYTE: u8 = 0xFF;
 
 /// SPI master which implements `SpiBus` trait
+///
+/// This driver is fully non-generic: the USART peripheral is selected at runtime (via
+/// [`UsartId`]) and the pins are stored in their type-erased [`DynamicPin`] form. All build-time
+/// validity (which pins may serve as CLK/TX/RX, and which USART is used) is enforced at compile
+/// time by the generic [`SpiPins`] builder, and the SPI operating parameters are supplied via the
+/// non-generic [`Config`]. The only way to obtain an `Spi` is through a valid `SpiPins` + `Config`
+/// passed to [`Spi::new`].
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct Spi<const N: u8, PCLK, PTX, PRX> {
-    pin_clk: PCLK,
-    pin_tx: PTX,
-    pin_rx: PRX,
+pub struct Spi {
+    /// USART peripheral this instance drives
+    id: UsartId,
+    pin_clk: DynamicPin,
+    pin_tx: DynamicPin,
+    pin_rx: DynamicPin,
 }
 
-impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX> {
-    /// Create a new SPI instance from a USART peripheral, clock pin, TX pin, RX pin, and mode
-    pub fn new<USART>(_usart: USART, pin_clk: PCLK, pin_tx: PTX, pin_rx: PRX, mode: Mode) -> Self
-    where
-        USART: UsartIndex<N>,
-        PCLK: OutputPin + UsartClkPin,
-        PTX: OutputPin + UsartTxPin,
-        PRX: InputPin + UsartRxPin,
-    {
-        // Enable the clock for this USART
-        mmio::cmu_usart_enable::<N>();
-        // Reset the USART registers
-        mmio::reset::<N>();
+impl Spi {
+    /// Create a new SPI instance from a validated [`SpiPins`] pin/peripheral binding and an
+    /// initial [`Config`].
+    ///
+    /// The USART peripheral and pin routing are taken from `pins`, and the SPI [`Mode`],
+    /// [`BitOrder`], loopback flag, sample delay and baudrate divider are all applied from
+    /// `config` (via [`Spi::set_config`]). The returned [`Spi`] is non-generic: the peripheral
+    /// is stored at runtime as a [`UsartId`] and the pins are held in their type-erased
+    /// [`DynamicPin`] form.
+    pub fn new(pins: SpiPins, config: &Config) -> Self {
+        let id = pins.id;
 
-        let mut spi = Spi::<N, _, _, _> {
-            pin_clk,
-            pin_tx,
-            pin_rx,
+        // Enable the clock for this USART
+        mmio::cmu_usart_enable(id);
+        // Reset the USART registers
+        mmio::reset(id);
+
+        let mut spi = Spi {
+            id,
+            pin_clk: pins.pin_clk,
+            pin_tx: pins.pin_tx,
+            pin_rx: pins.pin_rx,
         };
 
-        let usart_p = mmio::usartx::<N>();
+        let usart_p = mmio::usartx(id);
 
         spi.reset();
 
         usart_p.ctrl().write(|w| {
             // Set USART to Synchronous Mode
             w.sync().set_bit();
-            // Most significant bit first
+            // Most significant bit first (the exact bit order is re-applied from `config` below)
             w.msbf().set_bit();
             // Disable auto TX
             w.autotx().clear_bit()
         });
-
-        spi.set_mode(mode);
 
         usart_p.frame().write(|w| {
             // 8 data bits
@@ -96,13 +109,10 @@ impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX> {
         });
 
         // Set IO pin routing for Usart
-        let clk_loc = spi.pin_clk.loc();
-        let tx_loc = spi.pin_tx.loc();
-        let rx_loc = spi.pin_rx.loc();
         usart_p.routeloc0().modify(|_, w| unsafe {
-            w.clkloc().bits(clk_loc);
-            w.txloc().bits(tx_loc);
-            w.rxloc().bits(rx_loc)
+            w.clkloc().bits(pins.clk_loc);
+            w.txloc().bits(pins.tx_loc);
+            w.rxloc().bits(pins.rx_loc)
         });
 
         // Enable IO pins for Usart
@@ -118,61 +128,53 @@ impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX> {
             w.txen().set_bit()
         });
 
+        // Apply the SPI operating configuration (mode, bit order, loopback, sample delay,
+        // baudrate divider). This is the same path as `set_config`, so the initial state of the
+        // driver matches a subsequent runtime reconfiguration.
+        spi.set_config(config);
+
         spi
     }
 
-    /// Construct Spi driver with Loopback enabled
-    pub fn with_loopback(mut self) -> Self {
-        self.set_loopback(true);
-        self
-    }
-
     /// Release the resources used to create this SPI instance
-    /// FIXME: return the usert peripheral too
-    pub fn release(self) -> (PCLK, PTX, PRX) {
+    /// FIXME: return the usart peripheral too
+    pub fn release(self) -> (DynamicPin, DynamicPin, DynamicPin) {
         (self.pin_clk, self.pin_tx, self.pin_rx)
     }
 
+    /// Returns the [`UsartId`] of the USART peripheral this instance drives.
+    pub fn id(&self) -> UsartId {
+        self.id
+    }
+
     /// Set the SPI loopback flag
+    ///
+    /// Only the loopback bit of `CTRL` is touched; the rest of the register (synchronous mode,
+    /// bit order, SPI mode, auto-TX, auto-CS, ...) is preserved.
     pub fn set_loopback(&mut self, enabled: bool) {
-        let usart_p = mmio::usartx::<N>();
-        usart_p.ctrl().write(|w| match enabled {
+        let usart_p = mmio::usartx(self.id);
+        usart_p.ctrl().modify(|_, w| match enabled {
             true => w.loopbk().set_bit(),
             false => w.loopbk().clear_bit(),
         });
     }
 
-    /// Set the SPI baudrate
+    /// Set the SPI clock divider ratio `N`.
     ///
-    /// This does a best effort, so the actual calculated baudrate is returned
-    pub fn set_baudrate(
-        &mut self,
-        baudrate: HertzU32,
-        clocks: &Clocks,
-    ) -> Result<HertzU32, SpiError> {
-        let usart_p = mmio::usartx::<N>();
+    /// The SPI clock becomes `fHFPERCLK / (2 * (N + 1))`. The driver programs `N` directly into
+    /// the `USARTn_CLKDIV.DIV` field (the register value is `N << 5`, since the field starts at
+    /// bit 3). `N = 0` selects the maximum baudrate (`fHFPERCLK / 2`).
+    ///
+    /// See [Reference Manual - 16.5.6](../../../../../doc/efm32pg1-rm.pdf#page=506).
+    pub fn set_divider(&mut self, divider: u32) {
+        let usart_p = mmio::usartx(self.id);
 
-        // A baudrate of 0 makes no sense
-        if baudrate.raw() == 0 {
-            return Err(SpiError::InvalidBaudrate(baudrate));
-        }
-
-        // Set clock divider in order to obtain the closest baudrate to the one requested. According to the reference
-        // manual, the formula to calculate the Usart Clock Div is:
-        //          USARTn_CLKDIV = 256 x (fHFPERCLK/(2 x brdesired) - 1)
-        // We are not bitshifting by `8` (256*...) because the `div` field starts at bit 3, so we only bitshift by 5
-        // let clk_div: u32 = ((clocks.hf_per_clk / (baudrate * 2)) - 1) << 5;
-        let clk_div: u32 = clocks.hf_per_clk() / (baudrate * 2);
-
-        // avoid underflow if trying to subtracting `1` from a `clk_div` of `0`
-        let clk_div = match clk_div {
-            0 => 0,
-            _ => (clk_div - 1) << 5,
-        };
+        // The `div` field starts at bit 3, so the register value is `divider << 5`
+        // (equivalent to `256 * (fHFPERCLK/(2 * fbr) - 1)` per the reference manual, since the
+        // field value is CLKDIV/8 and 256 = 2^8 -> shift by 8 - 3 = 5).
+        let clk_div = divider << 5;
 
         usart_p.clkdiv().write(|w| unsafe { w.div().bits(clk_div) });
-
-        Ok(Self::calculate_baudrate(clocks.hf_per_clk(), clk_div))
     }
 
     /// Set the SPI mode
@@ -183,7 +185,7 @@ impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX> {
     ///   - [`MODE_2`](`embedded_hal::spi::MODE_2`): CPOL = 1, CPHA = 0
     ///   - [`MODE_3`](`embedded_hal::spi::MODE_3`): CPOL = 1, CPHA = 1
     pub fn set_mode(&mut self, mode: Mode) {
-        let usart_p = mmio::usartx::<N>();
+        let usart_p = mmio::usartx(self.id);
 
         usart_p.ctrl().modify(|_, w| {
             w.clkpol()
@@ -193,13 +195,50 @@ impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX> {
         });
     }
 
+    /// Set the SPI bit order via the `USARTn_CTRL.MSBF` field.
+    ///
+    /// See [Reference Manual - 16.5.1](../../../../../doc/efm32pg1-rm.pdf#page=494).
+    pub fn set_bit_order(&mut self, bit_order: BitOrder) {
+        let usart_p = mmio::usartx(self.id);
+        usart_p.ctrl().modify(|_, w| match bit_order {
+            BitOrder::LsbFirst => w.msbf().clear_bit(),
+            BitOrder::MsbFirst => w.msbf().set_bit(),
+        });
+    }
+
+    /// Enable or disable the synchronous-master sample delay (`USARTn_CTRL.SMSDELAY`).
+    ///
+    /// When enabled, the master sample point is delayed to the next setup edge, which can improve
+    /// timing margin and allow higher speeds with some slaves. See
+    /// [Reference Manual - 16.5.1](../../../../../doc/efm32pg1-rm.pdf#page=494).
+    pub fn set_sms_delay(&mut self, enabled: bool) {
+        let usart_p = mmio::usartx(self.id);
+        usart_p.ctrl().modify(|_, w| match enabled {
+            true => w.smsdelay().set_bit(),
+            false => w.smsdelay().clear_bit(),
+        });
+    }
+
+    /// Apply a [`Config`] to this driver at runtime.
+    ///
+    /// This reconfigures the SPI [`Mode`], [`BitOrder`], loopback flag, synchronous-master sample
+    /// delay and baudrate divider in place, without rebuilding the driver. The USART peripheral
+    /// and the pin routing remain fixed (they are bound at build time via [`SpiPins`]).
+    pub fn set_config(&mut self, config: &Config) {
+        self.set_mode(config.mode);
+        self.set_bit_order(config.bit_order);
+        self.set_loopback(config.loopback);
+        self.set_sms_delay(config.sms_delay);
+        self.set_divider(config.divider);
+    }
+
     /// Convert into a Spi implementation which used DMA channels
-    pub fn into_spi_dma(self, tx: DmaChannel, rx: DmaChannel) -> SpiDma<N> {
-        SpiDma::new(tx, rx)
+    pub fn into_spi_dma(self, tx: DmaChannel, rx: DmaChannel) -> SpiDma {
+        SpiDma::new(self, tx, rx)
     }
 
     fn reset(&mut self) {
-        let usart_p = mmio::usartx::<N>();
+        let usart_p = mmio::usartx(self.id);
 
         // Use CMD first
         usart_p.cmd().write(|w| {
@@ -228,33 +267,19 @@ impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX> {
         usart_p.routeloc1().reset();
         usart_p.input().reset();
 
-        match N {
-            // Only UART0 has IRDA
-            0 => usart_p.irctrl().reset(),
+        match self.id {
+            // Only USART0 has IrDA
+            UsartId::Usart0 => usart_p.irctrl().reset(),
             // Only USART1 has I2S
-            1 => usart_p.i2sctrl().reset(),
-            _ => unreachable!(),
+            UsartId::Usart1 => usart_p.i2sctrl().reset(),
         }
-    }
-
-    /// Calculate the actual baudrate of the SPI peripheral
-    fn calculate_baudrate(hf_per_clk: HertzU32, clk_div: u32) -> HertzU32 {
-        let divisor: u64 = ((clk_div as u64) << 3) + 256;
-        let remainder: u64 = hf_per_clk.raw() as u64 % divisor;
-        let quotient: u64 = hf_per_clk.raw() as u64 / divisor;
-        let factor: u64 = 128;
-
-        let br = (factor * quotient) as u32;
-        let br = br + ((factor * remainder) / divisor) as u32;
-
-        br.Hz()
     }
 
     fn wait_tx_complete(&self) -> Result<(), SpiError> {
         // TODO: maybe calculate a counter based on minimum possible baudrate.
         const MAX_COUNT: u32 = 1_000_000;
         let mut bail_countdown = MAX_COUNT;
-        let usart_p = mmio::usartx::<N>();
+        let usart_p = mmio::usartx(self.id);
 
         while usart_p.status().read().txc().bit_is_clear() {
             bail_countdown -= 1;
@@ -267,12 +292,228 @@ impl<const N: u8, PCLK, PTX, PRX> Spi<N, PCLK, PTX, PRX> {
     }
 }
 
+/// The USART peripheral and CLK/TX/RX pins an [`Spi`] driver is built from.
+///
+/// `SpiPins` is constructed generically via [`SpiPins::new`], which enforces at compile time
+/// that:
+///   - `USART` is a valid USART peripheral ([`UsartIndex`]),
+///   - `PCLK` is a pin usable as the SPI clock output ([`UsartClkPin`]),
+///   - `PTX` is a pin usable as the SPI MOSI/TX output ([`UsartTxPin`]),
+///   - `PRX` is a pin usable as the SPI MISO/RX input ([`UsartRxPin`]).
+///
+/// `SpiPins::new` resolves the [`UsartId`] and erases the pins into [`DynamicPin`]s (extracting
+/// the routing locations first), so the resulting `SpiPins` is fully non-generic. `Spi::new`
+/// takes it with no trait bounds.
+///
+/// `SpiPins` only carries the peripheral and pin routing; the SPI operating mode, baudrate, bit
+/// order, loopback and sample delay are all configured via the [`Config`] passed to [`Spi::new`].
+#[derive(Debug)]
+pub struct SpiPins {
+    id: UsartId,
+    pin_clk: DynamicPin,
+    pin_tx: DynamicPin,
+    pin_rx: DynamicPin,
+    clk_loc: u8,
+    tx_loc: u8,
+    rx_loc: u8,
+}
+
+impl SpiPins {
+    /// Collect the USART peripheral and its CLK/TX/RX pins for an [`Spi`] driver.
+    ///
+    /// The trait bounds guarantee that only pin types valid for the chosen USART are accepted,
+    /// so the returned `SpiPins` always represents a valid pin/peripheral combination. The pins
+    /// are type-erased into [`DynamicPin`]s and the [`UsartId`] is resolved here, so the returned
+    /// `SpiPins` is non-generic. SPI operating parameters (mode, baudrate, ...) are supplied
+    /// separately via [`Config`] to [`Spi::new`].
+    pub fn new<USART, PCLK, PTX, PRX>(
+        _usart: USART,
+        pin_clk: PCLK,
+        pin_tx: PTX,
+        pin_rx: PRX,
+    ) -> Self
+    where
+        USART: UsartIndex,
+        PCLK: OutputPin + UsartClkPin + PinInfo,
+        PTX: OutputPin + UsartTxPin + PinInfo,
+        PRX: InputPin + UsartRxPin + PinInfo,
+    {
+        // Extract the routing locations before erasing, since `UsartClkPin`/`UsartTxPin`/
+        // `UsartRxPin` are only implemented for `Pin` types.
+        let clk_loc = pin_clk.loc();
+        let tx_loc = pin_tx.loc();
+        let rx_loc = pin_rx.loc();
+
+        Self {
+            id: USART::index(),
+            pin_clk: DynamicPin::new(pin_clk.port(), pin_clk.pin(), pin_clk.mode()),
+            pin_tx: DynamicPin::new(pin_tx.port(), pin_tx.pin(), pin_tx.mode()),
+            pin_rx: DynamicPin::new(pin_rx.port(), pin_rx.pin(), pin_rx.mode()),
+            clk_loc,
+            tx_loc,
+            rx_loc,
+        }
+    }
+
+    /// Collect the USART peripheral and its CLK/TX/RX pins for an [`Spi`] driver, using
+    /// already type-erased [`DynamicPin`]s.
+    ///
+    /// Unlike [`SpiPins::new`], which enforces pin/role validity at compile time via trait
+    /// bounds, `try_new` validates at runtime that:
+    ///   - the CLK and TX pins are valid SPI clock/TX pins and are in an output mode,
+    ///   - the RX pin is a valid SPI RX pin and is in an input mode.
+    ///
+    /// Returns [`Err(SpiError::InvalidPin)`] if any pin is invalid for its role or in the wrong
+    /// mode. The USART peripheral is specified by [`UsartId`] (runtime, not generic).
+    pub fn try_new(
+        id: UsartId,
+        pin_clk: DynamicPin,
+        pin_tx: DynamicPin,
+        pin_rx: DynamicPin,
+    ) -> Result<Self, SpiError> {
+        let clk_loc = clk_loc(pin_clk.port(), pin_clk.pin()).ok_or(SpiError::InvalidPin)?;
+        let tx_loc = tx_loc(pin_tx.port(), pin_tx.pin()).ok_or(SpiError::InvalidPin)?;
+        let rx_loc = rx_loc(pin_rx.port(), pin_rx.pin()).ok_or(SpiError::InvalidPin)?;
+
+        // CLK and TX must be output pins; RX must be an input pin.
+        if !pin_clk.mode().writable() || !pin_tx.mode().writable() {
+            return Err(SpiError::InvalidPin);
+        }
+        if !pin_rx.mode().readable_input() {
+            return Err(SpiError::InvalidPin);
+        }
+
+        Ok(Self {
+            id,
+            pin_clk,
+            pin_tx,
+            pin_rx,
+            clk_loc,
+            tx_loc,
+            rx_loc,
+        })
+    }
+}
+
+/// SPI bit order, selected via the `USARTn_CTRL.MSBF` field.
+///
+/// See [Reference Manual - 16.5.1](../../../../../doc/efm32pg1-rm.pdf#page=494).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum BitOrder {
+    /// Least-significant bit first (`MSBF = 0`).
+    ///
+    /// This is the USART's reset default and matches most SPI slaves' expectation.
+    LsbFirst,
+    /// Most-significant bit first (`MSBF = 1`).
+    ///
+    /// Useful for devices whose datasheet specifies MSB-first framing.
+    #[default]
+    MsbFirst,
+}
+
+/// SPI operating configuration for an [`Spi`] driver.
+///
+/// `Config` carries the settings that can be changed on an existing driver via
+/// [`Spi::set_config`]:
+///   - the SPI [`Mode`] (CPOL/CPHA),
+///   - the baudrate divider `N`,
+///   - the [`BitOrder`],
+///   - the loopback flag (debug/test; off by default),
+///   - the synchronous-master sample delay (`SMSDELAY`; off by default).
+///
+/// The baudrate is specified as a *divider ratio* `N` rather than a target frequency: the SPI
+/// clock becomes `fHFPERCLK / (2 * (N + 1))`, and `N` is programmed directly into the
+/// `USARTn_CLKDIV.DIV` field. This matches the reference manual formula
+/// `USARTn_CLKDIV = 256 * (fHFPERCLK/(2 * fbr) - 1)`, where `N = fHFPERCLK/(2 * fbr) - 1`. See
+/// [Reference Manual - 16.5.6](../../../../../doc/efm32pg1-rm.pdf#page=506).
+///
+/// Every field has a sane default (see [`Config::default`]), so a `Config` is always valid by
+/// construction: every `u32` is a valid divider (`0` selects the maximum baudrate), and the
+/// remaining fields are enums/bools with no invalid representation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Config {
+    mode: Mode,
+    divider: u32,
+    bit_order: BitOrder,
+    loopback: bool,
+    sms_delay: bool,
+}
+
+impl Default for Config {
+    /// A conservative default: [`MODE_0`], maximum baudrate (`N = 0`),
+    /// [`BitOrder::MsbFirst`], loopback disabled, sample delay disabled.
+    ///
+    /// [`MODE_0`]: embedded_hal::spi::MODE_0
+    fn default() -> Self {
+        Self {
+            mode: embedded_hal::spi::MODE_0,
+            divider: 0,
+            bit_order: BitOrder::MsbFirst,
+            loopback: false,
+            sms_delay: false,
+        }
+    }
+}
+
+impl Config {
+    /// Create a new `Config` with the given [`Mode`] and baudrate divider `N`.
+    ///
+    /// The resulting SPI clock is `fHFPERCLK / (2 * (N + 1))`. `N = 0` selects the maximum
+    /// baudrate. All other fields take their [`Config::default`] values (MSB-first, loopback
+    /// off, sample delay off).
+    pub fn new(mode: Mode, divider: u32) -> Self {
+        Self {
+            mode,
+            divider,
+            ..Self::default()
+        }
+    }
+
+    /// Set the SPI [`Mode`] of this configuration.
+    pub fn with_mode(mut self, mode: Mode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// Set the baudrate divider `N` of this configuration.
+    ///
+    /// The resulting SPI clock is `fHFPERCLK / (2 * (N + 1))`.
+    pub fn with_divider(mut self, divider: u32) -> Self {
+        self.divider = divider;
+        self
+    }
+
+    /// Set the [`BitOrder`] of this configuration.
+    pub fn with_bit_order(mut self, bit_order: BitOrder) -> Self {
+        self.bit_order = bit_order;
+        self
+    }
+
+    /// Enable or disable loopback mode in this configuration.
+    pub fn with_loopback(mut self, enabled: bool) -> Self {
+        self.loopback = enabled;
+        self
+    }
+
+    /// Enable or disable the synchronous-master sample delay (`SMSDELAY`).
+    ///
+    /// When set, the master sample point is delayed to the next setup edge, which can improve
+    /// timing margin and allow communication at higher speeds with some slaves. See
+    /// [Reference Manual - 16.5.1](../../../../../doc/efm32pg1-rm.pdf#page=494).
+    pub fn with_sms_delay(mut self, enabled: bool) -> Self {
+        self.sms_delay = enabled;
+        self
+    }
+}
+
 /// SPI Errors
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SpiError {
-    /// Invalid baud rate
-    InvalidBaudrate(HertzU32),
+    /// A pin passed to `SpiPins::try_new` is not valid for its SPI role (CLK/TX/RX), or is in
+    /// the wrong mode (CLK/TX must be an output, RX must be an input).
+    InvalidPin,
     /// Tx underflow
     TxUnderflow,
     /// Rx underflow
@@ -302,23 +543,18 @@ impl Error for SpiError {
 }
 
 // Implementations for `ErrorType` to be used by `SpiBus` `embedded-hal` trait
-impl<const N: u8, PCLK, PTX, PRX> ErrorType for Spi<N, PCLK, PTX, PRX> {
+impl ErrorType for Spi {
     type Error = SpiError;
 }
 
-impl<const N: u8, PCLK, PTX, PRX> SpiBus<u8> for Spi<N, PCLK, PTX, PRX>
-where
-    PCLK: OutputPin + UsartClkPin,
-    PTX: OutputPin + UsartTxPin,
-    PRX: InputPin + UsartRxPin,
-{
+impl SpiBus<u8> for Spi {
     fn read(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
         self.transfer(words, &[])
     }
 
     fn write(&mut self, words: &[u8]) -> Result<(), Self::Error> {
         let mut words_iter = words.iter();
-        let usart_p = mmio::usartx::<N>();
+        let usart_p = mmio::usartx(self.id);
 
         // This closure  waits until there are at least 2 (out of 3) bytes available in the TX buffer
         // The first position in the TX Buffer is the Shift Register, which is not accessible through registers
@@ -342,7 +578,6 @@ where
         };
 
         while let Some(b0) = words_iter.next() {
-            let usart_p = mmio::usartx::<N>();
             wait_for_buffer_space()?;
 
             if let Some(b1) = words_iter.next() {
@@ -365,7 +600,7 @@ where
         let mut tx_iter = write.iter();
         let mut rx_iter = read.iter_mut();
         let mut rx_discard = 0;
-        let usart_p = mmio::usartx::<N>();
+        let usart_p = mmio::usartx(self.id);
 
         for (txo, rxo) in (0..max_byte_count).map(|_| (tx_iter.next(), rx_iter.next())) {
             let tx_byte = match txo {
@@ -392,10 +627,9 @@ where
 
     fn transfer_in_place(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
         let mut words_iter = words.iter_mut();
+        let usart_p = mmio::usartx(self.id);
 
         while let Some(b0) = words_iter.next() {
-            let usart_p = mmio::usartx::<N>();
-
             if let Some(b1) = words_iter.next() {
                 // We have 2 bytes to send, use the `txdouble` register
                 usart_p.txdouble().write(|w| unsafe {
@@ -429,13 +663,13 @@ where
 ///
 /// This trait is implemented privately in this module for select pins specified in the
 /// [Data Sheet - page 85](../../../../../doc/efm32pg1-datasheet.pdf#page=85), and it is used to constrain the type of the `pin_clk`
-/// parameter passed to the `into_spi_bus()` method of the `UsartSpiExt` trait.
+/// parameter passed to the `Config::new()` function used to build an `Spi` driver.
 ///
 /// Note: if you try to create an `Spi` instance and get a compiler error like
 /// ```text
 ///     the trait `efm32pg1b_hal::spi::UsartClkPin` is not implemented for
 ///     `efm32pg1b_hal::gpio::Pin<'D', 8, efm32pg1b_hal::gpio::Input>`, which is required by
-///     `efm32pg1b_hal::efm32pg1b_pac::Usart1: efm32pg1b_hal::spi::UsartSpiExt<_, _, _>`
+///     `efm32pg1b_hal::usart::spi::Spi::new<efm32pg1b_hal::efm32pg1b_pac::Usart1, _, _, _>`
 /// ```
 ///
 /// then it's probably the case that you're trying to use a Pin as an SPI Clock pin when that pin is not available
@@ -501,13 +735,13 @@ impl_clock_loc!(31, 'A', 1);
 ///
 /// This trait is implemented privately in this module for select pins specified in the
 /// [Data Sheet - page 85](../../../../../doc/efm32pg1-datasheet.pdf#page=85), and it is used to constrain the type of the `pin_tx`
-/// parameter passed to the `into_spi_bus()` method of the `UsartSpiExt` trait.
+/// parameter passed to the `Config::new()` function used to build an `Spi` driver.
 ///
 /// Note: if you try to create an `Spi` instance and get a compiler error like
 /// ```text
 ///     the trait `efm32pg1b_hal::spi::UsartTxPin` is not implemented for
 ///     `efm32pg1b_hal::gpio::Pin<'D', 8, efm32pg1b_hal::gpio::Input>`, which is required by
-///     `efm32pg1b_hal::efm32pg1b_pac::Usart1: efm32pg1b_hal::spi::UsartSpiExt<_, _, _>`
+///     `efm32pg1b_hal::usart::spi::Spi::new<efm32pg1b_hal::efm32pg1b_pac::Usart1, _, _, _>`
 /// ```
 ///
 /// then it's probably the case that you're trying to use a Pin as an SPI Tx pin when that pin is not available
@@ -573,13 +807,13 @@ impl_tx_loc!(31, 'F', 7);
 ///
 /// This trait is implemented privately in this module for select pins specified in the
 /// [Data Sheet - page 86](../../../../../doc/efm32pg1-datasheet.pdf#page=86), and it is used to constrain the type of the `pin_rx`
-/// parameter passed to the `into_spi_bus()` method of the `UsartSpiExt` trait.
+/// parameter passed to the `Config::new()` function used to build an `Spi` driver.
 ///
 /// Note: if you try to create an `Spi` instance and get a compiler error like
 /// ```sh
 ///     the trait `efm32pg1b_hal::spi::UsartRxPin` is not implemented for
 ///     `efm32pg1b_hal::gpio::Pin<'D', 8, efm32pg1b_hal::gpio::Input>`, which is required by
-///     `efm32pg1b_hal::efm32pg1b_pac::Usart1: efm32pg1b_hal::spi::UsartSpiExt<_, _, _>`
+///     `efm32pg1b_hal::usart::spi::Spi::new<efm32pg1b_hal::efm32pg1b_pac::Usart1, _, _, _>`
 /// ```
 ///
 /// then it's probably the case that you're trying to use a Pin as an SPI Rx pin when that pin is not available
@@ -593,7 +827,7 @@ pub trait UsartRxPin {
     fn loc(&self) -> u8;
 }
 
-/// Implement the `UsartRxkPin` trait for the `US0_RX`/`US1_RX` alternate function.
+/// Implement the `UsartRxPin` trait for the `US0_RX`/`US1_RX` alternate function.
 /// See [Data Sheet](../../../../../doc/efm32pg1-datasheet.pdf#page=86).
 macro_rules! impl_rx_loc {
     ($loc:literal, $port:literal, $pin:literal) => {
@@ -700,3 +934,62 @@ impl_cs_loc!(28, 'F', 7);
 impl_cs_loc!(29, 'A', 0);
 impl_cs_loc!(30, 'A', 1);
 impl_cs_loc!(31, 'A', 2);
+
+/// Resolve the `ROUTELOC0` value for a CLK pin at runtime, or `None` if the pin is not a valid
+/// SPI clock pin. Mirrors the `impl_clock_loc!` macro table.
+const fn clk_loc(port: PortId, pin: PinId) -> Option<u8> {
+    let pin = pin as u8;
+    match port {
+        PortId::A if pin >= 2 && pin <= 5 => Some(pin - 2),
+        PortId::A if pin <= 1 => Some(30 + pin),
+        PortId::B if pin >= 11 && pin <= 15 => Some(4 + (pin - 11)),
+        PortId::C if pin >= 6 && pin <= 11 => Some(9 + (pin - 6)),
+        PortId::D if pin >= 9 && pin <= 15 => Some(15 + (pin - 9)),
+        PortId::F if pin <= 7 => Some(22 + pin),
+        _ => None,
+    }
+}
+
+/// Resolve the `ROUTELOC0` value for a TX pin at runtime, or `None` if the pin is not a valid
+/// SPI TX pin. Mirrors the `impl_tx_loc!` macro table.
+const fn tx_loc(port: PortId, pin: PinId) -> Option<u8> {
+    let pin = pin as u8;
+    match port {
+        PortId::A if pin <= 5 => Some(pin),
+        PortId::B if pin >= 11 && pin <= 15 => Some(6 + (pin - 11)),
+        PortId::C if pin >= 6 && pin <= 11 => Some(11 + (pin - 6)),
+        PortId::D if pin >= 9 && pin <= 15 => Some(17 + (pin - 9)),
+        PortId::F if pin <= 7 => Some(24 + pin),
+        _ => None,
+    }
+}
+
+/// Resolve the `ROUTELOC0` value for an RX pin at runtime, or `None` if the pin is not a valid
+/// SPI RX pin. Mirrors the `impl_rx_loc!` macro table.
+const fn rx_loc(port: PortId, pin: PinId) -> Option<u8> {
+    let pin = pin as u8;
+    match port {
+        PortId::A if pin >= 1 && pin <= 5 => Some(pin - 1),
+        PortId::A if pin == 0 => Some(31),
+        PortId::B if pin >= 11 && pin <= 15 => Some(5 + (pin - 11)),
+        PortId::C if pin >= 6 && pin <= 11 => Some(10 + (pin - 6)),
+        PortId::D if pin >= 9 && pin <= 15 => Some(16 + (pin - 9)),
+        PortId::F if pin <= 7 => Some(23 + pin),
+        _ => None,
+    }
+}
+
+/// Resolve the `ROUTELOC0` value for a CS pin at runtime, or `None` if the pin is not a valid
+/// SPI CS pin. Mirrors the `impl_cs_loc!` macro table.
+const fn cs_loc(port: PortId, pin: PinId) -> Option<u8> {
+    let pin = pin as u8;
+    match port {
+        PortId::A if pin >= 3 && pin <= 5 => Some(pin - 3),
+        PortId::A if pin <= 2 => Some(29 + pin),
+        PortId::B if pin >= 11 && pin <= 15 => Some(3 + (pin - 11)),
+        PortId::C if pin >= 6 && pin <= 11 => Some(8 + (pin - 6)),
+        PortId::D if pin >= 9 && pin <= 15 => Some(14 + (pin - 9)),
+        PortId::F if pin <= 7 => Some(21 + pin),
+        _ => None,
+    }
+}

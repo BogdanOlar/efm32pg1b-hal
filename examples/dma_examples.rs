@@ -125,15 +125,15 @@ fn simple_inter_channel_synchronization(
     ch1_list.push_linked(SyncDescriptor::new().with_syncclr(0x00).with_syncset(0x80))?;
 
     // Link the descriptor lists for the Channels
-    ch0.set_descriptor(ch0_list.try_into_link_descriptor(FinMode::DoneIFS)?);
-    ch1.set_descriptor(ch1_list.try_into_link_descriptor(FinMode::None)?);
+    unsafe { ch0.set_descriptor(ch0_list.try_into_link_descriptor(FinMode::DoneIFS)?) };
+    unsafe { ch1.set_descriptor(ch1_list.try_into_link_descriptor(FinMode::None)?) };
 
     // Start Channel 0
 
     ch0.set_done(false);
     ch0.set_ien(true);
     ch0.set_enabled(true);
-    ch0.link_load();
+    unsafe { ch0.link_load() };
 
     // wait ~1 second, plenty of time for ch0 to get to the sync descriptor
     for _ in 0..5_000_000 {
@@ -153,7 +153,7 @@ fn simple_inter_channel_synchronization(
     // Start Channel 1
     ch1.set_ien(true);
     ch1.set_enabled(true);
-    ch1.link_load();
+    unsafe { ch1.link_load() };
 
     // Wait for Channel 0 to complete (we only set `FinMode::DoneIFS` on Channel 0, because it completes last)
     while !ch0.done() {

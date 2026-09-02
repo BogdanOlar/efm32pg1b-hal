@@ -11,7 +11,7 @@ use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch
                      // use panic_abort as _; // requires nightly
                      // use panic_itm as _; // logs messages over ITM; requires ITM support
                      // use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
-use defmt::{assert_eq, println};
+use defmt::println;
 use defmt_rtt as _;
 
 #[entry]
@@ -20,25 +20,24 @@ fn main() -> ! {
 
     let p = pac::Peripherals::take().unwrap();
 
-    let clocks = p.cmu.split();
-
     let gpio = Gpio::new(p.gpio);
 
     let tx = gpio.pc6.into_mode::<OutPp>();
     let rx = gpio.pc7.into_mode::<InFilt>();
     let clk = gpio.pc8.into_mode::<OutPp>();
 
-    let mut spi = Spi::new(p.usart0, clk, tx, rx, spi::MODE_2);
+    let mut spi = Spi::new(
+        SpiPins::new(p.usart0, clk, tx, rx),
+        &Config::new(spi::MODE_2, 0),
+    );
     let write_orig = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
     let mut write = write_orig;
     let mut read1 = [0; 5];
     let mut read2 = [0; 15];
 
-    // 10.MHz()
+    // 10 MHz: divider N = fHFPERCLK/(2*br) - 1 = 19e6/20e6 - 1 = 0 (clamped), actual br = 9.5 MHz
 
-    let br = spi.set_baudrate(10.MHz(), &clocks);
-    println!("br: {}", br);
-    assert_eq!(br.unwrap(), 9500000.Hz::<1, 1>());
+    spi.set_divider(0);
 
     let ret_w = spi.write(&write);
     println!("\t ret_w: \t {}, {}", ret_w, write);
@@ -53,11 +52,9 @@ fn main() -> ! {
     println!("\t ret_trip: \t {}, {}", ret_trip, write);
     write = write_orig;
 
-    // 1.MHz()
+    // 1 MHz: divider N = 19e6/2e6 - 1 = 8, actual br = 19e6/(2*9) = 1.0555 MHz
 
-    let br = spi.set_baudrate(1.MHz(), &clocks);
-    println!("br: {}", br);
-    assert_eq!(br.unwrap(), 1055555.Hz::<1, 1>());
+    spi.set_divider(8);
 
     let ret_w = spi.write(&write);
     println!("\t ret_w: \t {}, {}", ret_w, write);
@@ -72,11 +69,9 @@ fn main() -> ! {
     println!("\t ret_trip: \t {}, {}", ret_trip, write);
     write = write_orig;
 
-    // 1.kHz()
+    // 1 kHz: divider N = 19e6/2000 - 1 = 9499, actual br = 1000 Hz
 
-    let br = spi.set_baudrate(1.kHz(), &clocks);
-    println!("br: {}", br);
-    assert_eq!(br.unwrap(), 1.kHz::<1, 1>());
+    spi.set_divider(9499);
 
     let ret_w = spi.write(&write);
     println!("\t ret_w: \t {}, {}", ret_w, write);
@@ -91,11 +86,10 @@ fn main() -> ! {
     println!("\t ret_trip: \t {}, {}", ret_trip, write);
     write = write_orig;
 
-    // 1.Hz()
+    // 1 Hz: divider N = 19e6/2 - 1 = 9_499_999
 
-    let br = spi.set_baudrate(1.Hz(), &clocks);
-    println!("br: {}", br);
-    // assert_eq!(br.unwrap(), 1.Hz::<1, 1>()); // FIXME: This is wrong. The actual br is about 316 Hz
+    spi.set_divider(9_499_999);
+    // assert_eq!(br, 1); // FIXME: This is wrong. The actual br is about 316 Hz
 
     let ret_w = spi.write(&write);
     println!("\t ret_w: \t {}, {}", ret_w, write);

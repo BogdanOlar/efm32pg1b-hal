@@ -300,7 +300,7 @@ impl PinMode {
         )
     }
 
-    fn writable(&self) -> bool {
+    pub(crate) fn writable(&self) -> bool {
         !matches!(
             self,
             PinMode::Disabled

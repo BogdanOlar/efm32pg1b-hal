@@ -34,7 +34,7 @@ fn main() -> ! {
 
     let mut ch = dma.ch1;
     for i in 0..10 {
-        ch = transfer(ch);
+        transfer(&mut ch);
 
         // DEBUG: make sure we did not drop the transfer while the DMA channel was not done
         {
@@ -50,7 +50,7 @@ fn main() -> ! {
     }
 }
 
-fn transfer(ch: DmaChannel) -> DmaChannel {
+fn transfer(ch: &mut DmaChannel) {
     info!("Transfer");
 
     const SRC_U8: [u8; BUF_UNIT_SIZE] = {
@@ -82,41 +82,39 @@ fn transfer(ch: DmaChannel) -> DmaChannel {
     info!("src: {} bytes @ 0x{:X}", src.len(), src.as_ptr().addr());
     info!("dst: {} bytes @ 0x{:X}", dst.len(), dst.as_ptr().addr());
 
-    let mut transfer = ch.into_transfer(&SRC_U8, dst);
+    let transfer_result = {
+        let mut transfer = match ch.memory_transfer(&SRC_U8, dst) {
+            Ok(t) => t,
+            Err(e) => {
+                error!("Failed to start transfer: {}", e);
+                return;
+            }
+        };
+        info!("Using <{}> size unit transfer", transfer.unit());
 
-    info!("Using <{}> size unit transfer", transfer.unit());
-
-    let transfer_result = loop {
-        match transfer.check_done() {
-            Some(res) => break res,
-            None => {
-                info!(".")
+        loop {
+            match transfer.try_resolve() {
+                Some(res) => break res,
+                None => {
+                    info!(".")
+                }
             }
         }
     };
 
-    // `check_done()` should only return `Some` _once_ (i.e. in the loop above)
-    assert!(transfer.check_done().is_none());
-
     // Print results
     match &transfer_result {
-        Ok((params, bytes_count)) => {
-            info!("Ok: {}, {} bytes", params.ch, bytes_count);
-            if *bytes_count <= 300 {
-                info!("dst: {}", params.dst[0..*bytes_count]);
+        Ok(()) => {
+            info!("Ok: {}", ch.id());
+            if dst_u8[1..].len() <= 300 {
+                info!("dst: {}", &dst_u8[1..]);
             }
         }
-        Err(params) => {
-            error!("Err: {}", params.ch);
-            if params.dst.len() <= 300 {
-                error!("dst: {}", params.dst);
+        Err(_) => {
+            error!("Err: {}", ch.id());
+            if dst_u8[1..].len() <= 300 {
+                error!("dst: {}", &dst_u8[1..]);
             }
         }
-    }
-
-    // return the original channel
-    match transfer_result {
-        Ok((params, _bytes_count)) => params.ch,
-        Err(params) => params.ch,
     }
 }

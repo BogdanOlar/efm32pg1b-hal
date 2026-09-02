@@ -29,19 +29,17 @@ fn main() -> ! {
 
 fn transfer_u8_dma_short_asymmetric_rx_longer(p: Peripherals) {
     let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
-    let clocks = p.cmu.split();
     let gpio = Gpio::new(p.gpio);
     let mut spi = Spi::new(
-        p.usart0,
-        gpio.pc8.into_mode::<OutPp>(),
-        gpio.pc6.into_mode::<OutPp>(),
-        gpio.pc7.into_mode::<InFilt>(),
-        MODE_2,
-    )
-    .with_loopback();
+        SpiPins::new(
+            p.usart0,
+            gpio.pc8.into_mode::<OutPp>(),
+            gpio.pc6.into_mode::<OutPp>(),
+            gpio.pc7.into_mode::<InFilt>(),
+        ),
+        &Config::new(MODE_2, 1).with_loopback(true),
+    );
 
-    let rs_br = spi.set_baudrate(4.MHz(), &clocks);
-    assert!(rs_br.is_ok());
     let dma = Dma::init(p.ldma);
     let mut spi = spi.into_spi_dma(dma.ch0, dma.ch1);
 
@@ -84,19 +82,17 @@ fn transfer_u8_dma_short_asymmetric_rx_longer(p: Peripherals) {
 /// TX and RX slices have the same size
 fn transfer_u8_dma_long_symmetric(p: Peripherals) {
     let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
-    let clocks = p.cmu.split();
     let gpio = Gpio::new(p.gpio);
     let mut spi = Spi::new(
-        p.usart0,
-        gpio.pc8.into_mode::<OutPp>(),
-        gpio.pc6.into_mode::<OutPp>(),
-        gpio.pc7.into_mode::<InFilt>(),
-        MODE_2,
-    )
-    .with_loopback();
+        SpiPins::new(
+            p.usart0,
+            gpio.pc8.into_mode::<OutPp>(),
+            gpio.pc6.into_mode::<OutPp>(),
+            gpio.pc7.into_mode::<InFilt>(),
+        ),
+        &Config::new(MODE_2, 1).with_loopback(true),
+    );
 
-    let rs_br = spi.set_baudrate(4.MHz(), &clocks);
-    assert!(rs_br.is_ok());
     let dma = Dma::init(p.ldma);
     let mut spi = spi.into_spi_dma(dma.ch1, dma.ch2);
 

@@ -8,19 +8,18 @@ use efm32pg1b_pac::{
     wdog0::ctrl::CLKSEL,
     Cmu, Cryotimer, Wdog0,
 };
-use fugit::HertzU32;
 
-/// Default HF RCO frequency at Reset
-const DEFAULT_HF_RCO_FREQUENCY: HertzU32 = HertzU32::MHz(19);
+/// Default HF RCO frequency at Reset, in Hz
+const DEFAULT_HF_RCO_FREQUENCY: u32 = 19_000_000;
 
-/// Default AUX HF RCO frequency at Reset
-const DEFAULT_AUX_HF_RCO_FREQUENCY: HertzU32 = HertzU32::MHz(19);
+/// Default AUX HF RCO frequency at Reset, in Hz
+const DEFAULT_AUX_HF_RCO_FREQUENCY: u32 = 19_000_000;
 
-/// Default LF RCO frequency at Reset
-const DEFAULT_LF_RCO_FREQUENCY: HertzU32 = HertzU32::kHz(32);
+/// Default LF RCO frequency at Reset, in Hz
+const DEFAULT_LF_RCO_FREQUENCY: u32 = 32_768;
 
-/// Default Ultra LF RCO frequency at Reset
-const DEFAULT_ULF_RCO_FREQUENCY: HertzU32 = HertzU32::kHz(1);
+/// Default Ultra LF RCO frequency at Reset, in Hz
+const DEFAULT_ULF_RCO_FREQUENCY: u32 = 1;
 
 /// Extension trait to split the CMU peripheral into clocks
 pub trait CmuExt {
@@ -43,77 +42,77 @@ impl CmuExt for Cmu {
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Clocks {
-    /// High Frequency Peripheral Clock
-    hf_per_clk: HertzU32,
+    /// High Frequency Peripheral Clock, in Hz
+    hf_per_clk: u32,
 
-    /// High Frequency Core Clock
-    hf_core_clk: HertzU32,
+    /// High Frequency Core Clock, in Hz
+    hf_core_clk: u32,
 
-    /// High Frequency Export Clock
-    hf_exp_clk: HertzU32,
+    /// High Frequency Export Clock, in Hz
+    hf_exp_clk: u32,
 
-    /// High Frequency  Bus Clock
-    hf_bus_clk: HertzU32,
+    /// High Frequency  Bus Clock, in Hz
+    hf_bus_clk: u32,
 
-    /// Low Frequency A Clock
-    lfa_clk: Option<HertzU32>,
+    /// Low Frequency A Clock, in Hz
+    lfa_clk: Option<u32>,
 
-    /// Low Frequency B Clock
-    lfb_clk: Option<HertzU32>,
+    /// Low Frequency B Clock, in Hz
+    lfb_clk: Option<u32>,
 
-    /// Low Frequency E Clock
-    lfe_clk: Option<HertzU32>,
+    /// Low Frequency E Clock, in Hz
+    lfe_clk: Option<u32>,
 
-    /// Watch Dog Clock
-    wdog_clk: Option<HertzU32>,
+    /// Watch Dog Clock, in Hz
+    wdog_clk: Option<u32>,
 
-    /// Cryo Timer Clock
-    cryo_clk: Option<HertzU32>,
+    /// Cryo Timer Clock, in Hz
+    cryo_clk: Option<u32>,
 }
 
 impl Clocks {
     /// High Frequency Peripheral Clock
-    pub fn hf_per_clk(&self) -> HertzU32 {
+    pub fn hf_per_clk(&self) -> u32 {
         self.hf_per_clk
     }
 
     /// High Frequency Core Clock
-    pub fn hf_core_clk(&self) -> HertzU32 {
+    pub fn hf_core_clk(&self) -> u32 {
         self.hf_core_clk
     }
 
     /// High Frequency Export Clock
-    pub fn hf_exp_clk(&self) -> HertzU32 {
+    pub fn hf_exp_clk(&self) -> u32 {
         self.hf_exp_clk
     }
 
     /// High Frequency  Bus Clock
-    pub fn hf_bus_clk(&self) -> HertzU32 {
+    pub fn hf_bus_clk(&self) -> u32 {
         self.hf_bus_clk
     }
 
     /// Low Frequency A Clock
-    pub fn lfa_clk(&self) -> Option<HertzU32> {
+    pub fn lfa_clk(&self) -> Option<u32> {
         self.lfa_clk
     }
 
     /// Low Frequency B Clock
-    pub fn lfb_clk(&self) -> Option<HertzU32> {
+    pub fn lfb_clk(&self) -> Option<u32> {
         self.lfb_clk
     }
 
     /// Low Frequency E Clock
-    pub fn lfe_clk(&self) -> Option<HertzU32> {
+    pub fn lfe_clk(&self) -> Option<u32> {
         self.lfe_clk
     }
 
     /// Watch Dog Clock
-    pub fn wdog_clk(&self) -> Option<HertzU32> {
+    pub fn wdog_clk(&self) -> Option<u32> {
         self.wdog_clk
     }
 
     /// Cryo Timer Clock
-    pub fn cryo_clk(&self) -> Option<HertzU32> {
+    pub fn cryo_clk(&self) -> Option<u32> {
         self.cryo_clk
     }
 
@@ -467,7 +466,7 @@ impl Clocks {
         }
     }
 
-    fn calculate_hf_clocks(hf_src_clk: HertzU32) -> Self {
+    fn calculate_hf_clocks(hf_src_clk: u32) -> Self {
         let cmu = unsafe { Cmu::steal() };
 
         //  clock divider for the HFPERCLK (relative to HFCLK).
@@ -543,12 +542,12 @@ impl Clocks {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HfClockSource {
-    /// High Frequency external oscillator, outputting the given declared frequency
-    HfXO(HertzU32),
+    /// High Frequency external oscillator, outputting the given declared frequency in Hz
+    HfXO(u32),
     /// High Frequency Rco
     HfRco,
-    /// Low Frequency external oscillator, outputting the given declared frequency
-    LfXO(HertzU32),
+    /// Low Frequency external oscillator, outputting the given declared frequency in Hz
+    LfXO(u32),
     /// Low Frequency Rco
     LfRco,
 }
@@ -640,7 +639,7 @@ pub enum DbgClockSource {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LfClockSource {
     /// Low Frequency External Oscillator
-    LfXO(HertzU32),
+    LfXO(u32),
 
     /// Low Frequency Rco
     LfRco,
@@ -658,7 +657,7 @@ pub enum LfBClockSource {
     HfClkLe(bool),
 
     /// Low Frequency External Oscillator
-    LfXO(HertzU32),
+    LfXO(u32),
 
     /// Low Frequency Rco
     LfRco,

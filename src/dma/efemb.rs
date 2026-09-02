@@ -106,7 +106,7 @@ impl<'a> core::future::Future for TransferFuture<'a> {
 //     ) -> core::task::Poll<Self::Output> {
 //         DMA_WAKERS[self.transfer.id() as usize].register(cx.waker());
 
-//         if let Some(transfer_result) = self.transfer.check_done() {
+//         if let Some(transfer_result) = self.transfer.try_resolve() {
 //             Poll::Ready(transfer_result)
 //         } else {
 //             Poll::Pending

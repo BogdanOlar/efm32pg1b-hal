@@ -1,0 +1,64 @@
+[package]
+name = "testsuite"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+efm32pg1b-hal = { path = "..", features = ["defmt", "qfn48"] }
+cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7.5"
+defmt = "1.0"
+defmt-rtt = "1.0"
+embedded-hal = { version = "1.0", features = ["defmt-03"] }
+embedded-test = { version = "0.7.2", features = ["defmt"] }
+# Embassy executor used by `embedded-test`'s async test support. `embedded-test` pulls
+# `embassy-executor` with `default-features = false`, so the `platform-cortex-m` and
+# `executor-thread` features must be enabled here for `Executor::run()` to be available.
+embassy-executor = { version = "0.10", default-features = false, features = ["platform-cortex-m", "executor-thread"] }
+# `embassy-time` is used by the `spi_async` test to back `defmt::timestamp!`. The HAL's `efemb`
+# feature configures the `embassy-time-driver` tick rate; enabling `defmt` here makes `Instant`
+# format with defmt.
+embassy-time = { version = "0.5.1", default-features = false, features = ["defmt"] }
+crc = "3.4"
+
+[features]
+# Forwarded to the HAL so the CRC compatibility tests can use `crc::Algorithm` conversions.
+crc-lib-compat = ["efm32pg1b-hal/crc-lib-compat"]
+# Pass-through features for rust-analyzer compatibility (the root crate defines these,
+# and rust-analyzer may forward them to all workspace members).
+defmt = ["efm32pg1b-hal/defmt"]
+# Embassy support for the HAL. Enabling this also turns on `embedded-test`'s async test
+# support (`embassy-010`), which the `spi_async` test needs to drive `async fn` tests on an
+# embassy executor.
+efemb = [
+    "efm32pg1b-hal/efemb",
+    "embedded-test/embassy-010",
+    "efemb-timdrv-letim0-hz-32_768",
+]
+efemb-timdrv-letim0-hz-32_768 = ["efm32pg1b-hal/efemb-timdrv-letim0-hz-32_768"]
+qfn48 = ["efm32pg1b-hal/qfn48"]
+use_debug_pins = ["efm32pg1b-hal/use_debug_pins"]
+
+# Integration tests run on-device via `probe-rs` (see `.cargo/config.toml`).
+[[test]]
+name = "spi"
+harness = false
+
+[[test]]
+name = "spi_dma"
+harness = false
+
+[[test]]
+name = "spi_async"
+harness = false
+required-features = ["efemb"]
+
+[[test]]
+name = "crc"
+harness = false
+required-features = ["crc-lib-compat"]
+
+[[test]]
+name = "dma"
+harness = false

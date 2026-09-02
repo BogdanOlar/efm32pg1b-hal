@@ -42,7 +42,7 @@ fn main() -> ! {
     // let clocks = p
     //     .cmu
     //     .split()
-    //     .with_hf_clk(HfClockSource::HfXO(40.MHz()), 10)
+    //     .with_hf_clk(HfClockSource::HfXO(40_000_000), 10)
     //     .with_dbg_clk(DbgClockSource::HfClk);
 
     // FIXME: the RTT (defmt) can't be used when setting this source clock. Maybe AUX HFRCO has something to do with it?
@@ -56,7 +56,7 @@ fn main() -> ! {
     // let clocks = p
     //     .cmu
     //     .split()
-    //     .with_hf_clk(HfClockSource::LfXO(32_768.Hz()), 0)
+    //     .with_hf_clk(HfClockSource::LfXO(32_768), 0)
     //     .with_dbg_clk(DbgClockSource::HfClk);
 
     defmt::println!("Clocks: {}", clocks);

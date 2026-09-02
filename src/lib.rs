@@ -40,7 +40,7 @@ pub mod prelude {
             port::{DataInCtrl, DriveStrength},
             Gpio, GpioError,
         },
-        usart::spi::{Spi, SpiError},
+        usart::spi::{BitOrder, Config, Spi, SpiError, SpiPins},
     };
     pub use efm32pg1b_pac as pac;
     pub use embedded_hal::{
@@ -49,7 +49,6 @@ pub mod prelude {
         pwm::SetDutyCycle,
         spi::{self, SpiBus},
     };
-    pub use fugit::RateExtU32;
 }
 
 /// Peripheral single-cycle read-modify-write

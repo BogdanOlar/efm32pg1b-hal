@@ -21,7 +21,7 @@ async fn main(spawner: Spawner) {
         .split()
         // Prescaling the HF clock to the lowest frequency possible, to stress test the scheduler algorithm
         // .with_hf_clk(HfClockSource::HfRco, HfClockPrescaler::Div32)
-        // .with_hf_clk(HfClockSource::HfXO(40.MHz()), HfClockPrescaler::Div1);
+        // .with_hf_clk(HfClockSource::HfXO(40_000_000), HfClockPrescaler::Div1);
         .with_hf_clk(HfClockSource::HfRco, HfClockPrescaler::Div1);
 
     // Make sure LfAClk is enabled otherwise the LeTimer0 Ticker won't work

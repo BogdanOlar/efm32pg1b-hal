@@ -10,7 +10,7 @@ use efm32pg1b_hal::{
     gpio::{Gpio, InFilt, OutPp},
     pac,
     timer::{TimerDivider, TimerExt},
-    usart::spi::Spi,
+    usart::spi::{Config, Spi, SpiPins},
 };
 
 use embedded_hal::{delay::DelayNs, digital::OutputPin, pwm::SetDutyCycle};
@@ -20,7 +20,6 @@ use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch
                      // use panic_itm as _; // logs messages over ITM; requires ITM support
                      // use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
 use defmt_rtt as _;
-use fugit::RateExtU32;
 use ls013b7dh03::{prelude::*, WIDTH};
 
 #[entry]
@@ -38,14 +37,15 @@ fn main() -> ! {
     // let _ = gpio.pd15.into_output().with_push_pull().build().set_high();
 
     let mut spi = Spi::new(
-        p.usart1,
-        gpio.pc8.into_mode::<OutPp>(),
-        gpio.pc6.into_mode::<OutPp>(),
-        gpio.pc7.into_mode::<InFilt>(),
-        SPIMODE,
+        SpiPins::new(
+            p.usart1,
+            gpio.pc8.into_mode::<OutPp>(),
+            gpio.pc6.into_mode::<OutPp>(),
+            gpio.pc7.into_mode::<InFilt>(),
+        ),
+        &Config::new(SPIMODE, 8),
     );
-    let _spi_br = spi.set_baudrate(1.MHz(), &clocks);
-    // assert_eq!(spi_br.unwrap(), 1055555.Hz::<1, 1>());
+    // assert_eq!(spi_br, 1_055_555);
 
     let cs = gpio.pd14.into_mode::<OutPp>();
     let led0 = gpio.pf4.into_mode::<OutPp>();

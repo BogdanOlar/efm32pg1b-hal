@@ -13,7 +13,6 @@ use embedded_hal::{
     digital::OutputPin,
     pwm::{ErrorType, SetDutyCycle},
 };
-use fugit::HertzU32;
 
 /// Extension trait for Timer PAC peripherals
 pub trait TimerExt {
@@ -205,7 +204,7 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TimerChannelDelay<const TN: u8, const CN: u8> {
-    timer_freq: HertzU32,
+    timer_freq: u32,
 }
 
 impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
@@ -221,7 +220,7 @@ impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
         //        since we can control when the timer starts.
         if microsecs > 0 {
             let timer = timerx::<TN>();
-            let ticks_left = self.timer_freq.raw() as u64 * microsecs as u64 / 1_000_000_u64;
+            let ticks_left = self.timer_freq as u64 * microsecs as u64 / 1_000_000_u64;
             let reload_max = timer.top().read().top().bits() as u32;
             let reference_count = timer.cnt().read().cnt().bits() as u32;
 
