@@ -5,18 +5,59 @@ use cortex_m::asm;
 
 use crate::dma::{
     descriptor::{self, Addr, Descriptor, TransferDescriptor, UnitSize},
-    irq, mmio, ChannelId, DmaChannel, DmaResult,
+    irq, ChannelId, DmaChannel, DmaResult,
 };
 
+// pub struct PeriphTransfer {
+//     params: Option<PeriphTransferParams>
+// }
+
+// pub struct PeriphTransferParams {
+//     /// DMA channel
+//     pub ch: &'a mut DmaChannel,
+
+// }
+
 /// DMA channel specialised for memory-to-memory transfer
+///
+/// Keeps references to the DMA channel, src and dst buffers in order to ensure they can't be used while the memory
+/// transfer is alive.
+///
+/// # Examples
+///
+/// Scoped:
+///
+/// ```rust,no_run
+/// let transfer_result = {
+///     let mut transfer = ch.memory_transfer(src, dst)?;
+///     loop {
+///         if let Some(res) = transfer.try_resolve() {
+///             break res;
+///         }
+///     }
+/// };
+/// // `ch`, `src` and `dst` can now be used again
+/// ```
+/// Or with manual drop:
+///
+/// ```rust,no_run
+/// let mut transfer = ch.memory_transfer(src, dst)?;
+/// let transfer_result = loop {
+///     if let Some(res) = transfer.try_resolve() {
+///         break res;
+///     }
+/// };
+///
+/// drop(transfer);
+/// // `ch`, `src` and `dst` can now be used again
+/// ```
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct MemoryTransfer<'a, Word: Copy + 'static> {
+    /// DMA channel
+    ch: &'a mut DmaChannel,
     /// DMA Channel transfer parameters.
-    /// The `Option` is needed because this type implements `Drop`, and we may need to release the params before this
-    /// struct is dropped
-    params: Option<MemoryTransferParams<'a, Word>>,
-    id: ChannelId,
+    params: MemoryTransferParams<'a, Word>,
     unit: UnitSize,
 }
 
@@ -46,8 +87,8 @@ impl<'a, Word: Copy + 'static> MemoryTransfer<'a, Word> {
         if byte_count == 0 {
             critical_section::with(|cs| irq::irq_ch_set(cs, id, Some(Ok(()))));
             return Self {
-                params: Some(MemoryTransferParams { ch, src, dst }),
-                id,
+                ch,
+                params: MemoryTransferParams { src, dst },
                 unit,
             };
         }
@@ -106,56 +147,29 @@ impl<'a, Word: Copy + 'static> MemoryTransfer<'a, Word> {
         unsafe { ch.start(&first_descriptor, true) };
 
         Self {
-            params: Some(MemoryTransferParams { ch, src, dst }),
-            id,
+            ch,
+            params: MemoryTransferParams { src, dst },
             unit,
         }
     }
 
     /// Get the DMA Channel ID
     pub fn id(&self) -> ChannelId {
-        self.id
+        self.ch.id()
     }
 
     /// Try to complete the transfer.
     ///
     /// If the transfer has completed then the transfer is disabled and the transfer result is returned.
-    /// Will only return `Some` once, when the transfer is complete.
+    /// Will only return `Some` **ONCE**, when the transfer is complete.
     ///
-    /// Example:
-    ///
-    /// ```rust,no_run
-    ///     // start the transfer
-    ///     let mut transfer = ch.memory_transfer(src, dst)?;
-    ///
-    ///     // wait for transfer to complete
-    ///     let transfer_result = loop {
-    ///         match transfer.try_resolve() {
-    ///             Some(res) => break res,
-    ///             None => {
-    ///                 // transfer still in progress
-    ///             }
-    ///         }
-    ///     };
-    ///
-    ///     // `try_resolve()` should only return `Some` _once_ (in the loop above)
-    ///     assert!(transfer.try_resolve().is_none());
-    /// ```
     pub fn try_resolve(&mut self) -> Option<DmaResult> {
-        if let Some(transfer_result) = critical_section::with(|cs| irq::irq_ch_take(cs, self.id)) {
-            if self.params.take().is_some() {
-                // Disable channel
-                mmio::ien_clear(self.id);
-                mmio::ifc_set(self.id);
-                mmio::chen_clear(self.id);
-                mmio::ch_done_clear(self.id);
-                // Clear DMA channel handler
-                critical_section::with(|cs| irq::clear_handler(cs, self.id));
+        if let Some(transfer_result) =
+            critical_section::with(|cs| irq::irq_ch_take(cs, self.ch.id()))
+        {
+            self.cancel();
 
-                Some(transfer_result)
-            } else {
-                None
-            }
+            Some(transfer_result)
         } else {
             None
         }
@@ -163,9 +177,7 @@ impl<'a, Word: Copy + 'static> MemoryTransfer<'a, Word> {
 
     /// Cancel the memory transfer
     pub fn cancel(&mut self) {
-        if let Some(p) = self.params.take() {
-            p.ch.cancel();
-        }
+        self.ch.cancel();
     }
 
     /// Get the Unit size that the transfer is using: byte, half-word (16 bits), word (32 bits)
@@ -187,8 +199,6 @@ impl<'a, Word: Copy + 'static> Drop for MemoryTransfer<'a, Word> {
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct MemoryTransferParams<'a, Word: Copy + 'static> {
-    /// DMA channel
-    pub ch: &'a mut DmaChannel,
     /// Source buffer
     pub src: &'a [Word],
     /// Destination buffer

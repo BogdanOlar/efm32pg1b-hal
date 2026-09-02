@@ -443,13 +443,9 @@ fn test_transfer<Word: Copy + 'static>(
     assert_eq!(src.len(), dst.len());
 
     let transfer_result = {
-        let mut transfer = match ch.memory_transfer(src, dst) {
-            Ok(t) => t,
-            Err(e) => {
-                error!("Failed to start DMA transfer: {}", e);
-                return Err(());
-            }
-        };
+        let mut transfer = ch
+            .memory_transfer(src, dst)
+            .expect("Failed to start DMA transfer: {}");
 
         loop {
             if let Some(res) = transfer.try_resolve() {
@@ -473,8 +469,8 @@ fn test_transfer<Word: Copy + 'static>(
 
         if src_crc != dst_crc {
             error!(
-                "CRCs don't match! Src: {} bytes, src_crc=0x{:X}, Dst: {} bytes, dst_crc=0x{:X}",
-                byte_len, src_crc, byte_len, dst_crc
+                "CRCs don't match! src_crc=0x{:X}, dst_crc=0x{:X}",
+                src_crc, dst_crc
             );
         }
         assert_eq!(src_crc, dst_crc);

@@ -285,9 +285,6 @@ impl DmaChannel {
     /// Returns a [`ChannelTransfer`](transfer::ChannelTransfer) token which can be used to check the
     /// transfer status via [`ChannelTransfer::try_resolve`](transfer::ChannelTransfer::try_resolve).
     ///
-    /// The transfer unit size (byte, half-word, word) is determined automatically from the alignment
-    /// and length of `src` and `dst`.
-    ///
     /// # Errors
     ///
     /// Returns [`DmaError::BufferMismatch`] if `src` and `dst` have different lengths.
