@@ -286,9 +286,16 @@ impl DmaChannel {
 
     /// Start a memory-to-memory DMA transfer.
     ///
-    /// Takes a mutable reference to the channel, preventing its use while the transfer is ongoing.
-    /// Returns a [`ChannelTransfer`](transfer::ChannelTransfer) token which can be used to check the
-    /// transfer status via [`ChannelTransfer::try_resolve`](transfer::ChannelTransfer::try_resolve).
+    /// If a linked descriptor list is needed, then the `dst` is used as storage. This allows transfers of any length.
+    ///
+    /// The returned [`ChannelTransfer`](transfer::ChannelTransfer) token takes a mutable reference to the channel,
+    /// preventing its use while the transfer is ongoing.
+    ///
+    /// If the `ChannelTransfer` is dropped while the DMA channel is still active, then the transfer is canceled leaving
+    /// the contents of `dst` in an undefined state (it may contain parts of the linked descriptor list).
+    ///
+    /// Only drop the transfer _after_ resolving it.
+    /// See [`ChannelTransfer::try_resolve()`](`transfer::ChannelTransfer::try_resolve`).
     ///
     /// # Errors
     ///
@@ -659,8 +666,6 @@ pub enum DmaError {
 }
 
 /// Build the first transfer descriptor, and any necessary linked descriptors for a memory-to-memory transfer
-///
-/// TODO: can this be refactored to use [`list::reduced()`] ?
 fn build_m2m_descriptors(
     src_addr: usize,
     dst_addr: usize,
