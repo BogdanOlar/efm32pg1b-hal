@@ -271,8 +271,12 @@ impl DmaChannel {
     /// Cancel any on-going transfer
     pub fn cancel(&mut self) {
         self.stop();
-        // Clear any existing content in the IRQ channel of this DMA channel
-        critical_section::with(|cs| irq::irq_ch_take(cs, self.id));
+
+        // Clear the IRQ handler and any pending result
+        critical_section::with(|cs| {
+            irq::clear_handler(cs, self.id);
+            let _ = irq::irq_ch_take(cs, self.id);
+        });
     }
 
     /// Start a memory-to-memory DMA transfer.
@@ -287,11 +291,11 @@ impl DmaChannel {
     /// # Errors
     ///
     /// Returns [`DmaError::BufferMismatch`] if `src` and `dst` have different lengths.
-    pub fn memory_transfer<'a, W: Sized>(
+    pub fn memory_transfer<'a, Word: Copy + 'static>(
         &'a mut self,
-        src: &'a [W],
-        dst: &'a mut [W],
-    ) -> Result<transfer::ChannelTransfer<'a, W>, DmaError> {
+        src: &'a [Word],
+        dst: &'a mut [Word],
+    ) -> Result<transfer::MemoryTransfer<'a, Word>, DmaError> {
         if src.len() != dst.len() {
             return Err(DmaError::BufferMismatch);
         }
@@ -307,7 +311,7 @@ impl DmaChannel {
             })
         });
 
-        let transfer = transfer::ChannelTransfer::new(self, src, dst);
+        let transfer = transfer::MemoryTransfer::new(self, src, dst);
         Ok(transfer)
     }
 

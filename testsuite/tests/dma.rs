@@ -434,10 +434,10 @@ mod tests {
 ///
 /// Starts the transfer via `memory_transfer`, waits for completion via `try_resolve`, then
 /// compares the CRCs of `src` and `dst`.
-fn test_transfer<W: Sized>(
+fn test_transfer<Word: Copy + 'static>(
     ch: &mut efm32pg1b_hal::dma::DmaChannel,
-    src: &[W],
-    dst: &mut [W],
+    src: &[Word],
+    dst: &mut [Word],
     crc: &Crc<u32>,
 ) -> Result<(), ()> {
     assert_eq!(src.len(), dst.len());

@@ -11,17 +11,17 @@ use crate::dma::{
 /// DMA channel specialised for memory-to-memory transfer
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct ChannelTransfer<'a, W: Sized> {
+pub struct MemoryTransfer<'a, Word: Copy + 'static> {
     /// DMA Channel transfer parameters.
     /// The `Option` is needed because this type implements `Drop`, and we may need to release the params before this
     /// struct is dropped
-    params: Option<ChannelTransferParams<'a, W>>,
+    params: Option<MemoryTransferParams<'a, Word>>,
     id: ChannelId,
     unit: UnitSize,
 }
 
-impl<'a, W: Sized> ChannelTransfer<'a, W> {
-    pub(crate) fn new(ch: &'a mut DmaChannel, src: &'a [W], dst: &'a mut [W]) -> Self {
+impl<'a, Word: Copy + 'static> MemoryTransfer<'a, Word> {
+    pub(crate) fn new(ch: &'a mut DmaChannel, src: &'a [Word], dst: &'a mut [Word]) -> Self {
         // Decide which unit/type the transfer may use
         let unit = if src.as_ptr().addr().is_multiple_of(size_of::<u32>())
             && dst.as_ptr().addr().is_multiple_of(size_of::<u32>())
@@ -46,7 +46,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         if byte_count == 0 {
             critical_section::with(|cs| irq::irq_ch_set(cs, id, Some(Ok(()))));
             return Self {
-                params: Some(ChannelTransferParams { ch, src, dst }),
+                params: Some(MemoryTransferParams { ch, src, dst }),
                 id,
                 unit,
             };
@@ -93,9 +93,9 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
             )
         };
 
-        let first_descriptor = build_descriptors(
-            src,
-            dst,
+        let first_descriptor = build_m2m_descriptors(
+            src.as_ptr().addr(),
+            dst.as_ptr().addr(),
             total_units,
             last_chunk_min_units,
             descriptor_list,
@@ -106,7 +106,7 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         unsafe { ch.start(&first_descriptor, true) };
 
         Self {
-            params: Some(ChannelTransferParams { ch, src, dst }),
+            params: Some(MemoryTransferParams { ch, src, dst }),
             id,
             unit,
         }
@@ -161,20 +161,48 @@ impl<'a, W: Sized> ChannelTransfer<'a, W> {
         }
     }
 
+    /// Cancel the memory transfer
+    pub fn cancel(&mut self) {
+        if let Some(p) = self.params.take() {
+            p.ch.cancel();
+        }
+    }
+
     /// Get the Unit size that the transfer is using: byte, half-word (16 bits), word (32 bits)
     ///
     /// The unit size is calculated dynamically when the Transfer is created, based on the alignment an length of
-    /// `self.src` and `self.dst`, and it favors the widest bitwidth (word--32 bits), followed by half-word, followed
-    /// by byte size
+    /// `self.src` and `self.dst`, and it favors the widest bitwidth
     pub fn unit(&self) -> UnitSize {
         self.unit
     }
 }
 
-/// Build the first transfer descriptor, and any necessary linked descriptors
-fn build_descriptors<W: Sized>(
-    src: &[W],
-    dst: &[W],
+impl<'a, Word: Copy + 'static> Drop for MemoryTransfer<'a, Word> {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
+
+/// Parameters used to create a DMA Transfer (both sync and async)
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct MemoryTransferParams<'a, Word: Copy + 'static> {
+    /// DMA channel
+    pub ch: &'a mut DmaChannel,
+    /// Source buffer
+    pub src: &'a [Word],
+    /// Destination buffer
+    pub dst: &'a mut [Word],
+}
+
+/// Result type of a DMA transfer (both sync and async)
+pub type ChannelTransferResult<'a, W> =
+    Result<(MemoryTransferParams<'a, W>, usize), MemoryTransferParams<'a, W>>;
+
+/// Build the first transfer descriptor, and any necessary linked descriptors for a memory-to-memory transfer
+fn build_m2m_descriptors(
+    src_addr: usize,
+    dst_addr: usize,
     total_units: usize,
     last_chunk_min_units: usize,
     descriptor_list: &mut [Descriptor],
@@ -192,8 +220,8 @@ fn build_descriptors<W: Sized>(
 
     let first_descriptor = {
         let mut descr_builder = TransferDescriptor::new(
-            Addr::Absolute(src.as_ptr().addr()),
-            Addr::Absolute(dst.as_ptr().addr()),
+            Addr::Absolute(src_addr),
+            Addr::Absolute(dst_addr),
             first_descr_units.try_into().unwrap(),
             unit,
         )
@@ -223,8 +251,8 @@ fn build_descriptors<W: Sized>(
         let addr_offset = (total_units - remaining_units) * unit.byte_count();
 
         let mut transfer_descr = TransferDescriptor::new(
-            Addr::Absolute(src.as_ptr().addr() + addr_offset),
-            Addr::Absolute(dst.as_ptr().addr() + addr_offset),
+            Addr::Absolute(src_addr + addr_offset),
+            Addr::Absolute(dst_addr + addr_offset),
             descr_units.try_into().unwrap(),
             unit,
         )
@@ -245,41 +273,3 @@ fn build_descriptors<W: Sized>(
 
     first_descriptor
 }
-
-impl<'a, W: Sized> Drop for ChannelTransfer<'a, W> {
-    fn drop(&mut self) {
-        if self.params.is_some() {
-            // Abort the transfer if it's still active, rather than panicking.
-            // This prevents the DMA channel from continuing to run unsupervised.
-            if mmio::chen(self.id) {
-                mmio::ien_clear(self.id);
-                mmio::ifc_set(self.id);
-                mmio::chen_clear(self.id);
-                mmio::ch_done_clear(self.id);
-                // Wait for the channel to stop being busy
-                while mmio::ch_busy(self.id) {}
-            }
-            // Clear the IRQ handler and any pending result
-            critical_section::with(|cs| {
-                irq::clear_handler(cs, self.id);
-                let _ = irq::irq_ch_take(cs, self.id);
-            });
-        }
-    }
-}
-
-/// Parameters used to create a DMA Transfer (both sync and async)
-#[derive(Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct ChannelTransferParams<'a, W: Sized> {
-    /// DMA channel
-    pub ch: &'a mut DmaChannel,
-    /// Source buffer
-    pub src: &'a [W],
-    /// Destination buffer
-    pub dst: &'a mut [W],
-}
-
-/// Result type of a DMA transfer (both sync and async)
-pub type ChannelTransferResult<'a, W> =
-    Result<(ChannelTransferParams<'a, W>, usize), ChannelTransferParams<'a, W>>;
