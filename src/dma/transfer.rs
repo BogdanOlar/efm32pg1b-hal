@@ -6,15 +6,15 @@ use crate::dma::{irq, ChannelId, DmaChannel, DmaResult};
 /// DMA channel transfer
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct ChannelTransfer<'a, P: TransferParams<'a>> {
+pub struct ChannelTransfer<'tl, P: TransferParams<'tl>> {
     /// DMA channel
-    ch: &'a mut DmaChannel,
+    ch: &'tl mut DmaChannel,
     /// DMA Channel transfer parameters.
     params: P,
 }
 
-impl<'a, P: TransferParams<'a>> ChannelTransfer<'a, P> {
-    pub(crate) fn new(ch: &'a mut DmaChannel, params: P) -> Self {
+impl<'tl, P: TransferParams<'tl>> ChannelTransfer<'tl, P> {
+    pub(crate) fn new(ch: &'tl mut DmaChannel, params: P) -> Self {
         Self { ch, params }
     }
 
@@ -32,7 +32,12 @@ impl<'a, P: TransferParams<'a>> ChannelTransfer<'a, P> {
         if let Some(transfer_result) =
             critical_section::with(|cs| irq::irq_ch_take(cs, self.ch.id()))
         {
-            self.cancel();
+            self.ch.stop();
+
+            critical_section::with(|cs| {
+                // Clear the IRQ handler
+                irq::clear_handler(cs, self.ch.id());
+            });
 
             Some(transfer_result)
         } else {
@@ -47,9 +52,9 @@ impl<'a, P: TransferParams<'a>> ChannelTransfer<'a, P> {
 }
 
 /// Marker trait for the parameters of a DMA transfer
-pub trait TransferParams<'a> {}
+pub trait TransferParams<'tl> {}
 
-impl<'a, P: TransferParams<'a>> Drop for ChannelTransfer<'a, P> {
+impl<'tl, P: TransferParams<'tl>> Drop for ChannelTransfer<'tl, P> {
     fn drop(&mut self) {
         self.cancel();
     }
