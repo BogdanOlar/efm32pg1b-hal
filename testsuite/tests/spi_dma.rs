@@ -9,6 +9,7 @@ use embedded_hal::spi::{ErrorType, SpiBus};
 #[embedded_test::tests]
 mod tests {
     use crate::{test_read, test_transfer, test_write};
+    use defmt::error;
     use defmt_rtt as _;
     use efm32pg1b_hal::{
         crc::{algos::CRC_32_CKSUM, Crc, CrcDriver},
@@ -63,1437 +64,574 @@ mod tests {
         (spi, crc)
     }
 
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_0_rx_0((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
+    /// A full-duplex SPI test case: `(src_len, dst_len, offset, repeat)`.
+    ///
+    /// Both TX (MOSI) and RX (MISO) are active. `repeat == 3` reproduces the `mul_3` tests
+    /// (3 iterations with the destination buffer reset between them).
+    #[derive(Clone, Copy)]
+    struct FullDuplexCase {
+        /// TX (source) slice length, in bytes.
+        src_len: usize,
+        /// RX (destination) slice length, in bytes.
+        dst_len: usize,
+        /// Padding before and after the destination slice, used to detect under/overflow.
+        offset: usize,
+        /// Number of iterations (`1` for the single tests, `3` for the `mul_3` tests).
+        repeat: u8,
     }
 
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_0_rx_desc_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
+    /// A simplex SPI test case: `(len, offset, repeat)`.
+    ///
+    /// Only one direction is active: RX for `read` (TX is empty) or TX for `write` (RX is empty).
+    /// `repeat == 3` reproduces the `mul_3` tests (3 iterations with the destination buffer
+    /// reset between them).
+    #[derive(Clone, Copy)]
+    struct SimplexCase {
+        /// Length of the active direction's slice, in bytes (RX for `read`, TX for `write`).
+        len: usize,
+        /// Padding before and after the destination slice, used to detect under/overflow.
+        offset: usize,
+        /// Number of iterations (`1` for the single tests, `3` for the `mul_3` tests).
+        repeat: u8,
     }
 
+    const TRANSFER_CASES: &[FullDuplexCase] = &[
+        FullDuplexCase {
+            src_len: 0,
+            dst_len: 0,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 0,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: 0,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 0,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 0,
+            dst_len: 0,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 0,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: 0,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 0,
+            repeat: 3,
+        },
+    ];
+
+    const READ_CASES: &[SimplexCase] = &[
+        SimplexCase {
+            len: 0,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: 0,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 10,
+            repeat: 3,
+        },
+    ];
+
+    const WRITE_CASES: &[SimplexCase] = &[
+        SimplexCase {
+            len: 0,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_ROM_TRANSFERS,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: 0,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_ROM_TRANSFERS,
+            offset: 10,
+            repeat: 3,
+        },
+    ];
+
+    /// Sync SPI DMA `transfer` over every case (single + `mul_3`).
+    ///
+    /// Each entry in [`TRANSFER_CASES`] is `(src_len, dst_len, offset, repeat)`; `repeat == 3`
+    /// reproduces the `mul_3` tests (3 iterations with the destination buffer reset between them).
+    /// In loopback mode the received bytes must match the transmitted bytes, verified by CRC in
+    /// [`test_transfer`].
+    ///
+    /// Every case is run to completion: a failed case is logged with its index and parameters and
+    /// the harness moves on to the next one. Returns `Ok(())` only if all cases passed.
     #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 1;
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_1_rx_desc_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_1_rx_0((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_1_rx_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_desc_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 1;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_2_rx_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
-        // RX
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_desc_2((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = 1;
-        // RX
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_3_rx_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
-        // RX
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_desc_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = 1;
-        // RX
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_4_rx_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
-        // RX
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_desc_4((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = 1;
-        // RX
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_max_min_1_rx_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
-        // RX
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_desc_max_min_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = 1;
-        // RX
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_max_ram((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 0;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_0((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_desc_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_desc_2((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_desc_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_desc_4((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_desc_max_min_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_desc_max_ram((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_0((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 1;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_2((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_4((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_max_min_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_max_ram((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_max_rom((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_ROM_TRANSFERS;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-        assert!(test_res.is_ok());
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_0_rx_0_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
+    #[timeout(60)]
+    fn transfer_u8_dma((mut spi, crc): (SpiDma, Crc<u32>)) -> Result<(), ()> {
+        let mut failed: usize = 0;
+        for (
+            i,
+            &FullDuplexCase {
+                src_len,
+                dst_len,
+                offset,
+                repeat,
+            },
+        ) in TRANSFER_CASES.iter().enumerate()
+        {
+            const DST_BUF_OFFSET: usize = 10;
+            const DST_BUF_SIZE: usize =
+                2 * DST_BUF_OFFSET + Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
+            let dst_buf_size = offset + dst_len + offset;
+            for r in 0..repeat {
+                let src = &SRC_BUF[..src_len];
+                let mut dst_buf: [u8; DST_BUF_SIZE] = [0; DST_BUF_SIZE];
+                let res = test_transfer(
+                    src,
+                    &mut dst_buf[..dst_buf_size],
+                    dst_len,
+                    offset,
+                    &mut spi,
+                    &crc,
+                );
+                if res.is_err() {
+                    error!(
+                        "transfer_u8_dma: case #{} (iter {}/{}) FAILED — src_len={}, dst_len={}, offset={}",
+                        i,
+                        r + 1,
+                        repeat,
+                        src_len,
+                        dst_len,
+                        offset
+                    );
+                    failed += 1;
+                }
+                dst_buf[..dst_buf_size].fill(0);
+            }
+        }
+        if failed == 0 {
+            Ok(())
+        } else {
+            error!("transfer_u8_dma: {} iteration(s) failed", failed);
+            Err(())
         }
     }
 
+    /// Sync SPI DMA `read` (RX-only) over every case (single + `mul_3`).
+    ///
+    /// Each entry in [`READ_CASES`] is `(len, offset, repeat)`, where `len` is the RX length
+    /// (TX is empty). `repeat == 3` reproduces the `mul_3` tests. The received bytes are the TX
+    /// filler (`spi::TX_FILLER_BYTE`) since TX is empty; [`test_read`] verifies the buffers.
+    ///
+    /// Every case is run to completion: a failed case is logged with its index and parameters and
+    /// the harness moves on to the next one. Returns `Ok(())` only if all cases passed.
     #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_0_rx_desc_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
+    #[timeout(60)]
+    fn read_u8_dma((mut spi, crc): (SpiDma, Crc<u32>)) -> Result<(), ()> {
+        let mut failed: usize = 0;
+        for (
+            i,
+            &SimplexCase {
+                len,
+                offset,
+                repeat,
+            },
+        ) in READ_CASES.iter().enumerate()
+        {
+            const DST_BUF_OFFSET: usize = 10;
+            const DST_BUF_SIZE: usize =
+                2 * DST_BUF_OFFSET + Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
+            let dst_buf_size = offset + len + offset;
+            for r in 0..repeat {
+                let mut dst_buf: [u8; DST_BUF_SIZE] = [0; DST_BUF_SIZE];
+                let res = test_read(
+                    &[],
+                    &mut dst_buf[..dst_buf_size],
+                    len,
+                    offset,
+                    &mut spi,
+                    &crc,
+                );
+                if res.is_err() {
+                    error!(
+                        "read_u8_dma: case #{} (iter {}/{}) FAILED — len={}, offset={}",
+                        i,
+                        r + 1,
+                        repeat,
+                        len,
+                        offset
+                    );
+                    failed += 1;
+                }
+                dst_buf[..dst_buf_size].fill(0);
+            }
+        }
+        if failed == 0 {
+            Ok(())
+        } else {
+            error!("read_u8_dma: {} iteration(s) failed", failed);
+            Err(())
         }
     }
 
+    /// Sync SPI DMA `write` (TX-only) over every case (single + `mul_3`).
+    ///
+    /// Each entry in [`WRITE_CASES`] is `(len, offset, repeat)`, where `len` is the TX length
+    /// (RX is empty). `repeat == 3` reproduces the `mul_3` tests. The destination slice is empty,
+    /// so [`test_write`] only checks the under/overflow padding of `dst_buf`.
+    ///
+    /// Every case is run to completion: a failed case is logged with its index and parameters and
+    /// the harness moves on to the next one. Returns `Ok(())` only if all cases passed.
     #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 1;
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
+    #[timeout(60)]
+    fn write_u8_dma((mut spi, crc): (SpiDma, Crc<u32>)) -> Result<(), ()> {
+        let mut failed: usize = 0;
+        for (
+            i,
+            &SimplexCase {
+                len,
+                offset,
+                repeat,
+            },
+        ) in WRITE_CASES.iter().enumerate()
+        {
+            const DST_BUF_OFFSET: usize = 10;
+            const DST_BUF_SIZE: usize =
+                2 * DST_BUF_OFFSET + Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
+            let dst_buf_size = offset + offset;
+            for r in 0..repeat {
+                let src = &SRC_BUF[..len];
+                let mut dst_buf: [u8; DST_BUF_SIZE] = [0; DST_BUF_SIZE];
+                let res = test_write(src, &mut dst_buf[..dst_buf_size], 0, offset, &mut spi, &crc);
+                if res.is_err() {
+                    error!(
+                        "write_u8_dma: case #{} (iter {}/{}) FAILED — len={}, offset={}",
+                        i,
+                        r + 1,
+                        repeat,
+                        len,
+                        offset
+                    );
+                    failed += 1;
+                }
+                dst_buf[..dst_buf_size].fill(0);
+            }
         }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_1_rx_desc_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_1_rx_0_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_1_rx_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_desc_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 1;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_2_rx_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
-        // RX
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_desc_2_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = 1;
-        // RX
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_3_rx_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
-        // RX
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_desc_3_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = 1;
-        // RX
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_4_rx_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
-        // RX
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_1_rx_desc_4_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = 1;
-        // RX
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn transfer_u8_dma_tx_desc_max_min_1_rx_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
-        // RX
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(15)]
-    fn transfer_u8_dma_tx_1_rx_desc_max_min_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        // TX
-        const SRC_LEN: usize = 1;
-        // RX
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(15)]
-    fn transfer_u8_dma_max_ram_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 0;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res =
-                test_transfer(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_0_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = 1;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_desc_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_desc_2_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_desc_3_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn read_u8_dma_rx_desc_4_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(15)]
-    fn read_u8_dma_rx_desc_max_min_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(15)]
-    fn read_u8_dma_rx_desc_max_ram_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_read(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_0_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 0;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = 1;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_2_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 2;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_3_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 3;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_4_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * 4;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(5)]
-    fn write_u8_dma_tx_desc_max_min_1_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1);
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(15)]
-    fn write_u8_dma_tx_desc_max_ram_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
-        }
-    }
-
-    #[test]
-    #[timeout(15)]
-    fn write_u8_dma_tx_desc_max_rom_mul_3((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS * MAX_ROM_TRANSFERS;
-        const DST_LEN: usize = 0;
-
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
-
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        for _ in 0..3 {
-            let test_res = test_write(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc);
-            assert!(test_res.is_ok());
-            // reset buffer
-            dst_buf.as_mut_slice().fill(u8::default());
+        if failed == 0 {
+            Ok(())
+        } else {
+            error!("write_u8_dma: {} iteration(s) failed", failed);
+            Err(())
         }
     }
 }
@@ -1516,15 +654,14 @@ fn test_transfer<T: SpiBus + ErrorType>(
     assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset);
     let dst = &mut dst_buf[dst_offset..dst_offset + dst_len];
 
-    let ret = spi.transfer(dst, src);
-    assert!(ret.is_ok());
-    let ret = spi.flush();
-    assert!(ret.is_ok());
+    if spi.transfer(dst, src).is_err() {
+        return Err(());
+    }
+    if spi.flush().is_err() {
+        return Err(());
+    }
 
-    let ret = test_buffers(src, dst_buf, dst_len, dst_offset, crc);
-    assert!(ret.is_ok());
-
-    Ok(())
+    test_buffers(src, dst_buf, dst_len, dst_offset, crc)
 }
 
 /// Test [`SpiBus`] read
@@ -1545,15 +682,14 @@ fn test_read<T: SpiBus + ErrorType>(
     assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset);
     let dst = &mut dst_buf[dst_offset..dst_offset + dst_len];
 
-    let ret = spi.read(dst);
-    assert!(ret.is_ok());
-    let ret = spi.flush();
-    assert!(ret.is_ok());
+    if spi.read(dst).is_err() {
+        return Err(());
+    }
+    if spi.flush().is_err() {
+        return Err(());
+    }
 
-    let ret = test_buffers(src, dst_buf, dst_len, dst_offset, crc);
-    assert!(ret.is_ok());
-
-    Ok(())
+    test_buffers(src, dst_buf, dst_len, dst_offset, crc)
 }
 
 /// Test [`SpiBus`] write
@@ -1566,15 +702,14 @@ fn test_write<T: SpiBus + ErrorType>(
     spi: &mut T,
     crc: &Crc<u32>,
 ) -> Result<(), ()> {
-    let ret = spi.write(src);
-    assert!(ret.is_ok());
-    let ret = spi.flush();
-    assert!(ret.is_ok());
+    if spi.write(src).is_err() {
+        return Err(());
+    }
+    if spi.flush().is_err() {
+        return Err(());
+    }
 
-    let ret = test_buffers(src, dst_buf, dst_len, dst_offset, crc);
-    assert!(ret.is_ok());
-
-    Ok(())
+    test_buffers(src, dst_buf, dst_len, dst_offset, crc)
 }
 
 /// Test the buffers after the SPI operation has completed
@@ -1606,8 +741,8 @@ fn test_buffers(
                 dst_crc
             );
             error!("\t dst_buf = {=[?]}", dst_buf);
+            return Err(());
         }
-        assert_eq!(src_crc, dst_crc);
     }
 
     // Check filler bytes, if they exist
@@ -1625,8 +760,8 @@ fn test_buffers(
                     *b,
                     i + start_index
                 );
+                return Err(());
             }
-            assert_eq!(*b, spi::TX_FILLER_BYTE);
         }
     }
 
@@ -1637,8 +772,8 @@ fn test_buffers(
                 "Dst underflow: expected [0;_], found {=[?]}",
                 &dst_buf[0..dst_offset]
             );
+            return Err(());
         }
-        assert_eq!(*b, 0);
     }
     // no bytes written after end of `dst`
     for b in &dst_buf[dst_offset + dst_len..] {
@@ -1647,8 +782,8 @@ fn test_buffers(
                 "Dst overflow: expected [0;_], found {=[?]}",
                 &dst_buf[dst_offset + dst_len..]
             );
+            return Err(());
         }
-        assert_eq!(*b, 0);
     }
 
     Ok(())
