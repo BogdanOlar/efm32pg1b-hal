@@ -13,7 +13,8 @@ defmt::timestamp!("{=u64:us}", { embassy_time::Instant::now().as_micros() });
 #[cfg(test)]
 #[embedded_test::tests]
 mod tests {
-    use crate::test_transfer_async;
+    use crate::{test_read_async, test_transfer_async, test_write_async};
+    use defmt::error;
     use defmt_rtt as _;
     use efm32pg1b_hal::{
         cmu::{CmuExt, LfClockSource},
@@ -49,6 +50,37 @@ mod tests {
         seq
     };
 
+    /// Per-test destination-buffer padding (matches `spi_dma.rs`).
+    const DST_BUF_OFFSET: usize = 10;
+
+    /// Shared destination (RX) buffer, sized for the largest case (`read` `rx_desc_max_ram`:
+    /// `DST_BUF_OFFSET + MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS + DST_BUF_OFFSET`).
+    ///
+    /// Async tests are spawned by `embedded_test` as individual embassy tasks, so each test's
+    /// future lives in a static `TaskStorage`. A per-test stack `dst_buf` would place every test's
+    /// buffer in its own static and overflow RAM (the `spi_dma.rs` sync tests avoid this because
+    /// their stack buffers are reused one at a time). Instead all cases share this single buffer;
+    /// only one `#[test]` runs per binary invocation, so the access is exclusive.
+    const DST_BUF_SIZE: usize =
+        2 * DST_BUF_OFFSET + Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS;
+    static mut DST_BUF: [u8; DST_BUF_SIZE] = [0u8; DST_BUF_SIZE];
+
+    /// Borrow a zeroed, `'static` slice of the shared [`DST_BUF`] of length `len`.
+    ///
+    /// Sound because only one async test runs per binary invocation (the `embedded_test` harness
+    /// runs a single `#[test]` per process), so the returned `&mut` is always exclusive, and the
+    /// DMA completion IRQ never touches this buffer. The `'static` lifetime is required so the
+    /// slice can be held across `.await` points within the embassy task.
+    fn dst_buf(len: usize) -> &'static mut [u8] {
+        // Go through a raw pointer to avoid borrowing a `static mut` directly (denied by the
+        // `static_mut_refs` lint).
+        let slice: &mut [u8] = unsafe {
+            core::slice::from_raw_parts_mut(core::ptr::addr_of_mut!(DST_BUF) as *mut u8, len)
+        };
+        slice.fill(0);
+        slice
+    }
+
     #[init]
     fn init() -> (SpiDma, Crc<u32>) {
         let p = Peripherals::take().unwrap();
@@ -76,30 +108,549 @@ mod tests {
         (spi, crc)
     }
 
-    /// Async SPI DMA transfer with TX and RX both equal to one descriptor's worth of units.
+    /// A full-duplex SPI test case adapted from `spi_dma.rs`: `(src_len, dst_len, offset, repeat)`.
     ///
-    /// Based on the synchronous `transfer_u8_dma_tx_desc_1_rx_desc_1` test in `spi_dma.rs`, but driven
-    /// through [`SpiDma::transfer_async`](`efm32pg1b_hal::usart::spi::dma::SpiDma::transfer_async`).
-    /// In loopback mode TX == RX, so the received bytes must match the transmitted bytes, which the
-    /// CRC comparison in [`test_transfer_async`] verifies.
+    /// Both TX (MOSI) and RX (MISO) are active. `repeat == 3` reproduces the `mul_3` tests
+    /// (3 iterations with the destination buffer reset between them).
+    #[derive(Clone, Copy)]
+    struct FullDuplexCase {
+        /// TX (source) slice length, in bytes.
+        src_len: usize,
+        /// RX (destination) slice length, in bytes.
+        dst_len: usize,
+        /// Padding before and after the destination slice, used to detect under/overflow.
+        offset: usize,
+        /// Number of iterations (`1` for the single tests, `3` for the `mul_3` tests).
+        repeat: u8,
+    }
+
+    /// A simplex SPI test case adapted from `spi_dma.rs`: `(len, offset, repeat)`.
+    ///
+    /// Only one direction is active: RX for `read` (TX is empty) or TX for `write` (RX is empty).
+    /// `repeat == 3` reproduces the `mul_3` tests (3 iterations with the destination buffer
+    /// reset between them).
+    #[derive(Clone, Copy)]
+    struct SimplexCase {
+        /// Length of the active direction's slice, in bytes (RX for `read`, TX for `write`).
+        len: usize,
+        /// Padding before and after the destination slice, used to detect under/overflow.
+        offset: usize,
+        /// Number of iterations (`1` for the single tests, `3` for the `mul_3` tests).
+        repeat: u8,
+    }
+
+    const TRANSFER_CASES: &[FullDuplexCase] = &[
+        FullDuplexCase {
+            src_len: 0,
+            dst_len: 0,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 0,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: 0,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            dst_len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 0,
+            repeat: 1,
+        },
+        FullDuplexCase {
+            src_len: 0,
+            dst_len: 0,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 0,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: 0,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS,
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            dst_len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: 1,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 3,
+        },
+        FullDuplexCase {
+            src_len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            dst_len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 0,
+            repeat: 3,
+        },
+    ];
+
+    const READ_CASES: &[SimplexCase] = &[
+        SimplexCase {
+            len: 0,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: 0,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 10,
+            repeat: 3,
+        },
+    ];
+
+    const WRITE_CASES: &[SimplexCase] = &[
+        SimplexCase {
+            len: 0,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: 1,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_ROM_TRANSFERS,
+            offset: 10,
+            repeat: 1,
+        },
+        SimplexCase {
+            len: 0,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: 1,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 2,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 3,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * 4,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * (MAX_RAM_TRANSFERS - 1),
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_RAM_TRANSFERS,
+            offset: 10,
+            repeat: 3,
+        },
+        SimplexCase {
+            len: Descriptor::MAX_TRANSFER_UNITS * MAX_ROM_TRANSFERS,
+            offset: 10,
+            repeat: 3,
+        },
+    ];
+
+    /// Async SPI DMA `transfer` over every case from `spi_dma.rs` (single + `mul_3`).
+    ///
+    /// Each entry in [`TRANSFER_CASES`] is `(src_len, dst_len, offset, repeat)`; `repeat == 3`
+    /// reproduces the `mul_3` tests (3 iterations with the destination buffer reset between them).
+    /// The destination buffer is the shared [`DST_BUF`] (see [`dst_buf`]); in loopback mode the
+    /// received bytes must match the transmitted bytes, verified by CRC in [`test_transfer_async`].
+    ///
+    /// Every case is run to completion: a failed case is logged with its index and parameters and
+    /// the harness moves on to the next one. Returns `Ok(())` only if all cases passed.
     #[test]
-    #[timeout(5)]
-    async fn transfer_async_tx_desc_1_rx_desc_1((mut spi, crc): (SpiDma, Crc<u32>)) {
-        // Size of slices which will be tested
-        const SRC_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
-        const DST_LEN: usize = Descriptor::MAX_TRANSFER_UNITS;
+    #[timeout(60)]
+    async fn transfer_async((mut spi, crc): (SpiDma, Crc<u32>)) -> Result<(), ()> {
+        let mut failed: usize = 0;
+        for (
+            i,
+            &FullDuplexCase {
+                src_len,
+                dst_len,
+                offset,
+                repeat,
+            },
+        ) in TRANSFER_CASES.iter().enumerate()
+        {
+            let dst_buf_size = offset + dst_len + offset;
+            for r in 0..repeat {
+                let src = &SRC_BUF[..src_len];
+                let dst = dst_buf(dst_buf_size);
+                let res = test_transfer_async(src, dst, dst_len, offset, &mut spi, &crc).await;
+                if res.is_err() {
+                    error!(
+                        "transfer_async: case #{} (iter {}/{}) FAILED — src_len={}, dst_len={}, offset={}",
+                        i,
+                        r + 1,
+                        repeat,
+                        src_len,
+                        dst_len,
+                        offset
+                    );
+                    failed += 1;
+                }
+            }
+        }
+        if failed == 0 {
+            Ok(())
+        } else {
+            error!("transfer_async: {} iteration(s) failed", failed);
+            Err(())
+        }
+    }
 
-        // Total size of the destination buffer, including any before+after padding, which are used to test
-        // under/overflow
-        const DST_BUF_OFFSET: usize = 10;
-        const DST_BUF_SIZE: usize = DST_BUF_OFFSET + DST_LEN + DST_BUF_OFFSET;
+    /// Async SPI DMA `read` (RX-only) over every case from `spi_dma.rs` (single + `mul_3`).
+    ///
+    /// Each entry in [`READ_CASES`] is `(len, offset, repeat)`, where `len` is the RX length
+    /// (TX is empty). `repeat == 3` reproduces the `mul_3` tests. The received bytes are the TX
+    /// filler (`spi::TX_FILLER_BYTE`) since TX is empty; [`test_read_async`] verifies the buffers.
+    ///
+    /// Every case is run to completion: a failed case is logged with its index and parameters and
+    /// the harness moves on to the next one. Returns `Ok(())` only if all cases passed.
+    #[test]
+    #[timeout(60)]
+    async fn read_async((mut spi, crc): (SpiDma, Crc<u32>)) -> Result<(), ()> {
+        let mut failed: usize = 0;
+        for (
+            i,
+            &SimplexCase {
+                len,
+                offset,
+                repeat,
+            },
+        ) in READ_CASES.iter().enumerate()
+        {
+            let dst_buf_size = offset + len + offset;
+            for r in 0..repeat {
+                let dst = dst_buf(dst_buf_size);
+                let res = test_read_async(&[], dst, len, offset, &mut spi, &crc).await;
+                if res.is_err() {
+                    error!(
+                        "read_async: case #{} (iter {}/{}) FAILED — len={}, offset={}",
+                        i,
+                        r + 1,
+                        repeat,
+                        len,
+                        offset
+                    );
+                    failed += 1;
+                }
+            }
+        }
+        if failed == 0 {
+            Ok(())
+        } else {
+            error!("read_async: {} iteration(s) failed", failed);
+            Err(())
+        }
+    }
 
-        let src = &SRC_BUF[..SRC_LEN];
-        let mut dst_buf: [u8; DST_BUF_SIZE] = [0; _];
-
-        let test_res =
-            test_transfer_async(src, &mut dst_buf, DST_LEN, DST_BUF_OFFSET, &mut spi, &crc).await;
-        assert!(test_res.is_ok());
+    /// Async SPI DMA `write` (TX-only) over every case from `spi_dma.rs` (single + `mul_3`).
+    ///
+    /// Each entry in [`WRITE_CASES`] is `(len, offset, repeat)`, where `len` is the TX length
+    /// (RX is empty). `repeat == 3` reproduces the `mul_3` tests. The destination slice is empty,
+    /// so [`test_write_async`] only checks the under/overflow padding of [`DST_BUF`].
+    ///
+    /// Every case is run to completion: a failed case is logged with its index and parameters and
+    /// the harness moves on to the next one. Returns `Ok(())` only if all cases passed.
+    #[test]
+    #[timeout(60)]
+    async fn write_async((mut spi, crc): (SpiDma, Crc<u32>)) -> Result<(), ()> {
+        let mut failed: usize = 0;
+        for (
+            i,
+            &SimplexCase {
+                len,
+                offset,
+                repeat,
+            },
+        ) in WRITE_CASES.iter().enumerate()
+        {
+            let dst_buf_size = offset + offset;
+            for r in 0..repeat {
+                let src = &SRC_BUF[..len];
+                let dst = dst_buf(dst_buf_size);
+                let res = test_write_async(src, dst, 0, offset, &mut spi, &crc).await;
+                if res.is_err() {
+                    error!(
+                        "write_async: case #{} (iter {}/{}) FAILED — len={}, offset={}",
+                        i,
+                        r + 1,
+                        repeat,
+                        len,
+                        offset
+                    );
+                    failed += 1;
+                }
+            }
+        }
+        if failed == 0 {
+            Ok(())
+        } else {
+            error!("write_async: {} iteration(s) failed", failed);
+            Err(())
+        }
     }
 }
 
@@ -122,12 +673,56 @@ async fn test_transfer_async(
     let dst = &mut dst_buf[dst_offset..dst_offset + dst_len];
 
     let ret = spi.transfer_async(dst, src).await;
-    assert!(ret.is_ok());
+    if ret.is_err() {
+        return Err(());
+    }
 
-    let ret = test_buffers(src, dst_buf, dst_len, dst_offset, crc);
-    assert!(ret.is_ok());
+    test_buffers(src, dst_buf, dst_len, dst_offset, crc)
+}
 
-    Ok(())
+/// Test [`SpiDma::transfer_async`] read (RX-only) transfer
+///
+/// Mirrors the synchronous `test_read` helper in `spi_dma.rs`: an RX-only transaction is an SPI
+/// transfer with an empty TX slice. In loopback mode the received bytes are the filler bytes
+/// (`spi::TX_FILLER_BYTE`), which [`test_buffers`] verifies.
+async fn test_read_async(
+    src: &[u8],
+    dst_buf: &mut [u8],
+    dst_len: usize,
+    dst_offset: usize,
+    spi: &mut SpiDma,
+    crc: &Crc<u32>,
+) -> Result<(), ()> {
+    assert_eq!(dst_buf.len(), dst_offset + dst_len + dst_offset);
+    let dst = &mut dst_buf[dst_offset..dst_offset + dst_len];
+
+    let ret = spi.transfer_async(dst, &[]).await;
+    if ret.is_err() {
+        return Err(());
+    }
+
+    test_buffers(src, dst_buf, dst_len, dst_offset, crc)
+}
+
+/// Test [`SpiDma::transfer_async`] write (TX-only) transfer
+///
+/// Mirrors the synchronous `test_write` helper in `spi_dma.rs`: a TX-only transaction is an SPI
+/// transfer with an empty RX slice. `dst_len` is `0` for write tests, so `dst` is empty and only
+/// the under/overflow padding in `dst_buf` is checked by [`test_buffers`].
+async fn test_write_async(
+    src: &[u8],
+    dst_buf: &mut [u8],
+    dst_len: usize,
+    dst_offset: usize,
+    spi: &mut SpiDma,
+    crc: &Crc<u32>,
+) -> Result<(), ()> {
+    let ret = spi.transfer_async(&mut [], src).await;
+    if ret.is_err() {
+        return Err(());
+    }
+
+    test_buffers(src, dst_buf, dst_len, dst_offset, crc)
 }
 
 /// Test the buffers after the SPI operation has completed
@@ -159,8 +754,8 @@ fn test_buffers(
                 dst_crc
             );
             error!("\t dst_buf = {=[?]}", dst_buf);
+            return Err(());
         }
-        assert_eq!(src_crc, dst_crc);
     }
 
     // Check filler bytes, if they exist
@@ -178,8 +773,8 @@ fn test_buffers(
                     *b,
                     i + start_index
                 );
+                return Err(());
             }
-            assert_eq!(*b, spi::TX_FILLER_BYTE);
         }
     }
 
@@ -190,8 +785,8 @@ fn test_buffers(
                 "Dst underflow: expected [0;_], found {=[?]}",
                 &dst_buf[0..dst_offset]
             );
+            return Err(());
         }
-        assert_eq!(*b, 0);
     }
     // no bytes written after end of `dst`
     for b in &dst_buf[dst_offset + dst_len..] {
@@ -200,8 +795,8 @@ fn test_buffers(
                 "Dst overflow: expected [0;_], found {=[?]}",
                 &dst_buf[dst_offset + dst_len..]
             );
+            return Err(());
         }
-        assert_eq!(*b, 0);
     }
 
     Ok(())
