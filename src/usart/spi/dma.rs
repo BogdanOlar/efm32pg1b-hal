@@ -5,7 +5,8 @@ use crate::{
         self,
         descriptor::{Descriptor, TransferDescriptor, UnitSize},
         list::{DescList, FinMode, TargetAddr},
-        ChReqSel, DmaChannel, DmaError,
+        transfer::{ChannelTransfer, TransferParams},
+        ChReqSel, DmaChannel, DmaResult,
     },
     usart::{
         mmio,
@@ -21,17 +22,12 @@ use embedded_hal::spi::{ErrorType, SpiBus};
 const DESC_COUNT: usize = 6;
 
 /// SPI master which implements `SpiBus` trait
-///
-/// Owns the [`Spi`](super::Spi) it was created from (extracting its [`UsartId`](super::super::UsartId)
-/// for register access), plus two DMA channels and their descriptor pools. Created from an
-/// [`Spi`](super::Spi) via [`Spi::into_spi_dma`](super::Spi::into_spi_dma).
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SpiDma {
     pub(crate) spi: Spi,
     pub(crate) tx: DmaChannel,
     pub(crate) rx: DmaChannel,
-    pub(crate) busy: bool,
     pub(crate) tx_descriptors: [Descriptor; DESC_COUNT],
     pub(crate) rx_descriptors: [Descriptor; DESC_COUNT],
 }
@@ -51,7 +47,6 @@ impl SpiDma {
             spi,
             tx,
             rx,
-            busy: false,
             tx_descriptors: [Descriptor::default(); _],
             rx_descriptors: [Descriptor::default(); _],
         }
@@ -60,11 +55,11 @@ impl SpiDma {
     /// Start an SPI transaction.
     ///
     /// `write` is written to the slave on MOSI and words received on MISO are stored in `read`.
-    pub fn transfer_nb<Word: Copy + 'static>(
-        &mut self,
-        read: &mut [Word],
-        write: &[Word],
-    ) -> Result<(), SpiError> {
+    pub fn transfer_nb<'stl, Word: Copy + 'static>(
+        &'stl mut self,
+        read: &'stl mut [Word],
+        write: &'stl [Word],
+    ) -> Result<SpiTransfer<'stl, TxParam<'stl, Word>, RxParam<'stl, Word>>, SpiError> {
         // FIXME: unit is limited to Byte until we convince the Spi to accept other `UnitSize`s
         let unit = UnitSize::Byte;
         let write_addr = write.as_ptr().addr();
@@ -72,7 +67,25 @@ impl SpiDma {
         let read_addr = read.as_ptr().addr();
         let read_bytes = core::mem::size_of_val(read);
 
-        self.transfer_inner(unit, write_addr, write_bytes, read_addr, read_bytes)
+        let write_units = write_bytes / unit.byte_count();
+        let read_units = read_bytes / unit.byte_count();
+
+        // Only start DMA transfers if there is something to transfer
+        if read_units.max(write_units) > 0 {
+            let (tx_desc, rx_desc) =
+                self.build_descriptors(unit, write_addr, write_units, read_addr, read_units)?;
+
+            let rx = self
+                .rx
+                .peripheral_transfer(&rx_desc, false, RxParam { _read: read })?;
+            let tx = self
+                .tx
+                .peripheral_transfer(&tx_desc, true, TxParam { _write: write })?;
+            Ok(SpiTransfer::new(tx, rx))
+        } else {
+            // TODO: zero-sized transfers
+            todo!()
+        }
     }
 
     /// Start an SPI transaction.
@@ -92,27 +105,13 @@ impl SpiDma {
     }
 
     /// Wait until all operations have completed and the bus is idle.
-    pub fn flush_blocking(&mut self) -> Result<(), SpiError> {
-        if self.busy {
-            let tx_result = loop {
-                if let Some(result) = self.tx.try_resolve() {
-                    break result;
-                }
-            };
-
-            let rx_result = loop {
-                if let Some(result) = self.rx.try_resolve() {
-                    break result;
-                }
-            };
-
-            if tx_result.is_ok() && rx_result.is_ok() {
-                Ok(())
-            } else {
-                Err(SpiError::Dma(DmaError::Transfer))
+    pub fn flush_blocking<'stl, TXP: TransferParams<'stl>, RXP: TransferParams<'stl>>(
+        mut transfer: SpiTransfer<'stl, TXP, RXP>,
+    ) -> Result<(), SpiError> {
+        loop {
+            if let Some(t) = transfer.try_resolve() {
+                break t;
             }
-        } else {
-            Ok(())
         }
     }
 
@@ -130,13 +129,11 @@ impl SpiDma {
 
         // Only start DMA transfers if there is something to transfer
         if write_units.max(read_units) > 0 {
-            self.busy = true;
-
             let (tx_desc, rx_desc) =
                 self.build_descriptors(unit, write_addr, write_units, read_addr, read_units)?;
 
-            unsafe { self.rx.transfer(&rx_desc, false) };
-            unsafe { self.tx.transfer(&tx_desc, true) };
+            unsafe { self.rx.raw_transfer(&rx_desc, false) };
+            unsafe { self.tx.raw_transfer(&tx_desc, true) };
         }
 
         Ok(())
@@ -288,18 +285,94 @@ impl SpiBus for SpiDma {
     }
 
     fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Self::Error> {
-        self.transfer_nb(read, write)
+        // unfortunatelly the transfer _has_ to be blocking, otherwise we can't guarantee that the DmaChannel, `read`,
+        // and `write` are not used while the transfer is active
+        Self::flush_blocking(self.transfer_nb(read, write)?)
     }
 
     fn transfer_in_place(&mut self, words: &mut [u8]) -> Result<(), Self::Error> {
+        // FIXME: convert to blocking
         self.transfer_in_place_nb(words)
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        self.flush_blocking()
+        // SpiBus has a blocking implementation, so there's nothing to flush
+        Ok(())
     }
 }
 
 impl ErrorType for SpiDma {
     type Error = SpiError;
 }
+
+/// Spi transfer token
+///
+/// Ensures that the Spi driver and the transfer buffers cannot be used while the transfer is still active.
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct SpiTransfer<'stl, TXP: TransferParams<'stl>, RXP: TransferParams<'stl>> {
+    tx: ChannelTransfer<'stl, TXP>,
+    tx_res: Option<DmaResult>,
+    rx: ChannelTransfer<'stl, RXP>,
+    rx_res: Option<DmaResult>,
+}
+
+impl<'stl, TXP: TransferParams<'stl>, RXP: TransferParams<'stl>> SpiTransfer<'stl, TXP, RXP> {
+    fn new(tx: ChannelTransfer<'stl, TXP>, rx: ChannelTransfer<'stl, RXP>) -> Self {
+        Self {
+            tx,
+            tx_res: None,
+            rx,
+            rx_res: None,
+        }
+    }
+
+    /// Poll the Spi transfer.
+    ///
+    /// Will only return the Result once, when the transfer is complete.
+    pub fn try_resolve(&mut self) -> Option<Result<(), SpiError>> {
+        if self.tx_res.is_none() {
+            self.tx_res = self.tx.try_resolve();
+        }
+
+        if self.rx_res.is_none() {
+            self.rx_res = self.rx.try_resolve();
+        }
+
+        if let (Some(tx_res), Some(rx_res)) = (self.tx_res, self.rx_res) {
+            self.cancel();
+
+            let res = if tx_res.is_ok() && rx_res.is_ok() {
+                Ok(())
+            } else if tx_res.is_err() && rx_res.is_err() {
+                Err(SpiError::TxRx)
+            } else if tx_res.is_err() {
+                Err(SpiError::Tx)
+            } else {
+                Err(SpiError::Rx)
+            };
+
+            Some(res)
+        } else {
+            None
+        }
+    }
+
+    /// Cancel the Spi transfer
+    pub fn cancel(&mut self) {
+        self.tx.cancel();
+        self.rx.cancel();
+    }
+}
+
+/// Spi RX transfer param (the RX buffer)
+pub struct RxParam<'stl, Word: Copy + 'static> {
+    pub(crate) _read: &'stl mut [Word],
+}
+impl<'stl, Word: Copy + 'static> TransferParams<'stl> for RxParam<'stl, Word> {}
+
+/// Spi TX transfer param (the TX buffer)
+pub struct TxParam<'stl, Word: Copy + 'static> {
+    pub(crate) _write: &'stl [Word],
+}
+impl<'stl, Word: Copy + 'static> TransferParams<'stl> for TxParam<'stl, Word> {}

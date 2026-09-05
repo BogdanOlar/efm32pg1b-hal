@@ -2,8 +2,11 @@
 //!
 
 use crate::{
-    dma::descriptor::UnitSize,
-    usart::spi::{dma::SpiDma, SpiError},
+    dma::{descriptor::UnitSize, transfer::NoParams},
+    usart::spi::{
+        dma::{RxParam, SpiDma, TxParam},
+        SpiError,
+    },
 };
 #[cfg(feature = "debug-spi-dma-defmt-info")]
 use defmt::info;
@@ -26,8 +29,35 @@ impl SpiDma {
         let read_addr = read.as_ptr().addr();
         let read_bytes = core::mem::size_of_val(read);
 
-        self.transfer_async_inner(unit, write_addr, write_bytes, read_addr, read_bytes)
-            .await
+        let write_units = write_bytes / unit.byte_count();
+        let read_units = read_bytes / unit.byte_count();
+
+        // Only do the async DMA transfers if there is something to transfer
+        if write_units.max(read_units) > 0 {
+            let (tx_desc, rx_desc) =
+                self.build_descriptors(unit, write_addr, write_units, read_addr, read_units)?;
+
+            let (tx_res, rx_res) = join(
+                self.rx
+                    .transfer_async(&rx_desc, false, RxParam { _read: read }),
+                self.tx
+                    .transfer_async(&tx_desc, true, TxParam { _write: write }),
+            )
+            .await;
+
+            if tx_res.is_ok() && rx_res.is_ok() {
+                Ok(())
+            } else if tx_res.is_err() && rx_res.is_err() {
+                Err(SpiError::TxRx)
+            } else if tx_res.is_err() {
+                Err(SpiError::Tx)
+            } else {
+                Err(SpiError::Rx)
+            }
+        } else {
+            // Zero-sized transfers return OK() immediately without starting DMA
+            Ok(())
+        }
     }
 
     /// Do an async SPI transaction.
@@ -43,32 +73,17 @@ impl SpiDma {
         let addr = words.as_ptr().addr();
         let bytes = core::mem::size_of_val(words);
 
-        self.transfer_async_inner(unit, addr, bytes, addr, bytes)
-            .await
-    }
-
-    /// Helpher method to do the async transfer without involving the read/write slices, just their address and size
-    async fn transfer_async_inner(
-        &mut self,
-        unit: UnitSize,
-        write_addr: usize,
-        write_bytes: usize,
-        read_addr: usize,
-        read_bytes: usize,
-    ) -> Result<(), SpiError> {
-        let write_units = write_bytes / unit.byte_count();
-        let read_units = read_bytes / unit.byte_count();
+        let write_units = bytes / unit.byte_count();
+        let read_units = bytes / unit.byte_count();
 
         // Only do the async DMA transfers if there is something to transfer
         if write_units.max(read_units) > 0 {
-            self.busy = true;
-
-            let (tx_desc, rx_desc) =
-                self.build_descriptors(unit, write_addr, write_units, read_addr, read_units)?;
+            let (tx_desc, rx_desc) = self.build_descriptors(unit, addr, bytes, addr, bytes)?;
 
             let (tx_res, rx_res) = join(
-                self.rx.transfer_async(&rx_desc, false),
-                self.tx.transfer_async(&tx_desc, true),
+                self.rx
+                    .transfer_async(&rx_desc, false, RxParam { _read: words }),
+                self.tx.transfer_async(&tx_desc, true, NoParams {}),
             )
             .await;
 

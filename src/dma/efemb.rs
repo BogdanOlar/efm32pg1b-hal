@@ -1,7 +1,12 @@
 //! Embassy support dor DMA
 //!
 
-use crate::dma::{descriptor::TransferDescriptor, irq, DmaChannel, DmaResult, CHANNEL_COUNT};
+use crate::dma::{
+    descriptor::TransferDescriptor,
+    irq,
+    transfer::{ChannelTransfer, TransferParams},
+    DmaChannel, DmaResult, CHANNEL_COUNT,
+};
 #[cfg(feature = "debug-spi-dma-defmt-info")]
 use defmt::info;
 use embassy_sync::waitqueue::AtomicWaker;
@@ -13,10 +18,11 @@ impl DmaChannel {
     /// Perform an async DMA transfer with the given Descriptor.
     ///
     /// If `with_sw_trigger` is set then the DMA transfer will immediatelly be software-triggered.
-    pub async fn transfer_async(
-        &mut self,
+    pub(crate) async fn transfer_async<'tl, P: TransferParams<'tl>>(
+        &'tl mut self,
         desc: &TransferDescriptor,
         with_sw_trigger: bool,
+        params: P,
     ) -> DmaResult {
         self.cancel();
 
@@ -36,80 +42,32 @@ impl DmaChannel {
 
         unsafe { self.start(desc, with_sw_trigger) };
 
-        TransferFuture::new(self).await
+        TransferFuture::new(ChannelTransfer::new(self, params)).await
     }
 }
 
-struct TransferFuture<'a> {
-    ch: &'a mut DmaChannel,
+struct TransferFuture<'tl, P: TransferParams<'tl>> {
+    ch_transfer: ChannelTransfer<'tl, P>,
 }
 
-impl<'a> TransferFuture<'a> {
-    fn new(ch: &'a mut DmaChannel) -> Self {
-        Self { ch }
+impl<'tl, P: TransferParams<'tl>> TransferFuture<'tl, P> {
+    fn new(ch_transfer: ChannelTransfer<'tl, P>) -> Self {
+        Self { ch_transfer }
     }
 }
 
-impl<'a> core::future::Future for TransferFuture<'a> {
+impl<'tl, P: TransferParams<'tl>> core::future::Future for TransferFuture<'tl, P> {
     type Output = DmaResult;
 
     fn poll(
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Self::Output> {
-        DMA_WAKERS[self.ch.id() as usize].register(cx.waker());
+        DMA_WAKERS[self.ch_transfer.ch.id() as usize].register(cx.waker());
 
-        match self.ch.try_resolve() {
+        match self.ch_transfer.try_resolve() {
             Some(transfer_result) => core::task::Poll::Ready(transfer_result),
             None => core::task::Poll::Pending,
         }
     }
 }
-
-// impl DmaChannel {
-//     /// Start an async memory-to-memory DMA transfer
-//     pub fn into_async_transfer<'a, W: Sized>(
-//         self,
-//         src: &'a [W],
-//         dst: &'a mut [W],
-//     ) -> ChannelTransferFuture<'a, W> {
-//         let id = self.id;
-
-//         // Set the IRQ handler for this channel transfer
-//         critical_section::with(|cs| {
-//             dma::irq::set_handler(cs, id, |id, transfer_result| {
-//                 // signal to the main thread that transfer is resolved
-//                 critical_section::with(|csd| dma::irq::irq_ch_set(csd, id, Some(transfer_result)));
-//                 // Wake the task awaiting on this transfer
-//                 DMA_WAKERS[id as usize].wake();
-//             })
-//         });
-
-//         let mut transfer = ChannelTransfer::new(self, src, dst);
-//         transfer.start();
-//         ChannelTransferFuture { transfer }
-//     }
-// }
-
-// /// Async DMA memory-to-memory transfer
-// #[must_use = "futures do nothing unless you `.await` or poll them"]
-// pub struct ChannelTransferFuture<'a, W: Sized> {
-//     transfer: ChannelTransfer<'a, W>,
-// }
-
-// impl<'a, W: Sized> Future for ChannelTransferFuture<'a, W> {
-//     type Output = ChannelTransferResult<'a, W>;
-
-//     fn poll(
-//         mut self: core::pin::Pin<&mut Self>,
-//         cx: &mut core::task::Context<'_>,
-//     ) -> core::task::Poll<Self::Output> {
-//         DMA_WAKERS[self.transfer.id() as usize].register(cx.waker());
-
-//         if let Some(transfer_result) = self.transfer.try_resolve() {
-//             Poll::Ready(transfer_result)
-//         } else {
-//             Poll::Pending
-//         }
-//     }
-// }

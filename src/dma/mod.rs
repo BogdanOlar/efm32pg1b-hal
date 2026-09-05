@@ -20,7 +20,7 @@ use crate::{
     dma::{
         descriptor::{Addr, Descriptor, TransferDescriptor, UnitSize},
         irq::set_handler,
-        transfer::{ChannelTransfer, MemoryTransferParams},
+        transfer::{ChannelTransfer, MemoryTransferParams, TransferParams},
     },
     pac::{Interrupt, Ldma, NVIC},
 };
@@ -231,7 +231,7 @@ impl DmaChannel {
         mmio::ch_write_descriptor(self.id, &desc.into_inner());
     }
 
-    /// Enable the transfer and optionally triggering it.
+    /// Enable a DMA transfer and optionally (software) trigger it.
     ///
     /// NOTE: This will cancel any ongoing transfers. You can use [`DmaChannel::enabled()`] to determine if a transfer
     ///       is ongoing.
@@ -242,7 +242,7 @@ impl DmaChannel {
     /// unsafe. The [`crate::dma::list`] module offers a descriptor list builder [`crate::dma::list::DescList`] which
     /// helps with safety but it can't guarantee that the linked descriptors point to valid memory, or that the
     /// underlying list storage has appropriate lifetime relative to the DMA transfer lifetime.
-    pub unsafe fn transfer(&mut self, desc: &TransferDescriptor, with_sw_trigger: bool) {
+    pub unsafe fn raw_transfer(&mut self, desc: &TransferDescriptor, with_sw_trigger: bool) {
         // cancel any on-going transfers
         self.cancel();
 
@@ -260,28 +260,29 @@ impl DmaChannel {
         self.start(desc, with_sw_trigger);
     }
 
-    /// Try to complete the transfer.
-    ///
-    /// If the transfer has completed then the transfer is disabled an the transfer result is returned.
-    pub fn try_resolve(&mut self) -> Option<DmaResult> {
-        if let Some(transfer_result) = critical_section::with(|cs| irq::irq_ch_take(cs, self.id)) {
-            self.stop();
+    pub(crate) fn peripheral_transfer<'tl, P: TransferParams<'tl>>(
+        &'tl mut self,
+        desc: &TransferDescriptor,
+        with_sw_trigger: bool,
+        params: P,
+    ) -> Result<ChannelTransfer<'tl, P>, DmaError> {
+        // cancel any on-going transfers
+        self.cancel();
 
-            Some(transfer_result)
-        } else {
-            None
-        }
-    }
-
-    /// Cancel any on-going transfer
-    pub fn cancel(&mut self) {
-        self.stop();
-
-        // Clear the IRQ handler and any pending result
+        // Set the non-blocking IRQ handler
         critical_section::with(|cs| {
-            irq::clear_handler(cs, self.id);
-            let _ = irq::irq_ch_take(cs, self.id);
+            set_handler(cs, self.id(), |id, transfer_result| {
+                #[cfg(feature = "debug-spi-dma-defmt-info")]
+                info!("IRQ {}: {}", id, transfer_result);
+
+                // signal to the main thread that transfer is resolved
+                critical_section::with(|csd| irq::irq_ch_set(csd, id, Some(transfer_result)));
+            })
         });
+
+        unsafe { self.start(desc, with_sw_trigger) };
+
+        Ok(ChannelTransfer::new(self, params))
     }
 
     /// Start a memory-to-memory DMA transfer.
@@ -329,11 +330,11 @@ impl DmaChannel {
     ///     drop(transfer);
     ///     // `ch`, `src` and `dst` can now be used again
     /// ```
-    pub fn memory_transfer<'a, Word: Copy + 'static>(
-        &'a mut self,
-        src: &'a [Word],
-        dst: &'a mut [Word],
-    ) -> Result<ChannelTransfer<'a, MemoryTransferParams<'a, Word>>, DmaError> {
+    pub fn memory_transfer<'tl, Word: Copy + 'static>(
+        &'tl mut self,
+        src: &'tl [Word],
+        dst: &'tl mut [Word],
+    ) -> Result<ChannelTransfer<'tl, MemoryTransferParams<'tl, Word>>, DmaError> {
         if src.len() != dst.len() {
             return Err(DmaError::BufferMismatch);
         }
@@ -426,6 +427,17 @@ impl DmaChannel {
             self,
             MemoryTransferParams { src, dst },
         ))
+    }
+
+    /// Cancel any on-going transfer
+    pub fn cancel(&mut self) {
+        self.stop();
+
+        // Clear the IRQ handler and any pending result
+        critical_section::with(|cs| {
+            irq::clear_handler(cs, self.id);
+            let _ = irq::irq_ch_take(cs, self.id);
+        });
     }
 
     /// Enable the DMA transfer by executing the `TransferDescriptor` written to the DMA Channel, and software-trigger
