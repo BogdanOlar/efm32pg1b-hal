@@ -83,8 +83,13 @@ impl SpiDma {
                 .peripheral_transfer(&tx_desc, true, TxParam { _write: write })?;
             Ok(SpiTransfer::new(tx, rx))
         } else {
-            // TODO: zero-sized transfers
-            todo!()
+            // Create a dummy spi transfer which resolves on the first poll with SpiTransfer::try_resolve()
+
+            Ok(SpiTransfer::new(
+                self.tx
+                    .dummy_peripheral_transfer(TxParam { _write: write })?,
+                self.rx.dummy_peripheral_transfer(RxParam { _read: read })?,
+            ))
         }
     }
 

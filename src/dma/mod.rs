@@ -260,6 +260,7 @@ impl DmaChannel {
         self.start(desc, with_sw_trigger);
     }
 
+    /// Method used by DMA-compatible peripherals to do transfers.
     pub(crate) fn peripheral_transfer<'tl, P: TransferParams<'tl>>(
         &'tl mut self,
         desc: &TransferDescriptor,
@@ -281,6 +282,26 @@ impl DmaChannel {
         });
 
         unsafe { self.start(desc, with_sw_trigger) };
+
+        Ok(ChannelTransfer::new(self, params))
+    }
+
+    /// Method used by DMA-compatible peripherals to do zero-sized transfers.
+    ///
+    /// Compared to the `peripheral_transfer` method, this does not actually start the DMA transfer, and therefore the
+    /// corresponding DMA irq will not fire. Instead it just sets the Ok transfer result in the DmaChannel channel,
+    /// so that the transfer will resolve successfuly on the first poll with [`ChannelTransfer::try_resolve()`]
+    pub(crate) fn dummy_peripheral_transfer<'tl, P: TransferParams<'tl>>(
+        &'tl mut self,
+        params: P,
+    ) -> Result<ChannelTransfer<'tl, P>, DmaError> {
+        // cancel any on-going transfers
+        self.cancel();
+
+        // Set the "Done" token
+        critical_section::with(|cs| {
+            irq::irq_ch_set(cs, self.id, Some(Ok(())));
+        });
 
         Ok(ChannelTransfer::new(self, params))
     }
