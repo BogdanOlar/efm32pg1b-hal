@@ -15,23 +15,23 @@ pub mod spi;
 #[repr(u8)]
 pub enum UsartId {
     /// USART0.
-    Usart0 = 0,
+    USART0 = 0,
     /// USART1.
-    Usart1 = 1,
+    USART1 = 1,
 }
 
 /// Helper module for accessing USART register blocks
 pub(crate) mod mmio {
-    use crate::pac::{usart0::RegisterBlock, Usart0, Usart1};
+    use crate::pac::{usart0::Timer, USART0, USART1};
     use crate::usart::UsartId;
 
-    /// Get a reference to the `RegisterBlock` of either `Usart0` or `Usart1`
+    /// Get a reference to the `Timer` of either `USART0` or `USART1`
     ///
     /// `id` selects which USART peripheral, as returned by [`UsartIndex::index`](super::UsartIndex::index).
-    pub(crate) const fn usartx(id: UsartId) -> &'static RegisterBlock {
+    pub(crate) const fn usartx(id: UsartId) -> &'static Timer {
         match id {
-            UsartId::Usart0 => unsafe { &*Usart0::ptr() },
-            UsartId::Usart1 => unsafe { &*Usart1::ptr() },
+            UsartId::USART0 => USART0,
+            UsartId::USART1 => USART1,
         }
     }
 
@@ -39,10 +39,10 @@ pub(crate) mod mmio {
     ///
     /// `id` selects which USART peripheral, as returned by [`UsartIndex::index`](super::UsartIndex::index).
     pub(crate) fn cmu_usart_enable(id: UsartId) {
-        let cmu = unsafe { crate::pac::Cmu::steal() };
+        let cmu = unsafe { crate::pac::CMU::steal() };
         cmu.hfperclken0().modify(|_, w| match id {
-            UsartId::Usart0 => w.usart0().set_bit(),
-            UsartId::Usart1 => w.usart1().set_bit(),
+            UsartId::USART0 => w.set_usart0(true),
+            UsartId::USART1 => w.set_usart1(true),
         });
     }
 
@@ -54,38 +54,38 @@ pub(crate) mod mmio {
 
         // Write disable commands first
         usart_p.cmd().write(|w| {
-            w.rxdis().set_bit();
-            w.txdis().set_bit();
-            w.masterdis().set_bit();
-            w.rxblockdis().set_bit();
-            w.txtridis().set_bit();
-            w.cleartx().set_bit();
-            w.clearrx().set_bit()
+            w.set_rxdis(true);
+            w.set_txdis(true);
+            w.set_masterdis(true);
+            w.set_rxblockdis(true);
+            w.set_txtridis(true);
+            w.set_cleartx(true);
+            w.set_clearrx(true)
         });
 
-        usart_p.clkdiv().reset();
-        usart_p.cmd().reset();
-        usart_p.ctrl().reset();
-        usart_p.ctrlx().reset();
-        usart_p.frame().reset();
-        usart_p.i2sctrl().reset();
-        usart_p.ien().reset();
-        usart_p.ifc().reset();
-        usart_p.ifs().reset();
-        usart_p.input().reset();
-        usart_p.irctrl().reset();
-        usart_p.routeloc0().reset();
-        usart_p.routeloc1().reset();
-        usart_p.routepen().reset();
-        usart_p.timecmp0().reset();
-        usart_p.timecmp1().reset();
-        usart_p.timecmp2().reset();
-        usart_p.timing().reset();
-        usart_p.trigctrl().reset();
-        usart_p.txdata().reset();
-        usart_p.txdatax().reset();
-        usart_p.txdouble().reset();
-        usart_p.txdoublex().reset();
+        usart_p.clkdiv().write_value(Default::default());
+        usart_p.cmd().write_value(Default::default());
+        usart_p.ctrl().write_value(Default::default());
+        usart_p.ctrlx().write_value(Default::default());
+        usart_p.frame().write_value(Default::default());
+        usart_p.i2sctrl().write_value(Default::default());
+        usart_p.ien().write_value(Default::default());
+        usart_p.ifc().write_value(Default::default());
+        usart_p.ifs().write_value(Default::default());
+        usart_p.input().write_value(Default::default());
+        usart_p.irctrl().write_value(Default::default());
+        usart_p.routeloc0().write_value(Default::default());
+        usart_p.routeloc1().write_value(Default::default());
+        usart_p.routepen().write_value(Default::default());
+        usart_p.timecmp0().write_value(Default::default());
+        usart_p.timecmp1().write_value(Default::default());
+        usart_p.timecmp2().write_value(Default::default());
+        usart_p.timing().write_value(Default::default());
+        usart_p.trigctrl().write_value(Default::default());
+        usart_p.txdata().write_value(Default::default());
+        usart_p.txdatax().write_value(Default::default());
+        usart_p.txdouble().write_value(Default::default());
+        usart_p.txdoublex().write_value(Default::default());
     }
 }
 
@@ -99,14 +99,14 @@ pub trait UsartIndex {
     fn index() -> UsartId;
 }
 
-impl UsartIndex for crate::pac::Usart0 {
+impl UsartIndex for crate::pac::USART0 {
     fn index() -> UsartId {
-        UsartId::Usart0
+        UsartId::USART0
     }
 }
 
-impl UsartIndex for crate::pac::Usart1 {
+impl UsartIndex for crate::pac::USART1 {
     fn index() -> UsartId {
-        UsartId::Usart1
+        UsartId::USART1
     }
 }

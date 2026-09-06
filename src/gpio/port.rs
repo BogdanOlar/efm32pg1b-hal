@@ -1,4 +1,4 @@
-//! Gpio Port
+//! GPIO Port
 //!
 //! Sep port-wide configurations for each port
 //!
@@ -7,7 +7,7 @@
 //!
 //! When the `use_debug_pins` feature is enabled, port F provides a `set_din_dis()` method.
 //! This method will only succeede if the debug pins have been converted into GPIO pins using the `into_gpio_pins()`
-//! method on `debug_pins` in [`crate::gpio::Gpio`].
+//! method on `debug_pins` in [`crate::gpio::GPIO`].
 //!
 
 #[cfg(feature = "use_debug_pins")]
@@ -33,11 +33,11 @@ where
     /// Reset the the Port `P` registers to their reset state
     pub(crate) fn reset(&mut self) {
         let port = ports::get(self.id());
-        port.dout().reset();
-        port.model().reset();
-        port.modeh().reset();
-        port.ctrl().reset();
-        port.ovt_dis().reset();
+        port.dout().write_value(Default::default());
+        port.model().write_value(Default::default());
+        port.modeh().write_value(Default::default());
+        port.ctrl().write_value(Default::default());
+        port.ovt_dis().write_value(Default::default());
     }
 
     /// Get the port id
@@ -193,7 +193,7 @@ impl From<PortId> for char {
 /// Configure GPIO peripheral registers values for individual ports
 pub(crate) mod ports {
     use crate::gpio::port::{DataInCtrl, DriveSlewRate, DriveStrength, PortId};
-    use crate::pac::gpio::PortA;
+    use crate::pac::gpio::Port;
 
     /// Get the memory mapped `PortA` reference corresponding to the given `port` parameter
     ///
@@ -201,17 +201,17 @@ pub(crate) mod ports {
     #[inline(always)]
     pub(crate) const fn get(port: PortId) -> &'static PortA {
         match port {
-            PortId::A => unsafe { (*crate::pac::Gpio::ptr()).port_a() },
-            PortId::B => unsafe { (*crate::pac::Gpio::ptr()).port_b() },
-            PortId::C => unsafe { (*crate::pac::Gpio::ptr()).port_c() },
-            PortId::D => unsafe { (*crate::pac::Gpio::ptr()).port_d() },
-            PortId::F => unsafe { (*crate::pac::Gpio::ptr()).port_f() },
+            PortId::A => unsafe { crate::pac::GPIO.port_a() },
+            PortId::B => unsafe { crate::pac::GPIO.port_b() },
+            PortId::C => unsafe { crate::pac::GPIO.port_c() },
+            PortId::D => unsafe { crate::pac::GPIO.port_d() },
+            PortId::F => unsafe { crate::pac::GPIO.port_f() },
         }
     }
 
     /// Get the Drive Strength setting of this port (not in Alternate Mode)
     pub(crate) fn drive_strength(port: PortId) -> DriveStrength {
-        match get(port).ctrl().read().drive_strength().bit() {
+        match get(port).ctrl().read().drive_strength() {
             true => DriveStrength::Weak,
             false => DriveStrength::Strong,
         }
@@ -219,7 +219,7 @@ pub(crate) mod ports {
 
     /// Get the Alternate Drive Strength setting of this port
     pub(crate) fn drive_strength_alt(port: PortId) -> DriveStrength {
-        match get(port).ctrl().read().drive_strength_alt().bit() {
+        match get(port).ctrl().read().drive_strength_alt() {
             true => DriveStrength::Weak,
             false => DriveStrength::Strong,
         }
@@ -228,66 +228,66 @@ pub(crate) mod ports {
     /// Set the Drive Strength setting of this port (not in Alternate Mode)
     pub(crate) fn set_drive_strength(port: PortId, drive_strength: DriveStrength) {
         get(port).ctrl().modify(|_, w| match drive_strength {
-            DriveStrength::Strong => w.drive_strength().clear_bit(),
-            DriveStrength::Weak => w.drive_strength().set_bit(),
+            DriveStrength::Strong => w.set_drive_strength(false),
+            DriveStrength::Weak => w.set_drive_strength(true),
         });
     }
 
     /// Set the Alternate Drive Strength setting of this port
     pub(crate) fn set_drive_strength_alt(port: PortId, drive_strength: DriveStrength) {
         get(port).ctrl().modify(|_, w| match drive_strength {
-            DriveStrength::Strong => w.drive_strength().clear_bit(),
-            DriveStrength::Weak => w.drive_strength().set_bit(),
+            DriveStrength::Strong => w.set_drive_strength(false),
+            DriveStrength::Weak => w.set_drive_strength(true),
         });
     }
 
     /// Get the Slew Rate setting of this port (not in Alternate Mode). Higher values represent faster slewrates.
     pub(crate) fn slew_rate(port: PortId) -> DriveSlewRate {
-        DriveSlewRate::from_u8_unchecked(get(port).ctrl().read().slew_rate().bits())
+        DriveSlewRate::from_u8_unchecked(get(port).ctrl().read().slew_rate())
     }
 
     /// Get the Slew Rate setting of this port. Higher values represent faster slewrates.
     pub(crate) fn slew_rate_alt(port: PortId) -> DriveSlewRate {
-        DriveSlewRate::from_u8_unchecked(get(port).ctrl().read().slew_rate_alt().bits())
+        DriveSlewRate::from_u8_unchecked(get(port).ctrl().read().slew_rate_alt())
     }
 
     /// Set the Slew Rate setting of this port (not in Alternate Mode). Higher values represent faster slewrates
     pub(crate) fn set_slew_rate(port: PortId, slew_rate: DriveSlewRate) {
         get(port)
             .ctrl()
-            .modify(|_, w| unsafe { w.slew_rate().bits(slew_rate.into()) });
+            .modify(|_, w| unsafe { w.set_slew_rate(slew_rate.into()) });
     }
 
     /// Set the Alternate Slew Rate setting of this port. Higher values represent faster slewrates.
     pub(crate) fn set_slew_rate_alt(port: PortId, slew_rate: DriveSlewRate) {
         get(port)
             .ctrl()
-            .modify(|_, w| unsafe { w.slew_rate_alt().bits(slew_rate.into()) });
+            .modify(|_, w| unsafe { w.set_slew_rate_alt(slew_rate.into()) });
     }
 
     /// Get the Data In Disable setting of this port (not in Alternate Mode)
     pub(crate) fn din_dis(port: PortId) -> bool {
-        get(port).ctrl().read().din_dis().bit_is_set()
+        get(port).ctrl().read().din_dis() == true
     }
 
     /// Get the Alternate Data In Disable setting of this port
     pub(crate) fn din_dis_alt(port: PortId) -> bool {
-        get(port).ctrl().read().din_dis_alt().bit_is_set()
+        get(port).ctrl().read().din_dis_alt() == true
     }
 
     /// Set the Data In Disable setting of this port (not in Alternate Mode)
     pub(crate) fn set_din_dis(port: PortId, din_dis: DataInCtrl) {
         get(port).ctrl().modify(|_, w| match din_dis {
-            DataInCtrl::Enabled => w.din_dis().clear_bit(),
-            DataInCtrl::Disabled => w.din_dis().set_bit(),
+            DataInCtrl::Enabled => w.set_din_dis(false),
+            DataInCtrl::Disabled => w.set_din_dis(true),
         });
     }
 
     /// Set the Alternate Data In Disable setting of this port
     pub(crate) fn set_din_dis_alt(port: PortId, din_dis: DataInCtrl) {
         get(port).ctrl().modify(|_, w| match din_dis {
-            DataInCtrl::Enabled => w.din_dis_alt().clear_bit(),
-            DataInCtrl::Disabled => w.din_dis_alt().set_bit(),
+            DataInCtrl::Enabled => w.set_din_dis_alt(false),
+            DataInCtrl::Disabled => w.set_din_dis_alt(true),
         });
     }
 }

@@ -2,7 +2,7 @@
 
 use crate::dma::descriptor::Descriptor;
 use crate::dma::{ChReqSel, ChannelId, DmaError, CHANNEL_COUNT};
-use crate::pac::Ldma;
+use crate::pac::LDMA;
 use crate::SingleCycleRMW;
 
 /// Disable "Synchronization PRS Set Enable"
@@ -21,7 +21,7 @@ pub(crate) fn sync_clear(id: ChannelId) {
 
 /// Get channel enabled
 pub(crate) fn chen(id: ChannelId) -> bool {
-    dma().chen().read().chen().bits() & (1 << id as u8) != 0
+    dma().chen().read().chen() & (1 << id as u8) != 0
 }
 
 /// Enable channel
@@ -63,7 +63,7 @@ pub(crate) fn reqclear_set(id: ChannelId) {
 }
 
 pub(crate) fn ch_busy(id: ChannelId) -> bool {
-    dma().chbusy().read().busy().bits() & (1 << id as u8) != 0
+    dma().chbusy().read().busy() & (1 << id as u8) != 0
 }
 
 pub(crate) fn ien(id: ChannelId) -> bool {
@@ -86,9 +86,9 @@ pub(crate) fn ifc_set(id: ChannelId) {
 }
 
 pub(crate) fn ch_error() -> Option<ChannelId> {
-    if dma().if_().read().error().bit_is_set() {
+    if dma().if_().read().error() == true {
         Some(ChannelId::from_u8_unchecked(
-            dma().status().read().cherror().bits(),
+            dma().status().read().cherror(),
         ))
     } else {
         None
@@ -96,30 +96,30 @@ pub(crate) fn ch_error() -> Option<ChannelId> {
 }
 
 pub(crate) fn if_error_clear() {
-    dma().ifc().write(|w| w.error().set_bit());
+    dma().ifc().write(|w| w.set_error(true));
 }
 
 pub(crate) fn swreq(id: ChannelId) {
     dma()
         .swreq()
-        .write(|w| unsafe { w.swreq().bits(1 << id as u8) });
+        .write(|w| w.set_swreq(1 << id as u8));
 }
 
 pub(crate) fn ch_loop(id: ChannelId) -> u8 {
-    dma().ch(id as usize).loop_().read().loopcnt().bits()
+    dma().ch(id as usize).loop_().read().loopcnt()
 }
 
 pub(crate) fn ch_loop_set(id: ChannelId, loop_count: u8) {
     dma()
         .ch(id as usize)
         .loop_()
-        .write(|w| unsafe { w.loopcnt().bits(loop_count) });
+        .write(|w| w.set_loopcnt(loop_count));
 }
 
 /// Set Channel Peripheral Request Select
 pub(crate) fn reqsel(id: ChannelId) -> Result<ChReqSel, DmaError> {
-    let sig = dma().ch(id as usize).reqsel().read().sigsel().bits();
-    let source = dma().ch(id as usize).reqsel().read().sourcesel().bits();
+    let sig = dma().ch(id as usize).reqsel().read().sigsel();
+    let source = dma().ch(id as usize).reqsel().read().sourcesel();
     let raw = ((sig as u16) << 6) | source as u16;
 
     raw.try_into()
@@ -133,20 +133,20 @@ pub(crate) fn set_reqsel(id: ChannelId, source: ChReqSel) {
     dma()
         .ch(id as usize)
         .reqsel()
-        .write(|w| unsafe { w.sigsel().bits(sig).sourcesel().bits(source) });
+        .write(|w| unsafe { w.set_sigsel(sig).sourcesel().bits(source) });
 }
 
 pub(crate) fn ch_link_load(id: ChannelId) {
     dma()
         .linkload()
-        .write(|w| unsafe { w.linkload().bits(1 << id as u8) });
+        .write(|w| w.set_linkload(1 << id as u8));
 }
 
 pub(crate) fn ch_req_mode_set(id: ChannelId, all: bool) {
     dma()
         .ch(id as usize)
         .ctrl()
-        .modify(|_, w| w.reqmode().bit(all));
+        .modify(|_, w| w.set_reqmode(all));
 }
 
 /// WARNING: number of words actually transfered will be `cnt + 1`
@@ -154,21 +154,21 @@ pub(crate) fn ch_xfer_cnt_set(id: ChannelId, cnt: u16) {
     dma()
         .ch(id as usize)
         .ctrl()
-        .write(|w| unsafe { w.xfercnt().bits(cnt) });
+        .write(|w| w.set_xfercnt(cnt));
 }
 
 pub(crate) fn ch_src_set(id: ChannelId, addr: u32) {
     dma()
         .ch(id as usize)
         .src()
-        .write(|w| unsafe { w.srcaddr().bits(addr) });
+        .write(|w| w.set_srcaddr(addr));
 }
 
 pub(crate) fn ch_dst_set(id: ChannelId, addr: u32) {
     dma()
         .ch(id as usize)
         .dst()
-        .write(|w| unsafe { w.dstaddr().bits(addr) });
+        .write(|w| w.set_dstaddr(addr));
 }
 
 pub(crate) fn ch_write_descriptor(id: ChannelId, descr: &Descriptor) {
@@ -192,7 +192,7 @@ pub(crate) fn ch_write_descriptor(id: ChannelId, descr: &Descriptor) {
 
 /// Iterator over all raised channel DMA done flags
 pub(crate) fn if_raised() -> impl Iterator<Item = ChannelId> {
-    let cached_flags = dma().if_().read().done().bits();
+    let cached_flags = dma().if_().read().done();
 
     (0..CHANNEL_COUNT as u8)
         .filter(move |i| ((1 << *i) & cached_flags) != 0)
@@ -200,6 +200,6 @@ pub(crate) fn if_raised() -> impl Iterator<Item = ChannelId> {
 }
 
 /// Get the DMA (pac) peripheral
-pub(crate) fn dma() -> Ldma {
-    unsafe { crate::pac::Ldma::steal() }
+pub(crate) fn dma() -> LDMA {
+    unsafe { crate::pac::LDMA::steal() }
 }

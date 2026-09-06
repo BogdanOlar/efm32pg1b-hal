@@ -4,9 +4,9 @@
 use crate::gpio::{pin::mode::OutputMode, pin::Pin};
 use cortex_m::asm::nop;
 use efm32pg1b_pac::{
-    cmu::{hfclksel::HF, hfclkstatus::SELECTED},
-    wdog0::ctrl::CLKSEL,
-    Cmu, Cryotimer, Wdog0,
+    cmu::vals::{Dbg, Hf, Hfclklepresc, Lfa, Lfb, Lfe, Selected},
+    wdog::vals::Clksel,
+    CMU, CRYOTIMER, WDOG,
 };
 
 /// Default HF RCO frequency at Reset, in Hz
@@ -30,7 +30,7 @@ pub trait CmuExt {
     fn split(self) -> Self::Parts;
 }
 
-impl CmuExt for Cmu {
+impl CmuExt for CMU {
     type Parts = Clocks;
 
     fn split(self) -> Self::Parts {
@@ -118,67 +118,62 @@ impl Clocks {
 
     /// TODO:
     pub fn with_hf_clk(self, clk_src: HfClockSource, prescaler: HfClockPrescaler) -> Self {
-        let cmu = unsafe { Cmu::steal() };
-
-        // Save the previous HF Clock source
-        // [PANIC]: the reset value of the `SELECTED` field is `0x01`, so the field value cannot evaluate to something
-        //          other than the enum
-        let prev_hf_clk = cmu.hfclkstatus().read().selected().variant().unwrap();
+        let prev_hf_clk = CMU.hfclkstatus().read().selected();
 
         let hf_src_clk_freq = match clk_src {
             HfClockSource::HfXO(freq) => {
                 // Enable HF XO
-                cmu.oscencmd().write(|w| w.hfxoen().set_bit());
+                CMU.oscencmd().write(|w| w.set_hfxoen(true));
 
                 // wait for HF XO clock to be stable
-                while cmu.status().read().hfxordy().bit_is_clear() {
+                while CMU.status().read().hfxordy() == false {
                     nop();
                 }
 
                 // select to HF XO
-                cmu.hfclksel().write(|w| w.hf().variant(HF::Hfxo));
+                CMU.hfclksel().write(|w| w.set_hf(HF::Hfxo));
 
                 freq
             }
             HfClockSource::HfRco => {
                 // Enable HF RCO
-                cmu.oscencmd().write(|w| w.hfrcoen().set_bit());
+                CMU.oscencmd().write(|w| w.set_hfrcoen(true));
 
                 // wait for HF RCO clock to be stable
-                while cmu.status().read().hfrcordy().bit_is_clear() {
+                while CMU.status().read().hfrcordy() == false {
                     nop();
                 }
 
                 // select to HF RCO
-                cmu.hfclksel().write(|w| w.hf().variant(HF::Hfrco));
+                CMU.hfclksel().write(|w| w.set_hf(HF::Hfrco));
 
                 DEFAULT_HF_RCO_FREQUENCY
             }
             HfClockSource::LfXO(freq) => {
                 // Enable LF XO
-                cmu.oscencmd().write(|w| w.lfxoen().set_bit());
+                CMU.oscencmd().write(|w| w.set_lfxoen(true));
 
                 // wait for LF XO clock to be stable
-                while cmu.status().read().lfxordy().bit_is_clear() {
+                while CMU.status().read().lfxordy() == false {
                     nop();
                 }
 
                 // select to LF XO
-                cmu.hfclksel().write(|w| w.hf().variant(HF::Lfxo));
+                CMU.hfclksel().write(|w| w.set_hf(HF::Lfxo));
 
                 freq
             }
             HfClockSource::LfRco => {
                 // Enable LF RCO
-                cmu.oscencmd().write(|w| w.lfrcoen().set_bit());
+                CMU.oscencmd().write(|w| w.set_lfrcoen(true));
 
                 // wait for LF RCO clock to be stable
-                while cmu.status().read().lfrcordy().bit_is_clear() {
+                while CMU.status().read().lfrcordy() == false {
                     nop();
                 }
 
                 // select to LF RCO
-                cmu.hfclksel().write(|w| w.hf().variant(HF::Lfrco));
+                CMU.hfclksel().write(|w| w.set_hf(HF::Lfrco));
 
                 DEFAULT_LF_RCO_FREQUENCY
             }
@@ -187,60 +182,59 @@ impl Clocks {
         // The new HF Clock source
         // [PANIC]: the reset value of the `SELECTED` field is `0x01`, so the field value cannot evaluate to something
         //          other than the enum
-        let cur_hf_clk = cmu.hfclkstatus().read().selected().variant().unwrap();
+        let cur_hf_clk = CMU.hfclkstatus().read().selected();
 
         // Disable the previously enabled HF Source Clk, if not the same as the currently enabled
         if prev_hf_clk != cur_hf_clk {
             match prev_hf_clk {
-                SELECTED::Hfrco => cmu.oscencmd().write(|w| w.hfrcodis().set_bit()),
-                SELECTED::Hfxo => cmu.oscencmd().write(|w| w.hfxodis().set_bit()),
+                Selected::Hfrco => CMU.oscencmd().write(|w| w.set_hfrcodis(true)),
+                Selected::Hfxo => CMU.oscencmd().write(|w| w.set_hfxodis(true)),
 
                 // FIXME: handle this contraint when implementing EMU
                 // See 10.5.14 CMU_OSCENCMD - Oscillator Enable/Disable Command Register
                 // WARNING: Do not disable the LFRCO if this oscillator is selected as the source for HFCLK.
                 //          When waking up from EM4 make sure EM4UNLATCH in EMU_CMD is set for this to take effect
-                SELECTED::Lfrco => cmu.oscencmd().write(|w| w.lfrcodis().set_bit()),
+                Selected::Lfrco => CMU.oscencmd().write(|w| w.set_lfrcodis(true)),
 
                 // FIXME: handle this contraint when implementing EMU
                 // See 10.5.14 CMU_OSCENCMD - Oscillator Enable/Disable Command Register
                 // WARNING: Do not disable the LFXO if this oscillator is selected as the source for HFCLK.
                 //          When waking up from EM4 make sure EM4UNLATCH in EMU_CMD is set for this to take effect
-                SELECTED::Lfxo => cmu.oscencmd().write(|w| w.lfxodis().set_bit()),
+                Selected::Lfxo => CMU.oscencmd().write(|w| w.set_lfxodis(true)),
             };
         }
 
         // set prescaler
-        cmu.hfpresc()
-            .write(|w| unsafe { w.presc().bits(prescaler as u8) });
+        CMU.hfpresc()
+            .write(|w| w.set_presc(prescaler as u8));
 
         Self::calculate_hf_clocks(hf_src_clk_freq)
     }
 
     /// TODO:
     pub fn with_dbg_clk(self, clk_src: DbgClockSource) -> Self {
-        let cmu = unsafe { Cmu::steal() };
-
+        
         let dbg_clk_freq = match clk_src {
             DbgClockSource::AuxHfRco => {
                 // check if Aux High Frequency RCO is enabled
-                if cmu.status().read().auxhfrcoens().bit_is_clear() {
+                if CMU.status().read().auxhfrcoens() == false {
                     // Enable HF RCO
-                    cmu.oscencmd().write(|w| w.auxhfrcoen().set_bit());
+                    CMU.oscencmd().write(|w| w.set_auxhfrcoen(true));
                 }
 
                 // wait for AUX HF RCO clock to be stable
-                while cmu.status().read().auxhfrcordy().bit_is_clear() {
+                while CMU.status().read().auxhfrcordy() == false {
                     nop();
                 }
 
                 // select to LF RCO
-                cmu.dbgclksel().write(|w| w.dbg().auxhfrco());
+                CMU.dbgclksel().write(|w| w.set_dbg(Dbg::Auxhfrco));
 
                 DEFAULT_AUX_HF_RCO_FREQUENCY
             }
             DbgClockSource::HfClk => {
                 // select to HF Clock as the Debug Clock
-                cmu.dbgclksel().write(|w| w.dbg().hfclk());
+                CMU.dbgclksel().write(|w| w.set_dbg(Dbg::Hfclk));
 
                 // the HF Bus Clock is the only one derived from HF Clock which dos not have a prescaler
                 self.hf_bus_clk
@@ -252,8 +246,7 @@ impl Clocks {
 
     /// TODO:
     pub fn with_lfa_clk(self, clk_src: LfClockSource) -> Self {
-        let cmu = unsafe { Cmu::steal() };
-
+        
         // The bus interface to the Low Energy A Peripherals is clocked by HFBUSCLKLE and this clock therefore needs to
         // be enabled when programming a Low Energy (LE) peripheral.
         self.enable_hf_bus_clk_le();
@@ -264,7 +257,7 @@ impl Clocks {
                 self.enable_lfxo_clock();
 
                 // select LF XO
-                cmu.lfaclksel().write(|w| w.lfa().lfxo());
+                CMU.lfaclksel().write(|w| w.set_lfa(Lfa::Lfxo));
 
                 freq
             }
@@ -273,13 +266,13 @@ impl Clocks {
                 self.enable_lfrco_clock();
 
                 // select LF RCO
-                cmu.lfaclksel().write(|w| w.lfa().lfrco());
+                CMU.lfaclksel().write(|w| w.set_lfa(Lfa::Lfrco));
 
                 DEFAULT_LF_RCO_FREQUENCY
             }
             LfClockSource::UlfRco => {
                 // select ULF RCO
-                cmu.lfaclksel().write(|w| w.lfa().ulfrco());
+                CMU.lfaclksel().write(|w| w.set_lfa(Lfa::Ulfrco));
 
                 DEFAULT_ULF_RCO_FREQUENCY
             }
@@ -293,15 +286,14 @@ impl Clocks {
 
     /// TODO:
     pub fn with_lfb_clk(self, clk_src: LfBClockSource) -> Self {
-        let cmu = unsafe { Cmu::steal() };
-
+        
         let lfb_clk_freq = match clk_src {
             LfBClockSource::LfXO(freq) => {
                 // Ensure Low Frequency XO is enabled
                 self.enable_lfxo_clock();
 
                 // select LF XO
-                cmu.lfbclksel().write(|w| w.lfb().lfxo());
+                CMU.lfbclksel().write(|w| w.set_lfb(Lfb::Lfxo));
 
                 freq
             }
@@ -310,13 +302,13 @@ impl Clocks {
                 self.enable_lfrco_clock();
 
                 // Select LF RCO
-                cmu.lfbclksel().write(|w| w.lfb().lfrco());
+                CMU.lfbclksel().write(|w| w.set_lfb(Lfb::Lfrco));
 
                 DEFAULT_LF_RCO_FREQUENCY
             }
             LfBClockSource::UlfRco => {
                 // Select ULF RCO
-                cmu.lfbclksel().write(|w| w.lfb().ulfrco());
+                CMU.lfbclksel().write(|w| w.set_lfb(Lfb::Ulfrco));
 
                 DEFAULT_ULF_RCO_FREQUENCY
             }
@@ -324,17 +316,17 @@ impl Clocks {
                 // Set High Frequency Clock LE prescaler
                 let freq = match is_div_4 {
                     true => {
-                        cmu.hfpresc().modify(|_, w| w.hfclklepresc().div4());
+                        CMU.hfpresc().modify(|_, w| w.set_hfclklepresc(Hfclklepresc::Div4));
                         self.hf_bus_clk / 4
                     }
                     false => {
-                        cmu.hfpresc().modify(|_, w| w.hfclklepresc().div2());
+                        CMU.hfpresc().modify(|_, w| w.set_hfclklepresc(Hfclklepresc::Div2));
                         self.hf_bus_clk / 2
                     }
                 };
 
                 // Select High Frequency Clock LE
-                cmu.lfbclksel().write(|w| w.lfb().hfclkle());
+                CMU.lfbclksel().write(|w| w.set_lfb(Lfb::Hfclkle));
 
                 freq
             }
@@ -352,15 +344,14 @@ impl Clocks {
 
     /// TODO:
     pub fn with_lfe_clk(self, clk_src: LfClockSource) -> Self {
-        let cmu = unsafe { Cmu::steal() };
-
+        
         let lfe_clk_freq = match clk_src {
             LfClockSource::LfXO(freq) => {
                 // Ensure Low Frequency XO is enabled
                 self.enable_lfxo_clock();
 
                 // select LF XO
-                cmu.lfeclksel().write(|w| w.lfe().lfxo());
+                CMU.lfeclksel().write(|w| w.set_lfe(Lfe::Lfxo));
 
                 freq
             }
@@ -369,13 +360,13 @@ impl Clocks {
                 self.enable_lfrco_clock();
 
                 // select LF RCO
-                cmu.lfeclksel().write(|w| w.lfe().lfrco());
+                CMU.lfeclksel().write(|w| w.set_lfe(Lfe::Lfrco));
 
                 DEFAULT_LF_RCO_FREQUENCY
             }
             LfClockSource::UlfRco => {
                 // select ULF RCO
-                cmu.lfeclksel().write(|w| w.lfe().ulfrco());
+                CMU.lfeclksel().write(|w| w.set_lfe(Lfe::Ulfrco));
 
                 DEFAULT_ULF_RCO_FREQUENCY
             }
@@ -393,15 +384,14 @@ impl Clocks {
 
     /// TODO:
     pub fn with_wdog_clk(self, clk_src: LfClockSource) -> Self {
-        let wdog = unsafe { Wdog0::steal() };
-
+        
         let wdog_clk_freq = match clk_src {
             LfClockSource::LfXO(freq) => {
                 // Ensure Low Frequency XO is enabled
                 self.enable_lfxo_clock();
 
                 // select LF XO
-                wdog.ctrl().modify(|_, w| w.clksel().variant(CLKSEL::Lfxo));
+                WDOG.ctrl().modify(|_, w| w.set_clksel(Clksel::Lfxo));
 
                 freq
             }
@@ -410,14 +400,14 @@ impl Clocks {
                 self.enable_lfrco_clock();
 
                 // select LF RCO
-                wdog.ctrl().modify(|_, w| w.clksel().variant(CLKSEL::Lfrco));
+                WDOG.ctrl().modify(|_, w| w.set_clksel(Clksel::Lfrco));
 
                 DEFAULT_LF_RCO_FREQUENCY
             }
             LfClockSource::UlfRco => {
                 // select ULF RCO
-                wdog.ctrl()
-                    .modify(|_, w| w.clksel().variant(CLKSEL::Ulfrco));
+                WDOG.ctrl()
+                    .modify(|_, w| w.set_clksel(Clksel::Ulfrco));
 
                 DEFAULT_ULF_RCO_FREQUENCY
             }
@@ -431,15 +421,14 @@ impl Clocks {
 
     /// TODO:
     pub fn with_cryo_clk(self, clk_src: LfClockSource) -> Self {
-        let cryo_timer = unsafe { Cryotimer::steal() };
-
+        
         let cryo_clk_freq = match clk_src {
             LfClockSource::LfXO(freq) => {
                 // Ensure Low Frequency XO is enabled
                 self.enable_lfxo_clock();
 
                 // select LF XO
-                cryo_timer.ctrl().modify(|_, w| w.oscsel().lfxo());
+                CRYOTIMER.ctrl().modify(|_, w| w.set_oscsel(Lfa::Lfxo));
 
                 freq
             }
@@ -448,13 +437,13 @@ impl Clocks {
                 self.enable_lfrco_clock();
 
                 // select LF RCO
-                cryo_timer.ctrl().modify(|_, w| w.oscsel().lfrco());
+                CRYOTIMER.ctrl().modify(|_, w| w.oscsel().lfrco());
 
                 DEFAULT_LF_RCO_FREQUENCY
             }
             LfClockSource::UlfRco => {
                 // select ULF RCO
-                cryo_timer.ctrl().modify(|_, w| w.oscsel().ulfrco());
+                CRYOTIMER.ctrl().modify(|_, w| w.oscsel().ulfrco());
 
                 DEFAULT_ULF_RCO_FREQUENCY
             }
@@ -467,22 +456,21 @@ impl Clocks {
     }
 
     fn calculate_hf_clocks(hf_src_clk: u32) -> Self {
-        let cmu = unsafe { Cmu::steal() };
-
+        
         //  clock divider for the HFPERCLK (relative to HFCLK).
-        let hf_clk_prescaler: u32 = cmu.hfpresc().read().presc().bits().into();
+        let hf_clk_prescaler: u32 = CMU.hfpresc().read().presc().into();
         let hf_clk_prescaler = hf_clk_prescaler + 1;
         let hf_clk = hf_src_clk / hf_clk_prescaler;
 
-        let hf_per_clk_prescaler: u32 = cmu.hfperpresc().read().presc().bits().into();
+        let hf_per_clk_prescaler: u32 = CMU.hfperpresc().read().presc().into();
         let hf_per_clk_prescaler = hf_per_clk_prescaler + 1;
         let hf_per_clk = hf_clk / hf_per_clk_prescaler;
 
-        let hf_core_clk_prescaler: u32 = cmu.hfcorepresc().read().presc().bits().into();
+        let hf_core_clk_prescaler: u32 = CMU.hfcorepresc().read().presc().into();
         let hf_core_clk_prescaler = hf_core_clk_prescaler + 1;
         let hf_core_clk = hf_clk / hf_core_clk_prescaler;
 
-        let hf_exp_clk_prescaler: u32 = cmu.hfexppresc().read().presc().bits().into();
+        let hf_exp_clk_prescaler: u32 = CMU.hfexppresc().read().presc().into();
         let hf_exp_clk_prescaler = hf_exp_clk_prescaler + 1;
         let hf_exp_clk = hf_clk / hf_exp_clk_prescaler;
 
@@ -503,36 +491,33 @@ impl Clocks {
 
     /// Set to enable the clock for LE. Interface used for bus access to Low Energy peripherals.
     fn enable_hf_bus_clk_le(&self) {
-        let cmu = unsafe { Cmu::steal() };
-
+        
         // Enable High Frequency Clock LE
-        cmu.hfbusclken0().modify(|_, w| w.le().set_bit());
+        CMU.hfbusclken0().modify(|_, w| w.set_le(true));
     }
 
     /// Enable Low Frequency XO
     fn enable_lfxo_clock(&self) {
-        let cmu = unsafe { Cmu::steal() };
-        // Ensure Low Frequency XO is enabled
-        if cmu.status().read().lfxoens().bit_is_clear() {
-            cmu.oscencmd().write(|w| w.lfxoen().set_bit());
+                // Ensure Low Frequency XO is enabled
+        if CMU.status().read().lfxoens() == false {
+            CMU.oscencmd().write(|w| w.set_lfxoen(true));
         }
 
         // wait for LF XO clock to be stable
-        while cmu.status().read().lfxordy().bit_is_clear() {
+        while CMU.status().read().lfxordy() == false {
             nop();
         }
     }
 
     /// Enable Low Frequency RCO
     fn enable_lfrco_clock(&self) {
-        let cmu = unsafe { Cmu::steal() };
-        // Ensure Low Frequency RCO is enabled
-        if cmu.status().read().lfrcoens().bit_is_clear() {
-            cmu.oscencmd().write(|w| w.lfrcoen().set_bit());
+                // Ensure Low Frequency RCO is enabled
+        if CMU.status().read().lfrcoens() == false {
+            CMU.oscencmd().write(|w| w.set_lfrcoen(true));
         }
 
         // wait for LF RCO clock to be stable
-        while cmu.status().read().lfrcordy().bit_is_clear() {
+        while CMU.status().read().lfrcordy() == false {
             nop();
         }
     }

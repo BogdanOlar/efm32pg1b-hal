@@ -68,8 +68,8 @@ where
     /// Example
     ///
     /// ```rust,no_run
-    ///     let p = pac::Peripherals::take().unwrap();
-    ///     let mut gpio = Gpio::new(p.gpio);
+    ///     let p = ::take().unwrap();
+    ///     let mut gpio = GPIO::new(p.gpio);
     ///
     ///     // create an input pin with filter
     ///     let mut btn0 = gpio.pf6.into_mode::<InFilt>();
@@ -120,8 +120,8 @@ where
     /// Example:
     ///
     /// ```rust,no_run
-    ///     let p = pac::Peripherals::take().unwrap();
-    ///     let mut gpio = Gpio::new(p.gpio);
+    ///     let p = ::take().unwrap();
+    ///     let mut gpio = GPIO::new(p.gpio);
     ///
     ///     // temporarily convert pin A0 from Disabled (default) to an input pin with PULL-UP enabled
     ///     let state_result = gpio.pa0.with_mode::<InPu, _>(|pin| pin.is_high());
@@ -861,22 +861,22 @@ pub(crate) mod pins {
     /// Get the Data Out for a given `pin` in `port`
     #[inline(always)]
     pub(crate) fn dout(port: PortId, pin: PinId) -> bool {
-        (ports::get(port).dout().read().pins_dout().bits() & (1u16 << pin as u8)) != 0
+        (ports::get(port).dout().read().pins_dout() & (1u16 << pin as u8)) != 0
     }
 
     /// Set the Data Out for a given `pin` in `port`
     #[inline(always)]
     pub(crate) fn set_dout(port: PortId, pin: PinId, dout: bool) {
         ports::get(port).dout().modify(|r, w| match dout {
-            true => unsafe { w.pins_dout().bits(r.bits() as u16 | (1u16 << pin as u8)) },
-            false => unsafe { w.pins_dout().bits(r.bits() as u16 & !(1u16 << pin as u8)) },
+            true => unsafe { w.set_pins_dout(r.bits() as u16 | (1u16 << pin as u8)) },
+            false => unsafe { w.set_pins_dout(r.bits() as u16 & !(1u16 << pin as u8)) },
         });
     }
 
     /// Get the Data In for a given pin `pin` in `port`
     #[inline(always)]
     pub(crate) fn din(port: PortId, pin: PinId) -> bool {
-        ports::get(port).din().read().pins_din().bits() & (1u16 << pin as u8) != 0
+        ports::get(port).din().read().pins_din() & (1u16 << pin as u8) != 0
     }
 
     /// Return `true` if Over Voltage Tolerance is enabled for a given `pin` in `port`
@@ -885,7 +885,7 @@ pub(crate) mod pins {
     #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn ovt(port: PortId, pin: PinId) -> bool {
-        ports::get(port).ovt_dis().read().pins_ovt_dis().bits() & (1u16 << pin as u8) == 0
+        ports::get(port).ovt_dis().read().pins_ovt_dis() & (1u16 << pin as u8) == 0
     }
 
     /// Set the Over Voltage Tolerance for a given `pin` in `port`

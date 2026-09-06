@@ -8,7 +8,7 @@ use crate::gpio::{
     OutPp,
 };
 use crate::{
-    pac::{interrupt, Cmu, Interrupt, NVIC},
+    pac::{interrupt, CMU, Interrupt},
     timer_le::mmio::{self, Command, InterruptFlag},
 };
 use core::{
@@ -72,8 +72,7 @@ impl Ticker {
         }
 
         // Enable LE Timer
-        let cmu = unsafe { Cmu::steal() };
-        cmu.lfaclken0().modify(|_, w| w.letimer0().set_bit());
+                CMU.lfaclken0().modify(|_, w| w.set_letimer0(true));
 
         mmio::reset();
         mmio::comp1_set(0);
@@ -82,10 +81,10 @@ impl Ticker {
 
         #[cfg(feature = "efemb-timdrv-letim0-dbg-pins")]
         {
-            use crate::gpio::Gpio;
+            use crate::gpio::GPIO;
 
-            let p = unsafe { crate::pac::Peripherals::steal() };
-            let gpio = Gpio::new(p.gpio);
+            let p = unsafe { crate::::steal() };
+            let gpio = GPIO::new(p.gpio);
 
             let pins = DbgPins {
                 sched: gpio.pa0.into_mode::<OutPp>().into_erased_pin(),
@@ -100,7 +99,7 @@ impl Ticker {
 
         // Enable the timer interrupt
         unsafe {
-            NVIC::unmask(Interrupt::LETIMER0);
+            cortex_m::peripheral::NVIC::unmask(Interrupt::LETIMER0);
         }
 
         // start the timer

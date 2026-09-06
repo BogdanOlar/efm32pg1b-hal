@@ -66,7 +66,7 @@
 //! Unfortunatelly, since the closure in the example above will be constrained to a function pointer, it cannot capture
 //! any variables from its environment.
 //!
-//! Since this module provides a way for the user to run their code on specific external interrupts, both Gpio
+//! Since this module provides a way for the user to run their code on specific external interrupts, both GPIO
 //! interrupt vectors are implemented here, so you don't have to worry about EVEN or ODD external interrupts.
 //!
 
@@ -430,7 +430,7 @@ pub mod mmio {
             pin::PinId,
             port::PortId,
         },
-        pac::Gpio,
+        pac::GPIO,
     };
 
     const SEL_GROUP_SIZE: u8 = 4;
@@ -492,29 +492,29 @@ pub mod mmio {
     pub fn exti_enable(exti: ExtiId) {
         gpio()
             .ien()
-            .modify(|r, w| unsafe { w.ext().bits(r.ext().bits() | 1 << exti as u8) });
+            .modify(|r, w| unsafe { w.set_ext(r.ext().bits() | 1 << exti as u8) });
     }
 
     /// Check if external interrupt is enabled
     pub fn exti_is_enabled(exti: ExtiId) -> bool {
-        gpio().ien().read().ext().bits() & 1 << exti as u8 != 0
+        gpio().ien().read().ext() & 1 << exti as u8 != 0
     }
 
     /// Disable given external interrupt
     pub fn exti_disable(exti: ExtiId) {
         gpio()
             .ien()
-            .modify(|r, w| unsafe { w.ext().bits(r.ext().bits() & !(1 << exti as u8)) });
+            .modify(|r, w| unsafe { w.set_ext(r.ext().bits() & !(1 << exti as u8)) });
     }
 
     /// Checl if the interrupt flag is raised for the given external interrupt
     pub fn exti_get(exti: ExtiId) -> bool {
-        (gpio().if_().read().ext().bits() & (1 << (exti as u8))) != 0
+        (gpio().if_().read().ext() & (1 << (exti as u8))) != 0
     }
 
     /// Iterator over all raised EVEN external interrupt flags
     pub(crate) fn exti_flags_even() -> impl Iterator<Item = ExtiId> {
-        let exti_cached_flags = gpio().if_().read().ext().bits();
+        let exti_cached_flags = gpio().if_().read().ext();
 
         (ExtiId::Exti0 as u8..=ExtiId::Exti14 as u8)
             .step_by(2)
@@ -524,7 +524,7 @@ pub mod mmio {
 
     /// Iterator over all raised ODD external interrupt flags
     pub(crate) fn exti_flags_odd() -> impl Iterator<Item = ExtiId> {
-        let exti_cached_flags = gpio().if_().read().ext().bits();
+        let exti_cached_flags = gpio().if_().read().ext();
 
         (ExtiId::Exti1 as u8..=ExtiId::Exti15 as u8)
             .step_by(2)
@@ -536,7 +536,7 @@ pub mod mmio {
     pub fn exti_clear(exti: ExtiId) {
         gpio()
             .ifc()
-            .write(|w| unsafe { w.ext().bits(1 << (exti as u8)) });
+            .write(|w| unsafe { w.set_ext(1 << (exti as u8)) });
     }
 
     /// Select the edge which triggers the external interrupt
@@ -605,7 +605,7 @@ pub mod mmio {
     pub fn exti_enable_em4wu(exti: ExtiId) {
         gpio()
             .ien()
-            .modify(|_, w| unsafe { w.em4wu().bits(1 << exti as u8) });
+            .modify(|_, w| w.set_em4wu(1 << exti as u8));
     }
 
     /// Check if given Pin can be bound to given Exti
@@ -620,7 +620,7 @@ pub mod mmio {
     }
 
     #[inline(always)]
-    fn gpio() -> Gpio {
-        unsafe { crate::pac::Gpio::steal() }
+    fn gpio() -> GPIO {
+        unsafe { crate::pac::GPIO::steal() }
     }
 }

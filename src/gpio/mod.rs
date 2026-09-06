@@ -1,19 +1,19 @@
 //! General Purpose Input / Output
 //!
-//! # Initialize HAL Gpio
+//! # Initialize HAL GPIO
 //!
 //! ```rust,no_run
 //! // Acquire the PAC peripherals
-//! let p = pac::Peripherals::take().unwrap();
+//! let p = ::take().unwrap();
 //!
-//! // Initialize HAL Gpio
-//! let mut gpio = Gpio::new(p.gpio);
+//! // Initialize HAL GPIO
+//! let mut gpio = GPIO::new(p.gpio);
 //! ```
 //!
-//! The initialized Gpio instance contains all available pins for the selected HW package.
+//! The initialized GPIO instance contains all available pins for the selected HW package.
 //! Additional pins may be enabled with the `qfn32` or `qfn48` feature flags, depending on your controller's form factor
 //!
-//! All pins are in the [`Disabled`] mode by default, with the exception of the `Gpio::debug_pins` which can only be
+//! All pins are in the [`Disabled`] mode by default, with the exception of the `GPIO::debug_pins` which can only be
 //! modified if the `use_debug_pins` feature flag is enabled (see [`debug`] module for more info and examples).
 //!
 //! ```rust,no_run
@@ -39,7 +39,7 @@
 //! gpio.port_f.set_din_dis_alt(DataInCtrl::Disabled);
 //! ```
 //!
-//! # Use HAL Gpio
+//! # Use HAL GPIO
 //!
 //! [embedded-hal](https://github.com/rust-embedded/embedded-hal) version `1.0` defines traits with failible pin
 //! operations. The return type is explicitly specified in the examples below just to help the understanding.
@@ -58,7 +58,7 @@
 //! # Modes
 //!
 //! Each GPIO pin can be configured with [`Pin::into_mode`] method, where the possible pin modes are listed below.
-//! The same modes are also available when using the [`Pin::with_mode`] method of each Gpio pin.
+//! The same modes are also available when using the [`Pin::with_mode`] method of each GPIO pin.
 //!
 //! | Mode                      | Description                                                 |
 //! |---------------------------|-------------------------------------------------------------|
@@ -127,9 +127,9 @@ pub mod exti;
 pub mod pin;
 pub mod port;
 
-/// Gpio ports and their pins
+/// GPIO ports and their pins
 #[derive(Debug)]
-pub struct Gpio {
+pub struct GPIO {
     /// Port `A` configs for the entire port
     pub port_a: Port<'A'>,
     /// Port `B` configs for the entire port
@@ -247,12 +247,12 @@ pub struct Gpio {
     pub exti15ctrl: ExtiCtrl<15>,
 
     /// GPIO PAC peripheral
-    gpio_p: crate::pac::Gpio,
+    gpio_p: crate::pac::GPIO,
 }
 
-impl Gpio {
-    /// Create the Gpio HAL driver consuming the PAC peripheral
-    pub fn new(gpio_p: crate::pac::Gpio) -> Self {
+impl GPIO {
+    /// Create the GPIO HAL driver consuming the PAC peripheral
+    pub fn new(gpio_p: crate::pac::GPIO) -> Self {
         let mut gpio = Self {
             port_a: Port::new(),
             port_b: Port::new(),
@@ -338,46 +338,46 @@ impl Gpio {
         self.port_d.reset();
         self.port_f.reset();
 
-        self.gpio_p.em4wuen().reset();
-        self.gpio_p.extifall().reset();
-        self.gpio_p.extilevel().reset();
-        self.gpio_p.extipinselh().reset();
-        self.gpio_p.extipinsell().reset();
-        self.gpio_p.extipselh().reset();
-        self.gpio_p.extipsell().reset();
-        self.gpio_p.ien().reset();
-        self.gpio_p.ifc().reset();
-        self.gpio_p.ifs().reset();
-        self.gpio_p.insense().reset();
-        self.gpio_p.lock().reset();
-        self.gpio_p.routeloc0().reset();
-        self.gpio_p.routepen().reset();
+        self.gpio_p.em4wuen().write_value(Default::default());
+        self.gpio_p.extifall().write_value(Default::default());
+        self.gpio_p.extilevel().write_value(Default::default());
+        self.gpio_p.extipinselh().write_value(Default::default());
+        self.gpio_p.extipinsell().write_value(Default::default());
+        self.gpio_p.extipselh().write_value(Default::default());
+        self.gpio_p.extipsell().write_value(Default::default());
+        self.gpio_p.ien().write_value(Default::default());
+        self.gpio_p.ifc().write_value(Default::default());
+        self.gpio_p.ifs().write_value(Default::default());
+        self.gpio_p.insense().write_value(Default::default());
+        self.gpio_p.lock().write_value(Default::default());
+        self.gpio_p.routeloc0().write_value(Default::default());
+        self.gpio_p.routepen().write_value(Default::default());
     }
 
     /// Enable clock for GPIO peripheral
     fn enable_clock(&mut self) {
-        let cmu = unsafe { crate::pac::Cmu::steal() };
+        let cmu = unsafe { crate::pac::CMU::steal() };
 
         // Enable GPIO clock
-        cmu.hfbusclken0().modify(|_, w| w.gpio().set_bit());
+        cmu.hfbusclken0().modify(|_, w| w.set_gpio(true));
     }
 
     /// Disable clock for GPIO peripheral
     fn disable_clock(&mut self) {
-        let cmu = unsafe { crate::pac::Cmu::steal() };
+        let cmu = unsafe { crate::pac::CMU::steal() };
 
         // Disable GPIO clock
-        cmu.hfbusclken0().modify(|_, w| w.gpio().clear_bit());
+        cmu.hfbusclken0().modify(|_, w| w.set_gpio(false));
     }
 }
 
 /// Check if the GPIO peripheral's clock is enabled
 pub(crate) fn is_enabled() -> bool {
-    let cmu = unsafe { crate::pac::Cmu::steal() };
-    cmu.hfbusclken0().read().gpio().bit_is_set()
+    let cmu = unsafe { crate::pac::CMU::steal() };
+    cmu.hfbusclken0().read().gpio() == true
 }
 
-/// Gpio module errors
+/// GPIO module errors
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum GpioError {

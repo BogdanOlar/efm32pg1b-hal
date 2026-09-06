@@ -4,8 +4,8 @@
 //! flag is enabled.
 //!
 //! ```rust,no_run
-//! let p = pac::Peripherals::take().unwrap();
-//! let mut gpio = Gpio::new(p.gpio);
+//! let p = ::take().unwrap();
+//! let mut gpio = GPIO::new(p.gpio);
 //!
 //! // Be aware that converting the Debug pins into GPIO pins may fail
 //! // (e.g. if the debugger is attached), so calling `unwrap()`
@@ -60,13 +60,13 @@ impl DebugPinsEnabled {
         _tdi: Pin<'F', 2, Disabled>,
         _tdo: Pin<'F', 3, Disabled>,
     ) -> Self {
-        let gpio = unsafe { crate::pac::Gpio::steal() };
+        let gpio = unsafe { crate::pac::GPIO::steal() };
 
         // Make sure Data In Disable is clear for port `F`
         ports::set_din_dis(PortId::F, DataInCtrl::Enabled);
 
         // By default, the debug pins are enabled, so we can just reset the GPIO_ROUTEPEN register to its default value
-        gpio.routepen().reset();
+        gpio.routepen().write_value(Default::default());
 
         Self::new()
     }
@@ -107,7 +107,7 @@ impl TryFrom<DebugPinsEnabled> for DebugPinsDisabled {
     type Error = GpioError;
 
     fn try_from(_pins: DebugPinsEnabled) -> Result<Self, Self::Error> {
-        let gpio = unsafe { crate::pac::Gpio::steal() };
+        let gpio = unsafe { crate::pac::GPIO::steal() };
 
         // Try to disable debug pins function
         gpio.routepen().write(|w| {
@@ -133,13 +133,13 @@ impl TryFrom<DebugPinsEnabled> for DebugPinsDisabled {
 
 /// Check if debug pins are enabled (pf0, pf1, pf2, pf3)
 pub fn debug_pins_enabled() -> bool {
-    let gpio = unsafe { crate::pac::Gpio::steal() };
+    let gpio = unsafe { crate::pac::GPIO::steal() };
 
-    gpio.routepen().read().swclktckpen().bit_is_set()
-        || gpio.routepen().read().swdiotmspen().bit_is_set()
-        || gpio.routepen().read().swvpen().bit_is_set()
-        || gpio.routepen().read().tdipen().bit_is_set()
-        || gpio.routepen().read().tdopen().bit_is_set()
+    gpio.routepen().read().swclktckpen() == true
+        || gpio.routepen().read().swdiotmspen() == true
+        || gpio.routepen().read().swvpen() == true
+        || gpio.routepen().read().tdipen() == true
+        || gpio.routepen().read().tdopen() == true
 }
 
 crate::gpio::pin::impl_fmt_debug!(DbgPin, "DbgPin");

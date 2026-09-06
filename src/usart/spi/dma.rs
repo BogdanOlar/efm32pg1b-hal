@@ -274,8 +274,8 @@ impl SpiDma {
     /// the USART peripheral [`UsartId`]. Returns `(tx_source, rx_source)`.
     pub(crate) const fn dma_sources(id: UsartId) -> (ChReqSel, ChReqSel) {
         match id {
-            UsartId::Usart0 => (ChReqSel::Usart0TxBl, ChReqSel::Usart0RxDataAvl),
-            UsartId::Usart1 => (ChReqSel::Usart1TxBl, ChReqSel::Usart1RxDataAvl),
+            UsartId::USART0 => (ChReqSel::Usart0TxBl, ChReqSel::Usart0RxDataAvl),
+            UsartId::USART1 => (ChReqSel::Usart1TxBl, ChReqSel::Usart1RxDataAvl),
         }
     }
 }

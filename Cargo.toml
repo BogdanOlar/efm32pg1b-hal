@@ -21,8 +21,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 members = ["testsuite"]
 
 [dependencies]
-efm32pg1b-pac = { version = "0.4.4", features = ["critical-section", "rt", "atomics", "defmt"] }
-# efm32pg1b-pac = { path = "../efm32pg1b-pac/", features = ["critical-section", "rt", "atomics", "defmt"] }
+# efm32pg1b-pac = { version = "0.4.4", features = ["critical-section", "rt", "atomics", "defmt"] }
+efm32pg1b-pac = { path = "../efm32pg1b-pac/", features = ["critical-section", "rt", "atomics", "defmt", "efm32pg1b"] }
 embedded-hal = { version = "1.0" }
 embedded-hal-async = { version="1.0", optional = true }
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }

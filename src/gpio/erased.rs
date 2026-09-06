@@ -6,8 +6,8 @@
 //! flexibility in applications.
 //!
 //! ```rust,no_run
-//! let p = pac::Peripherals::take().unwrap();
-//! let mut gpio = Gpio::new(p.gpio);
+//! let p = ::take().unwrap();
+//! let mut gpio = GPIO::new(p.gpio);
 //!
 //! let pb11 = gpio.pb11.into_erased_pin().into_mode::<InPu>();
 //! let pb12 = gpio.pb12.into_erased_pin().into_mode::<InPu>();

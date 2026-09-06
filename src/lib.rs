@@ -38,7 +38,7 @@ pub mod prelude {
                 OutOdPuFiltAlt, OutOs, OutOsPd, OutPp, OutPpAlt,
             },
             port::{DataInCtrl, DriveStrength},
-            Gpio, GpioError,
+            GPIO, GpioError,
         },
         usart::spi::{BitOrder, Config, Spi, SpiError, SpiPins},
     };
@@ -77,10 +77,7 @@ trait SingleCycleRMW {
     fn sc_clear(&self, mask: u32);
 }
 
-impl<R> SingleCycleRMW for crate::pac::generic::Reg<R>
-where
-    R: crate::pac::generic::RegisterSpec,
-{
+impl<T: Copy, A: crate::pac::common::Access> SingleCycleRMW for crate::pac::common::Reg<T, A> {
     fn sc_set(&self, mask: u32) {
         let addr = Self::BIT_SET_BASE_ADDR + (self.as_ptr().addr() - Self::PERIPHERALS_BASE_ADDR);
         unsafe { (addr as *mut u32).write_volatile(mask) };

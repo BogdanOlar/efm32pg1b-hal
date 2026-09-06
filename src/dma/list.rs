@@ -330,7 +330,7 @@ pub(crate) fn reduced(
             crate::dma::mmio::dma()
                 .ch(dma_ch_id as usize)
                 .loop_()
-                .write(|w| unsafe { w.loopcnt().bits((loop_count - 1) as u8) });
+                .write(|w| unsafe { w.set_loopcnt((loop_count - 1) as u8) });
 
             desc_list.push_linked(
                 LoopTransferDescriptor::new(

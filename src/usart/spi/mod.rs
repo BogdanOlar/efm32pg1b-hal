@@ -77,11 +77,11 @@ impl Spi {
 
         usart_p.ctrl().write(|w| {
             // Set USART to Synchronous Mode
-            w.sync().set_bit();
+            w.set_sync(true);
             // Most significant bit first (the exact bit order is re-applied from `config` below)
-            w.msbf().set_bit();
+            w.set_msbf(true);
             // Disable auto TX
-            w.autotx().clear_bit()
+            w.set_autotx(false)
         });
 
         usart_p.frame().write(|w| {
@@ -94,13 +94,13 @@ impl Spi {
         });
 
         // Master enable
-        usart_p.cmd().write(|w| w.masteren().set_bit());
+        usart_p.cmd().write(|w| w.set_masteren(true));
 
         usart_p.ctrl().modify(|_, w| {
             // Auto CS: a `SpiBus` implementation must not control CS pin
-            w.autocs().clear_bit();
+            w.set_autocs(false);
             // No CS invert
-            w.csinv().clear_bit()
+            w.set_csinv(false)
         });
 
         usart_p.timing().modify(|_, w| {
@@ -110,22 +110,22 @@ impl Spi {
 
         // Set IO pin routing for Usart
         usart_p.routeloc0().modify(|_, w| unsafe {
-            w.clkloc().bits(pins.clk_loc);
-            w.txloc().bits(pins.tx_loc);
-            w.rxloc().bits(pins.rx_loc)
+            w.set_clkloc(pins.clk_loc);
+            w.set_txloc(pins.tx_loc);
+            w.set_rxloc(pins.rx_loc)
         });
 
         // Enable IO pins for Usart
         usart_p.routepen().modify(|_, w| {
-            w.clkpen().set_bit();
-            w.txpen().set_bit();
-            w.rxpen().set_bit()
+            w.set_clkpen(true);
+            w.set_txpen(true);
+            w.set_rxpen(true)
         });
 
         // Enable Usart
         usart_p.cmd().write(|w| {
-            w.rxen().set_bit();
-            w.txen().set_bit()
+            w.set_rxen(true);
+            w.set_txen(true)
         });
 
         // Apply the SPI operating configuration (mode, bit order, loopback, sample delay,
@@ -154,8 +154,8 @@ impl Spi {
     pub fn set_loopback(&mut self, enabled: bool) {
         let usart_p = mmio::usartx(self.id);
         usart_p.ctrl().modify(|_, w| match enabled {
-            true => w.loopbk().set_bit(),
-            false => w.loopbk().clear_bit(),
+            true => w.set_loopbk(true),
+            false => w.set_loopbk(false),
         });
     }
 
@@ -174,7 +174,7 @@ impl Spi {
         // field value is CLKDIV/8 and 256 = 2^8 -> shift by 8 - 3 = 5).
         let clk_div = divider << 5;
 
-        usart_p.clkdiv().write(|w| unsafe { w.div().bits(clk_div) });
+        usart_p.clkdiv().write(|w| w.set_div(clk_div));
     }
 
     /// Set the SPI mode
@@ -201,8 +201,8 @@ impl Spi {
     pub fn set_bit_order(&mut self, bit_order: BitOrder) {
         let usart_p = mmio::usartx(self.id);
         usart_p.ctrl().modify(|_, w| match bit_order {
-            BitOrder::LsbFirst => w.msbf().clear_bit(),
-            BitOrder::MsbFirst => w.msbf().set_bit(),
+            BitOrder::LsbFirst => w.set_msbf(false),
+            BitOrder::MsbFirst => w.set_msbf(true),
         });
     }
 
@@ -214,8 +214,8 @@ impl Spi {
     pub fn set_sms_delay(&mut self, enabled: bool) {
         let usart_p = mmio::usartx(self.id);
         usart_p.ctrl().modify(|_, w| match enabled {
-            true => w.smsdelay().set_bit(),
-            false => w.smsdelay().clear_bit(),
+            true => w.set_smsdelay(true),
+            false => w.set_smsdelay(false),
         });
     }
 
@@ -242,36 +242,36 @@ impl Spi {
 
         // Use CMD first
         usart_p.cmd().write(|w| {
-            w.rxdis().set_bit();
-            w.txdis().set_bit();
-            w.masterdis().set_bit();
-            w.rxblockdis().set_bit();
-            w.txtridis().set_bit();
-            w.cleartx().set_bit();
-            w.clearrx().set_bit()
+            w.set_rxdis(true);
+            w.set_txdis(true);
+            w.set_masterdis(true);
+            w.set_rxblockdis(true);
+            w.set_txtridis(true);
+            w.set_cleartx(true);
+            w.set_clearrx(true)
         });
 
-        usart_p.ctrl().reset();
-        usart_p.frame().reset();
-        usart_p.trigctrl().reset();
-        usart_p.clkdiv().reset();
-        usart_p.ien().reset();
+        usart_p.ctrl().write_value(Default::default());
+        usart_p.frame().write_value(Default::default());
+        usart_p.trigctrl().write_value(Default::default());
+        usart_p.clkdiv().write_value(Default::default());
+        usart_p.ien().write_value(Default::default());
 
         // All flags for the IFC register fields
         const IFC_MASK: u32 = 0x0001FFF9;
         usart_p.ifc().write(|w| unsafe { w.bits(IFC_MASK) });
 
-        usart_p.timing().reset();
-        usart_p.routepen().reset();
-        usart_p.routeloc0().reset();
-        usart_p.routeloc1().reset();
-        usart_p.input().reset();
+        usart_p.timing().write_value(Default::default());
+        usart_p.routepen().write_value(Default::default());
+        usart_p.routeloc0().write_value(Default::default());
+        usart_p.routeloc1().write_value(Default::default());
+        usart_p.input().write_value(Default::default());
 
         match self.id {
             // Only USART0 has IrDA
-            UsartId::Usart0 => usart_p.irctrl().reset(),
+            UsartId::USART0 => usart_p.irctrl().write_value(Default::default()),
             // Only USART1 has I2S
-            UsartId::Usart1 => usart_p.i2sctrl().reset(),
+            UsartId::USART1 => usart_p.i2sctrl().write_value(Default::default()),
         }
     }
 
@@ -281,7 +281,7 @@ impl Spi {
         let mut bail_countdown = MAX_COUNT;
         let usart_p = mmio::usartx(self.id);
 
-        while usart_p.status().read().txc().bit_is_clear() {
+        while usart_p.status().read().txc() == false {
             bail_countdown -= 1;
 
             if bail_countdown == 0 {
@@ -567,7 +567,7 @@ impl SpiBus<u8> for Spi {
             let mut bail_countdown = MAX_COUNT;
 
             // Wait until there are at least 2 available bytes (out of 3) in the TX buffer.
-            while usart_p.status().read().txbufcnt().bits() > 1 {
+            while usart_p.status().read().txbufcnt() > 1 {
                 bail_countdown -= 1;
 
                 if bail_countdown == 0 {
@@ -583,12 +583,12 @@ impl SpiBus<u8> for Spi {
             if let Some(b1) = words_iter.next() {
                 // We have 2 bytes to send, use the `txdouble` register
                 usart_p.txdouble().write(|w| unsafe {
-                    w.txdata0().bits(*b0);
-                    w.txdata1().bits(*b1)
+                    w.set_txdata0(*b0);
+                    w.set_txdata1(*b1)
                 });
             } else {
                 // We have only 1 byte left to send, use the `txdata` register
-                usart_p.txdata().write(|w| unsafe { w.txdata().bits(*b0) });
+                usart_p.txdata().write(|w| w.set_txdata(*b0));
             }
         }
 
@@ -615,11 +615,11 @@ impl SpiBus<u8> for Spi {
 
             usart_p
                 .txdata()
-                .write(|w| unsafe { w.txdata().bits(tx_byte) });
+                .write(|w| w.set_txdata(tx_byte));
 
             self.wait_tx_complete()?;
 
-            *rx_byte = usart_p.rxdata().read().rxdata().bits();
+            *rx_byte = usart_p.rxdata().read().rxdata();
         }
 
         Ok(())
@@ -633,21 +633,21 @@ impl SpiBus<u8> for Spi {
             if let Some(b1) = words_iter.next() {
                 // We have 2 bytes to send, use the `txdouble` register
                 usart_p.txdouble().write(|w| unsafe {
-                    w.txdata0().bits(*b0);
-                    w.txdata1().bits(*b1)
+                    w.set_txdata0(*b0);
+                    w.set_txdata1(*b1)
                 });
 
                 self.wait_tx_complete()?;
 
-                *b0 = usart_p.rxdouble().read().rxdata0().bits();
-                *b1 = usart_p.rxdouble().read().rxdata1().bits();
+                *b0 = usart_p.rxdouble().read().rxdata0();
+                *b1 = usart_p.rxdouble().read().rxdata1();
             } else {
                 // We have only 1 byte left to send, use the `txdata` register
-                usart_p.txdata().write(|w| unsafe { w.txdata().bits(*b0) });
+                usart_p.txdata().write(|w| w.set_txdata(*b0));
 
                 self.wait_tx_complete()?;
 
-                *b0 = usart_p.rxdata().read().rxdata().bits();
+                *b0 = usart_p.rxdata().read().rxdata();
             }
         }
 
@@ -669,7 +669,7 @@ impl SpiBus<u8> for Spi {
 /// ```text
 ///     the trait `efm32pg1b_hal::spi::UsartClkPin` is not implemented for
 ///     `efm32pg1b_hal::gpio::Pin<'D', 8, efm32pg1b_hal::gpio::Input>`, which is required by
-///     `efm32pg1b_hal::usart::spi::Spi::new<efm32pg1b_hal::efm32pg1b_pac::Usart1, _, _, _>`
+///     `efm32pg1b_hal::usart::spi::Spi::new<efm32pg1b_hal::efm32pg1b_pac::USART1, _, _, _>`
 /// ```
 ///
 /// then it's probably the case that you're trying to use a Pin as an SPI Clock pin when that pin is not available
@@ -741,7 +741,7 @@ impl_clock_loc!(31, 'A', 1);
 /// ```text
 ///     the trait `efm32pg1b_hal::spi::UsartTxPin` is not implemented for
 ///     `efm32pg1b_hal::gpio::Pin<'D', 8, efm32pg1b_hal::gpio::Input>`, which is required by
-///     `efm32pg1b_hal::usart::spi::Spi::new<efm32pg1b_hal::efm32pg1b_pac::Usart1, _, _, _>`
+///     `efm32pg1b_hal::usart::spi::Spi::new<efm32pg1b_hal::efm32pg1b_pac::USART1, _, _, _>`
 /// ```
 ///
 /// then it's probably the case that you're trying to use a Pin as an SPI Tx pin when that pin is not available
@@ -813,7 +813,7 @@ impl_tx_loc!(31, 'F', 7);
 /// ```sh
 ///     the trait `efm32pg1b_hal::spi::UsartRxPin` is not implemented for
 ///     `efm32pg1b_hal::gpio::Pin<'D', 8, efm32pg1b_hal::gpio::Input>`, which is required by
-///     `efm32pg1b_hal::usart::spi::Spi::new<efm32pg1b_hal::efm32pg1b_pac::Usart1, _, _, _>`
+///     `efm32pg1b_hal::usart::spi::Spi::new<efm32pg1b_hal::efm32pg1b_pac::USART1, _, _, _>`
 /// ```
 ///
 /// then it's probably the case that you're trying to use a Pin as an SPI Rx pin when that pin is not available
