@@ -20,10 +20,10 @@ mod tests {
         cmu::{CmuExt, LfClockSource},
         crc::{algos::CRC_32_CKSUM, Crc, CrcDriver},
         dma::{descriptor::Descriptor, Dma},
-        gpio::{Gpio, InFilt, OutPp},
-        pac::Peripherals,
+        gpio::{InFilt, OutPp, GPIO},
         timer_le::efemb::Ticker,
         usart::spi::{dma::SpiDma, Config, SpiPins},
+        usart::UsartId,
     };
     use embedded_hal::spi::MODE_2;
 
@@ -83,21 +83,21 @@ mod tests {
 
     #[init]
     fn init() -> (SpiDma, Crc<u32>) {
-        let p = Peripherals::take().unwrap();
-
         // Configure the clocks required by the embassy time driver. LfAClk must be enabled (here the
         // LFRCO at 32.768 kHz, matching the `efemb-timdrv-letim0-hz-32_768` feature) and the HfClk must
         // come from an HF source so that LeTimer0's `Ticker::init()` doesn't fault. See the warning in
         // [`Ticker::init`].
-        let _clocks = p.cmu.split().with_lfa_clk(LfClockSource::LfRco);
+        let _clocks = efm32pg1b_hal::pac::CMU
+            .split()
+            .with_lfa_clk(LfClockSource::LfRco);
         Ticker::init();
 
-        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
-        let gpio = Gpio::new(p.gpio);
-        let dma = Dma::init(p.ldma);
+        let crc = CrcDriver::new(efm32pg1b_hal::pac::GPCRC).into_algo_32(&CRC_32_CKSUM);
+        let gpio = GPIO::new(efm32pg1b_hal::pac::GPIO);
+        let dma = Dma::init(efm32pg1b_hal::pac::LDMA);
         let spi = efm32pg1b_hal::usart::spi::Spi::new(
             SpiPins::new(
-                p.usart0,
+                UsartId::USART0,
                 gpio.pc8.into_mode::<OutPp>(),
                 gpio.pc6.into_mode::<OutPp>(),
                 gpio.pc7.into_mode::<InFilt>(),

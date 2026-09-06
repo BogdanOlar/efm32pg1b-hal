@@ -14,9 +14,9 @@ mod tests {
         crc::{algos::CRC_32_CKSUM, Crc, CrcDriver},
         dma::descriptor::Descriptor,
         dma::Dma,
-        gpio::{Gpio, InFilt, OutPp},
-        pac::Peripherals,
+        gpio::{GPIO, InFilt, OutPp},
         usart::spi::{BitOrder, Config, Spi, SpiPins},
+        usart::UsartId,
     };
     use embedded_hal::spi::{MODE_0, MODE_2};
 
@@ -45,19 +45,18 @@ mod tests {
 
     #[init]
     fn init() -> (Spi, Crc<u32>, Dma) {
-        let p = Peripherals::take().unwrap();
-        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
-        let gpio = Gpio::new(p.gpio);
+        let crc = CrcDriver::new(efm32pg1b_hal::pac::GPCRC).into_algo_32(&CRC_32_CKSUM);
+        let gpio = GPIO::new(efm32pg1b_hal::pac::GPIO);
         let spi = Spi::new(
             SpiPins::new(
-                p.usart0,
+                UsartId::USART0,
                 gpio.pc8.into_mode::<OutPp>(),
                 gpio.pc6.into_mode::<OutPp>(),
                 gpio.pc7.into_mode::<InFilt>(),
             ),
             &Config::new(MODE_2, 1).with_loopback(true),
         );
-        let dma = Dma::init(p.ldma);
+        let dma = Dma::init(efm32pg1b_hal::pac::LDMA);
         (spi, crc, dma)
     }
 

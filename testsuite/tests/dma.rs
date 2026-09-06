@@ -13,7 +13,6 @@ mod tests {
         crc::{algos::CRC_32_CKSUM, Crc, CrcDriver},
         dma::descriptor::Descriptor,
         dma::Dma,
-        pac::Peripherals,
     };
 
     /// The size of RAM is 32K. The destination buffer and the descriptor list (stored in the tail of `dst`)
@@ -423,9 +422,8 @@ mod tests {
 
     #[init]
     fn init() -> (Crc<u32>, Dma) {
-        let p = Peripherals::take().unwrap();
-        let crc = CrcDriver::new(p.gpcrc).into_algo_32(&CRC_32_CKSUM);
-        let dma = Dma::init(p.ldma);
+        let crc = CrcDriver::new(efm32pg1b_hal::pac::GPCRC).into_algo_32(&CRC_32_CKSUM);
+        let dma = Dma::init(efm32pg1b_hal::pac::LDMA);
         (crc, dma)
     }
 }

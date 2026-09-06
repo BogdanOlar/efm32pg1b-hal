@@ -38,20 +38,24 @@
 pub mod algos;
 pub mod mmio;
 
-use crate::pac::GPCRC;
+use crate::pac::gpcrc::Gpcrc;
 
 /// Cyclic Redundancy Check driver
-#[derive(Debug)]
 pub struct CrcDriver {
-    p: GPCRC,
+    p: Gpcrc,
+}
+
+impl core::fmt::Debug for CrcDriver {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.debug_struct("CrcDriver").finish_non_exhaustive()
+    }
 }
 
 impl CrcDriver {
     /// Create the CRC driver
-    pub fn new(p: GPCRC) -> Self {
+    pub fn new(p: Gpcrc) -> Self {
         // Enable CRC clock
-        let cmu = unsafe { crate::pac::CMU::steal() };
-        cmu.hfbusclken0().modify(|_, w| w.set_gpcrc(true));
+        crate::pac::CMU.hfbusclken0().modify(|w| w.set_gpcrc(true));
 
         Self { p }
     }
@@ -85,10 +89,9 @@ impl CrcDriver {
     }
 
     /// Destroy the CRC driver and release the GPCRC peripheral
-    pub fn release(self) -> GPCRC {
+    pub fn release(self) -> Gpcrc {
         // Disable CRC clock
-        let cmu = unsafe { crate::pac::CMU::steal() };
-        cmu.hfbusclken0().modify(|_, w| w.set_gpcrc(false));
+        crate::pac::CMU.hfbusclken0().modify(|w| w.set_gpcrc(false));
 
         self.p
     }

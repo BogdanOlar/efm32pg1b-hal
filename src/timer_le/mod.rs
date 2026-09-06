@@ -12,7 +12,7 @@ pub mod efemb;
 
 use crate::{
     gpio::pin::Pin,
-    pac::{letimer0::ctrl::UFOA0, CMU, LETIMER},
+    pac::{letimer::vals::{Out0loc, Ufoa0}, CMU},
 };
 use core::marker::PhantomData;
 use cortex_m::asm::nop;
@@ -26,7 +26,7 @@ pub trait LeTimerExt {
     fn into_timer(self) -> Self::Timer;
 }
 
-impl LeTimerExt for LETIMER {
+impl LeTimerExt for efm32pg1b_pac::letimer::Letimer {
     type Timer = LeTimer;
     fn into_timer(self) -> Self::Timer {
         Self::Timer::new()
@@ -40,7 +40,7 @@ impl LeTimer {
     fn new() -> Self {
         
         // Enable LE Timer
-        CMU.lfaclken0().modify(|_, w| w.set_letimer0(true));
+        CMU.lfaclken0().modify(|w| w.set_letimer0(true));
 
         // Sync
         while CMU.syncbusy().read().lfaclken0() == true {
@@ -63,10 +63,10 @@ impl LeTimer {
         le_timer.routepen().write(|w| w.set_out0pen(true));
         le_timer
             .routeloc0()
-            .write(|w| unsafe { w.set_out0loc(pin.loc()) });
+            .write(|w| w.set_out0loc(Out0loc::from_bits(pin.loc())));
         le_timer.ctrl().write(|w| {
             w.set_comp0top(true);
-            w.set_ufoa0(UFOA0::Pwm)
+            w.set_ufoa0(Ufoa0::Pwm)
         });
 
         // start timer
@@ -85,7 +85,7 @@ impl LeTimer {
 
 mod mmio {
     use cortex_m::asm::nop;
-    use efm32pg1b_pac::{letimer0::Timer, LETIMER};
+    use efm32pg1b_pac::{letimer::Letimer as Timer, LETIMER};
 
     /// Reset the timer peripheral
     ///
@@ -94,7 +94,13 @@ mod mmio {
         let p = timer_le();
         p.ctrl().write_value(Default::default());
         p.ien().write_value(Default::default());
-        p.ifc().write(|w| unsafe { w.bits(0x1F) });
+        p.ifc().write(|w| {
+            w.set_comp0(true);
+            w.set_comp1(true);
+            w.set_uf(true);
+            w.set_rep0(true);
+            w.set_rep1(true);
+        });
     }
 
     /// Is the timer currently running
@@ -150,26 +156,41 @@ mod mmio {
 
     /// Get the state of the given interrupt flag
     pub(crate) fn if_get(flag: InterruptFlag) -> bool {
-        (timer_le().if_().read().bits() & (1 << flag as u8)) != 0
+        let r = timer_le().if_().read();
+        match flag {
+            InterruptFlag::Comp0 => r.comp0(),
+            InterruptFlag::Comp1 => r.comp1(),
+            InterruptFlag::Underflow => r.uf(),
+            InterruptFlag::Rep0 => r.rep0(),
+            InterruptFlag::Rep1 => r.rep1(),
+        }
     }
 
     /// Set the given interrupt flag
     pub(crate) fn if_set(flag: InterruptFlag) {
-        timer_le()
-            .ifs()
-            .write(|w| unsafe { w.bits(1 << flag as u8) });
+        timer_le().ifs().write(|w| match flag {
+            InterruptFlag::Comp0 => w.set_comp0(true),
+            InterruptFlag::Comp1 => w.set_comp1(true),
+            InterruptFlag::Underflow => w.set_uf(true),
+            InterruptFlag::Rep0 => w.set_rep0(true),
+            InterruptFlag::Rep1 => w.set_rep1(true),
+        });
     }
 
     /// Clear the given interrupt flag
     pub(crate) fn if_clear(flag: InterruptFlag) {
-        timer_le()
-            .ifc()
-            .write(|w| unsafe { w.bits(1 << flag as u8) });
+        timer_le().ifc().write(|w| match flag {
+            InterruptFlag::Comp0 => w.set_comp0(true),
+            InterruptFlag::Comp1 => w.set_comp1(true),
+            InterruptFlag::Underflow => w.set_uf(true),
+            InterruptFlag::Rep0 => w.set_rep0(true),
+            InterruptFlag::Rep1 => w.set_rep1(true),
+        });
     }
 
     /// Enable the given interrupt flag
     pub(crate) fn ienable(flag: InterruptFlag) {
-        timer_le().ien().modify(|_, w| match flag {
+        timer_le().ien().modify(|w| match flag {
             InterruptFlag::Comp0 => w.set_comp0(true),
             InterruptFlag::Comp1 => w.set_comp1(true),
             InterruptFlag::Underflow => w.set_uf(true),
@@ -179,7 +200,7 @@ mod mmio {
     }
 
     pub(crate) fn idisable(flag: InterruptFlag) {
-        timer_le().ien().modify(|_, w| match flag {
+        timer_le().ien().modify(|w| match flag {
             InterruptFlag::Comp0 => w.set_comp0(false),
             InterruptFlag::Comp1 => w.set_comp1(false),
             InterruptFlag::Underflow => w.set_uf(false),
@@ -231,7 +252,6 @@ mod mmio {
                     }
                 }
             }
-            w
         });
 
         // Block until the timer commands have been applied
@@ -241,7 +261,7 @@ mod mmio {
     }
 
     /// Get a reference to the Low Energy Timer register block
-    pub(crate) const fn timer_le() -> &'static Timer {
+    pub(crate) const fn timer_le() -> Timer {
         LETIMER
     }
 }

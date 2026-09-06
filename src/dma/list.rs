@@ -327,10 +327,9 @@ pub(crate) fn reduced(
 
         if loop_count > 0 {
             // Write DMA channel loop count
-            crate::dma::mmio::dma()
-                .ch(dma_ch_id as usize)
+            crate::dma::mmio::ch(dma_ch_id)
                 .loop_()
-                .write(|w| unsafe { w.set_loopcnt((loop_count - 1) as u8) });
+                .write(|w| w.set_loopcnt((loop_count - 1) as u8));
 
             desc_list.push_linked(
                 LoopTransferDescriptor::new(
@@ -428,8 +427,7 @@ pub(crate) fn extended(
     if loop_count > 0 {
         desc_list.push_linked(ImmediateDescriptor::new(
             (loop_count - 1) as u32,
-            crate::dma::mmio::dma()
-                .ch(dma_ch_id as usize)
+            crate::dma::mmio::ch(dma_ch_id)
                 .loop_()
                 .as_ptr()
                 .addr(),

@@ -3,9 +3,13 @@
 
 use crate::{cmu::Clocks, gpio::pin::Pin};
 use core::{convert::Infallible, marker::PhantomData};
-pub use efm32pg1b_pac::timer::ctrl::PRESC as TimerDivider;
+pub use efm32pg1b_pac::timer::vals::Presc as TimerDivider;
 use efm32pg1b_pac::{
-    timer0::{cc0_ctrl, cc1_ctrl, cc2_ctrl, cc3_ctrl, ctrl, Timer},
+    timer::vals::{
+        Cc0CtrlCmoa, Cc0CtrlIcedge, Cc0CtrlMode, Cc0loc, Cc1CtrlCmoa, Cc1CtrlIcedge, Cc1CtrlMode,
+        Cc1loc, Cc2CtrlCmoa, Cc2CtrlIcedge, Cc2CtrlMode, Cc2loc, Cc3CtrlCmoa, Cc3CtrlIcedge,
+        Cc3CtrlMode, Cc3loc, CtrlMode,
+    },
     CMU, TIMER0, TIMER1,
 };
 use embedded_hal::{
@@ -15,29 +19,31 @@ use embedded_hal::{
 };
 
 /// Extension trait for Timer PAC peripherals
-pub trait TimerExt {
-    /// Timer type
-    type Timer;
+///
+/// Because the chiptool-generated PAC exposes `TIMER0` and `TIMER1` as `pub const` instances of the
+/// same `efm32pg1b_pac::timer::Timer` type, this trait is parameterised by the const generic `TN`:
+/// `TimerExt<0>` is implemented for the `TIMER0` instance and `TimerExt<1>` for `TIMER1`. The
+/// desired timer number must be disambiguated at the call site, e.g. via a return type annotation
+/// such as `let t: Timer<0> = pac::TIMER0.into_timer(div);`.
+pub trait TimerExt<const TN: u8> {
     /// Convert PAC peripheral to HAL Timer struct
-    fn into_timer(self, clock_divider: TimerDivider) -> Self::Timer;
+    fn into_timer(self, clock_divider: TimerDivider) -> crate::timer::Timer<TN>;
 }
 
-impl TimerExt for TIMER0 {
-    type Timer = Timer<0>;
-    fn into_timer(self, clock_divider: TimerDivider) -> Self::Timer {
-        Self::Timer::new(clock_divider)
+impl TimerExt<0> for efm32pg1b_pac::timer::Timer {
+    fn into_timer(self, clock_divider: TimerDivider) -> crate::timer::Timer<0> {
+        crate::timer::Timer::<0>::new(clock_divider)
     }
 }
 
-impl TimerExt for TIMER1 {
-    type Timer = Timer<1>;
-    fn into_timer(self, clock_divider: TimerDivider) -> Self::Timer {
-        Self::Timer::new(clock_divider)
+impl TimerExt<1> for efm32pg1b_pac::timer::Timer {
+    fn into_timer(self, clock_divider: TimerDivider) -> crate::timer::Timer<1> {
+        crate::timer::Timer::<1>::new(clock_divider)
     }
 }
 
-/// Get a reference to one of the two timers register block, specified by `TN` (either `TIMER0`, or `TIMER1`)
-const fn timerx<const TN: u8>() -> &'static Timer {
+/// Get the register block of one of the two timers, specified by `TN` (either `TIMER0`, or `TIMER1`)
+const fn timerx<const TN: u8>() -> efm32pg1b_pac::timer::Timer {
     match TN {
         0 => TIMER0,
         1 => TIMER1,
@@ -57,10 +63,8 @@ impl<const TN: u8> Timer<TN> {
         let timer = timerx::<TN>();
 
         timer.ctrl().write(|w| {
-            w.presc()
-                .variant(clock_divider)
-                .mode()
-                .variant(ctrl::MODE::Up)
+            w.set_presc(clock_divider);
+            w.set_mode(CtrlMode::Up);
         });
 
         // Set the resolution of the counter to MAX - 1 because if the timer is going to be split into channels and
@@ -82,16 +86,8 @@ impl<const TN: u8> Timer<TN> {
     ) {
         // enable Timer<TN> peripheral clock
         match TN {
-            0 => unsafe {
-                CMU::steal()
-                    .hfperclken0()
-                    .modify(|_, w| w.set_timer0(true));
-            },
-            1 => unsafe {
-                CMU::steal()
-                    .hfperclken0()
-                    .modify(|_, w| w.set_timer1(true));
-            },
+            0 => CMU.hfperclken0().modify(|w| w.set_timer0(true)),
+            1 => CMU.hfperclken0().modify(|w| w.set_timer1(true)),
             _ => unreachable!(),
         }
 
@@ -125,46 +121,46 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
             0 => {
                 timer
                     .routeloc0()
-                    .write(|w| unsafe { w.set_cc0loc(pin.loc()) });
+                    .write(|w| w.set_cc0loc(Cc0loc::from_bits(pin.loc())));
                 timer.cc0_ctrl().write(|w| {
-                    w.set_icedge(cc0_ctrl::ICEDGE::Both);
-                    w.set_cmoa(cc0_ctrl::CMOA::Toggle);
-                    w.set_mode(cc0_ctrl::MODE::Pwm)
+                    w.set_icedge(Cc0CtrlIcedge::Both);
+                    w.set_cmoa(Cc0CtrlCmoa::Toggle);
+                    w.set_mode(Cc0CtrlMode::Pwm)
                 });
-                timer.routepen().modify(|_, w| w.set_cc0pen(true));
+                timer.routepen().modify(|w| w.set_cc0pen(true));
             }
             1 => {
                 timer
                     .routeloc0()
-                    .write(|w| unsafe { w.set_cc1loc(pin.loc()) });
+                    .write(|w| w.set_cc1loc(Cc1loc::from_bits(pin.loc())));
                 timer.cc1_ctrl().write(|w| {
-                    w.set_icedge(cc1_ctrl::ICEDGE::Both);
-                    w.set_cmoa(cc1_ctrl::CMOA::Toggle);
-                    w.set_mode(cc1_ctrl::MODE::Pwm)
+                    w.set_icedge(Cc1CtrlIcedge::Both);
+                    w.set_cmoa(Cc1CtrlCmoa::Toggle);
+                    w.set_mode(Cc1CtrlMode::Pwm)
                 });
-                timer.routepen().modify(|_, w| w.set_cc1pen(true));
+                timer.routepen().modify(|w| w.set_cc1pen(true));
             }
             2 => {
                 timer
                     .routeloc0()
-                    .write(|w| unsafe { w.set_cc2loc(pin.loc()) });
+                    .write(|w| w.set_cc2loc(Cc2loc::from_bits(pin.loc())));
                 timer.cc2_ctrl().write(|w| {
-                    w.set_icedge(cc2_ctrl::ICEDGE::Both);
-                    w.set_cmoa(cc2_ctrl::CMOA::Toggle);
-                    w.set_mode(cc2_ctrl::MODE::Pwm)
+                    w.set_icedge(Cc2CtrlIcedge::Both);
+                    w.set_cmoa(Cc2CtrlCmoa::Toggle);
+                    w.set_mode(Cc2CtrlMode::Pwm)
                 });
-                timer.routepen().modify(|_, w| w.set_cc2pen(true));
+                timer.routepen().modify(|w| w.set_cc2pen(true));
             }
             3 => {
                 timer
                     .routeloc0()
-                    .write(|w| unsafe { w.set_cc3loc(pin.loc()) });
+                    .write(|w| w.set_cc3loc(Cc3loc::from_bits(pin.loc())));
                 timer.cc3_ctrl().write(|w| {
-                    w.set_icedge(cc3_ctrl::ICEDGE::Both);
-                    w.set_cmoa(cc3_ctrl::CMOA::Toggle);
-                    w.set_mode(cc3_ctrl::MODE::Pwm)
+                    w.set_icedge(Cc3CtrlIcedge::Both);
+                    w.set_cmoa(Cc3CtrlCmoa::Toggle);
+                    w.set_mode(Cc3CtrlMode::Pwm)
                 });
-                timer.routepen().modify(|_, w| w.set_cc3pen(true));
+                timer.routepen().modify(|w| w.set_cc3pen(true));
             }
             _ => unreachable!(),
         }
@@ -177,22 +173,22 @@ impl<const TN: u8, const CN: u8> TimerChannel<TN, CN> {
     /// Convert timer to a Delay
     pub fn into_delay(self, clocks: &Clocks) -> TimerChannelDelay<TN, CN> {
         let timer = timerx::<TN>();
-        let timer_div: u8 = timer.ctrl().read().presc().into();
+        let timer_div: u8 = timer.ctrl().read().presc().to_bits();
         let timer_freq = clocks.hf_per_clk() / (timer_div + 1) as u32;
 
         match CN {
             0 => timer
                 .cc0_ctrl()
-                .write(|w| w.set_mode(cc0_ctrl::MODE::Outputcompare)),
+                .write(|w| w.set_mode(Cc0CtrlMode::Outputcompare)),
             1 => timer
                 .cc1_ctrl()
-                .write(|w| w.set_mode(cc1_ctrl::MODE::Outputcompare)),
+                .write(|w| w.set_mode(Cc1CtrlMode::Outputcompare)),
             2 => timer
                 .cc2_ctrl()
-                .write(|w| w.set_mode(cc2_ctrl::MODE::Outputcompare)),
+                .write(|w| w.set_mode(Cc2CtrlMode::Outputcompare)),
             3 => timer
                 .cc3_ctrl()
-                .write(|w| w.set_mode(cc3_ctrl::MODE::Outputcompare)),
+                .write(|w| w.set_mode(Cc3CtrlMode::Outputcompare)),
             _ => unreachable!(),
         };
 
@@ -287,10 +283,10 @@ impl<const TN: u8, const CN: u8> DelayNs for TimerChannelDelay<TN, CN> {
                 compare = (reference_count + reload) % reload_max;
 
                 match CN {
-                    0 => while timer.ifl().read().cc0() == false {},
-                    1 => while timer.ifl().read().cc1() == false {},
-                    2 => while timer.ifl().read().cc2() == false {},
-                    3 => while timer.ifl().read().cc3() == false {},
+                    0 => while timer.if_().read().cc0() == false {},
+                    1 => while timer.if_().read().cc1() == false {},
+                    2 => while timer.if_().read().cc2() == false {},
+                    3 => while timer.if_().read().cc3() == false {},
                     _ => unreachable!(),
                 }
             }

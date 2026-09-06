@@ -72,7 +72,7 @@ impl Ticker {
         }
 
         // Enable LE Timer
-                CMU.lfaclken0().modify(|_, w| w.set_letimer0(true));
+        CMU.lfaclken0().modify(|w| w.set_letimer0(true));
 
         mmio::reset();
         mmio::comp1_set(0);
@@ -83,8 +83,7 @@ impl Ticker {
         {
             use crate::gpio::GPIO;
 
-            let p = unsafe { crate::::steal() };
-            let gpio = GPIO::new(p.gpio);
+            let gpio = GPIO::new(crate::pac::GPIO);
 
             let pins = DbgPins {
                 sched: gpio.pa0.into_mode::<OutPp>().into_erased_pin(),

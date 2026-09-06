@@ -7,9 +7,12 @@ pub mod spi;
 /// Identifies which USART peripheral a driver instance is bound to.
 ///
 /// `Spi` is a specialisation of the USART peripheral, so this runtime identifier lives at the
-/// `usart` module level: each PAC USART type maps to one [`UsartId`] via [`UsartIndex::index`],
-/// and the drivers store a `UsartId` (rather than a raw `u8`) to make the peripheral selection
-/// self-documenting and exhaustive at every `match`.
+/// `usart` module level. Drivers such as [`spi::Spi`](crate::usart::spi::Spi) store a `UsartId`
+/// (rather than a raw `u8`) to make the peripheral selection self-documenting and exhaustive at
+/// every `match`. Callers pass the `UsartId` explicitly when constructing the driver (e.g. via
+/// [`spi::SpiPins::new`](crate::usart::spi::SpiPins::new)), since the chiptool-generated PAC exposes
+/// `USART0` and `USART1` as `pub const` instances of the same `efm32pg1b_pac::usart::Usart` type
+/// and therefore cannot distinguish them by type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
@@ -22,13 +25,13 @@ pub enum UsartId {
 
 /// Helper module for accessing USART register blocks
 pub(crate) mod mmio {
-    use crate::pac::{usart0::Timer, USART0, USART1};
+    use crate::pac::{usart::Usart as Timer, USART0, USART1};
     use crate::usart::UsartId;
 
-    /// Get a reference to the `Timer` of either `USART0` or `USART1`
+    /// Get the `Usart` register block of either `USART0` or `USART1`
     ///
-    /// `id` selects which USART peripheral, as returned by [`UsartIndex::index`](super::UsartIndex::index).
-    pub(crate) const fn usartx(id: UsartId) -> &'static Timer {
+    /// `id` selects which USART peripheral.
+    pub(crate) const fn usartx(id: UsartId) -> Timer {
         match id {
             UsartId::USART0 => USART0,
             UsartId::USART1 => USART1,
@@ -37,10 +40,9 @@ pub(crate) mod mmio {
 
     /// Enable the clock for a USART peripheral
     ///
-    /// `id` selects which USART peripheral, as returned by [`UsartIndex::index`](super::UsartIndex::index).
+    /// `id` selects which USART peripheral.
     pub(crate) fn cmu_usart_enable(id: UsartId) {
-        let cmu = unsafe { crate::pac::CMU::steal() };
-        cmu.hfperclken0().modify(|_, w| match id {
+        crate::pac::CMU.hfperclken0().modify(|w| match id {
             UsartId::USART0 => w.set_usart0(true),
             UsartId::USART1 => w.set_usart1(true),
         });
@@ -48,7 +50,7 @@ pub(crate) mod mmio {
 
     /// Reset a USART peripheral's registers
     ///
-    /// `id` selects which USART peripheral, as returned by [`UsartIndex::index`](super::UsartIndex::index).
+    /// `id` selects which USART peripheral.
     pub(crate) fn reset(id: UsartId) {
         let usart_p = usartx(id);
 
@@ -86,27 +88,5 @@ pub(crate) mod mmio {
         usart_p.txdatax().write_value(Default::default());
         usart_p.txdouble().write_value(Default::default());
         usart_p.txdoublex().write_value(Default::default());
-    }
-}
-
-/// Marker trait to link a USART peripheral type to its runtime [`UsartId`].
-///
-/// The [`UsartIndex::index`] associated function returns the [`UsartId`] used to route register
-/// accesses at runtime, allowing drivers such as [`spi::Spi`](crate::usart::spi::Spi) to be
-/// non-generic over the peripheral.
-pub trait UsartIndex {
-    /// Runtime [`UsartId`] of this USART peripheral.
-    fn index() -> UsartId;
-}
-
-impl UsartIndex for crate::pac::USART0 {
-    fn index() -> UsartId {
-        UsartId::USART0
-    }
-}
-
-impl UsartIndex for crate::pac::USART1 {
-    fn index() -> UsartId {
-        UsartId::USART1
     }
 }

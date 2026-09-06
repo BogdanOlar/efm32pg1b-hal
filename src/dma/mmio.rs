@@ -2,7 +2,7 @@
 
 use crate::dma::descriptor::Descriptor;
 use crate::dma::{ChReqSel, ChannelId, DmaError, CHANNEL_COUNT};
-use crate::pac::LDMA;
+use crate::pac::ldma::Ldma;
 use crate::SingleCycleRMW;
 
 /// Disable "Synchronization PRS Set Enable"
@@ -35,7 +35,7 @@ pub(crate) fn chen_clear(id: ChannelId) {
 }
 
 pub(crate) fn ch_done(id: ChannelId) -> bool {
-    dma().chdone().read().bits() & (1 << id as u8) != 0
+    dma().chdone().read().chdone() & (1 << id as u8) != 0
 }
 
 pub(crate) fn ch_done_set(id: ChannelId) {
@@ -67,7 +67,7 @@ pub(crate) fn ch_busy(id: ChannelId) -> bool {
 }
 
 pub(crate) fn ien(id: ChannelId) -> bool {
-    (dma().ien().read().bits() & (1 << id as u8)) != 0
+    (dma().ien().read().done() & (1 << id as u8)) != 0
 }
 
 /// Set IEN flag for channel (single-cycle read-modify-write)
@@ -106,21 +106,20 @@ pub(crate) fn swreq(id: ChannelId) {
 }
 
 pub(crate) fn ch_loop(id: ChannelId) -> u8 {
-    dma().ch(id as usize).loop_().read().loopcnt()
+    ch(id).loop_().read().loopcnt()
 }
 
 pub(crate) fn ch_loop_set(id: ChannelId, loop_count: u8) {
-    dma()
-        .ch(id as usize)
+    ch(id)
         .loop_()
         .write(|w| w.set_loopcnt(loop_count));
 }
 
 /// Set Channel Peripheral Request Select
 pub(crate) fn reqsel(id: ChannelId) -> Result<ChReqSel, DmaError> {
-    let sig = dma().ch(id as usize).reqsel().read().sigsel();
-    let source = dma().ch(id as usize).reqsel().read().sourcesel();
-    let raw = ((sig as u16) << 6) | source as u16;
+    let sig = ch(id).reqsel().read().sigsel();
+    let source = ch(id).reqsel().read().sourcesel();
+    let raw = ((sig as u16) << 6) | source.to_bits() as u16;
 
     raw.try_into()
 }
@@ -130,10 +129,10 @@ pub(crate) fn set_reqsel(id: ChannelId, source: ChReqSel) {
     let sig = ((source as u16) & 0b1111) as u8;
     let source = (((source as u16) >> 4) & 0b111111) as u8;
 
-    dma()
-        .ch(id as usize)
-        .reqsel()
-        .write(|w| unsafe { w.set_sigsel(sig).sourcesel().bits(source) });
+    ch(id).reqsel().write(|w| {
+        w.set_sigsel(sig);
+        w.set_sourcesel(efm32pg1b_pac::ldma::vals::Ch7ReqselSourcesel::from_bits(source));
+    });
 }
 
 pub(crate) fn ch_link_load(id: ChannelId) {
@@ -143,51 +142,37 @@ pub(crate) fn ch_link_load(id: ChannelId) {
 }
 
 pub(crate) fn ch_req_mode_set(id: ChannelId, all: bool) {
-    dma()
-        .ch(id as usize)
+    ch(id)
         .ctrl()
-        .modify(|_, w| w.set_reqmode(all));
+        .modify(|w| w.set_reqmode(all));
 }
 
 /// WARNING: number of words actually transfered will be `cnt + 1`
 pub(crate) fn ch_xfer_cnt_set(id: ChannelId, cnt: u16) {
-    dma()
-        .ch(id as usize)
-        .ctrl()
-        .write(|w| w.set_xfercnt(cnt));
+    ch(id).ctrl().write(|w| w.set_xfercnt(cnt));
 }
 
 pub(crate) fn ch_src_set(id: ChannelId, addr: u32) {
-    dma()
-        .ch(id as usize)
-        .src()
-        .write(|w| w.set_srcaddr(addr));
+    ch(id).src().write_value(addr);
 }
 
 pub(crate) fn ch_dst_set(id: ChannelId, addr: u32) {
-    dma()
-        .ch(id as usize)
-        .dst()
-        .write(|w| w.set_dstaddr(addr));
+    ch(id).dst().write_value(addr);
 }
 
 pub(crate) fn ch_write_descriptor(id: ChannelId, descr: &Descriptor) {
-    dma()
-        .ch(id as usize)
+    ch(id)
         .ctrl()
-        .write(|w| unsafe { w.bits(descr.raw[Descriptor::INDEX_CTRL]) });
-    dma()
-        .ch(id as usize)
-        .src()
-        .write(|w| unsafe { w.bits(descr.raw[Descriptor::INDEX_SRC]) });
-    dma()
-        .ch(id as usize)
-        .dst()
-        .write(|w| unsafe { w.bits(descr.raw[Descriptor::INDEX_DST]) });
-    dma()
-        .ch(id as usize)
+        .write_value(efm32pg1b_pac::ldma::regs::Ch7Ctrl(
+            descr.raw[Descriptor::INDEX_CTRL],
+        ));
+    ch(id).src().write_value(descr.raw[Descriptor::INDEX_SRC]);
+    ch(id).dst().write_value(descr.raw[Descriptor::INDEX_DST]);
+    ch(id)
         .link()
-        .write(|w| unsafe { w.bits(descr.raw[Descriptor::INDEX_LINK]) });
+        .write_value(efm32pg1b_pac::ldma::regs::Ch7Link(
+            descr.raw[Descriptor::INDEX_LINK],
+        ));
 }
 
 /// Iterator over all raised channel DMA done flags
@@ -200,6 +185,26 @@ pub(crate) fn if_raised() -> impl Iterator<Item = ChannelId> {
 }
 
 /// Get the DMA (pac) peripheral
-pub(crate) fn dma() -> LDMA {
-    unsafe { crate::pac::LDMA::steal() }
+pub(crate) fn dma() -> Ldma {
+    crate::pac::LDMA
+}
+
+/// Get the register block for a given DMA channel.
+///
+/// The chiptool-generated PAC exposes the LDMA channels as separate `ch0()`..`ch7()` accessors
+/// (they are a clustered block), so this helper maps a runtime [`ChannelId`] to the matching
+/// channel register block.
+pub(crate) fn ch(id: ChannelId) -> efm32pg1b_pac::ldma::Channel {
+    let dma = dma();
+    match id as u8 {
+        0 => dma.ch0(),
+        1 => dma.ch1(),
+        2 => dma.ch2(),
+        3 => dma.ch3(),
+        4 => dma.ch4(),
+        5 => dma.ch5(),
+        6 => dma.ch6(),
+        7 => dma.ch7(),
+        _ => unreachable!(),
+    }
 }

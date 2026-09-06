@@ -37,7 +37,7 @@ where
         port.model().write_value(Default::default());
         port.modeh().write_value(Default::default());
         port.ctrl().write_value(Default::default());
-        port.ovt_dis().write_value(Default::default());
+        port.ovtdis().write_value(Default::default());
     }
 
     /// Get the port id
@@ -195,17 +195,18 @@ pub(crate) mod ports {
     use crate::gpio::port::{DataInCtrl, DriveSlewRate, DriveStrength, PortId};
     use crate::pac::gpio::Port;
 
-    /// Get the memory mapped `PortA` reference corresponding to the given `port` parameter
+    /// Get the memory mapped `Port` corresponding to the given `port` parameter
     ///
-    /// Note: We're returning a `PortA` because all ports use the same struct (they have type aliases to this type)
+    /// Note: all ports use the same `Port` struct (the chiptool-generated PAC exposes them as a
+    /// shared clustered block), so this returns the `Port` value for the selected port.
     #[inline(always)]
-    pub(crate) const fn get(port: PortId) -> &'static PortA {
+    pub(crate) const fn get(port: PortId) -> Port {
         match port {
-            PortId::A => unsafe { crate::pac::GPIO.port_a() },
-            PortId::B => unsafe { crate::pac::GPIO.port_b() },
-            PortId::C => unsafe { crate::pac::GPIO.port_c() },
-            PortId::D => unsafe { crate::pac::GPIO.port_d() },
-            PortId::F => unsafe { crate::pac::GPIO.port_f() },
+            PortId::A => crate::pac::GPIO.port_a(),
+            PortId::B => crate::pac::GPIO.port_b(),
+            PortId::C => crate::pac::GPIO.port_c(),
+            PortId::D => crate::pac::GPIO.port_d(),
+            PortId::F => crate::pac::GPIO.port_f(),
         }
     }
 
@@ -227,7 +228,7 @@ pub(crate) mod ports {
 
     /// Set the Drive Strength setting of this port (not in Alternate Mode)
     pub(crate) fn set_drive_strength(port: PortId, drive_strength: DriveStrength) {
-        get(port).ctrl().modify(|_, w| match drive_strength {
+        get(port).ctrl().modify(|w| match drive_strength {
             DriveStrength::Strong => w.set_drive_strength(false),
             DriveStrength::Weak => w.set_drive_strength(true),
         });
@@ -235,7 +236,7 @@ pub(crate) mod ports {
 
     /// Set the Alternate Drive Strength setting of this port
     pub(crate) fn set_drive_strength_alt(port: PortId, drive_strength: DriveStrength) {
-        get(port).ctrl().modify(|_, w| match drive_strength {
+        get(port).ctrl().modify(|w| match drive_strength {
             DriveStrength::Strong => w.set_drive_strength(false),
             DriveStrength::Weak => w.set_drive_strength(true),
         });
@@ -255,14 +256,14 @@ pub(crate) mod ports {
     pub(crate) fn set_slew_rate(port: PortId, slew_rate: DriveSlewRate) {
         get(port)
             .ctrl()
-            .modify(|_, w| unsafe { w.set_slew_rate(slew_rate.into()) });
+            .modify(|w| w.set_slew_rate(slew_rate.into()));
     }
 
     /// Set the Alternate Slew Rate setting of this port. Higher values represent faster slewrates.
     pub(crate) fn set_slew_rate_alt(port: PortId, slew_rate: DriveSlewRate) {
         get(port)
             .ctrl()
-            .modify(|_, w| unsafe { w.set_slew_rate_alt(slew_rate.into()) });
+            .modify(|w| w.set_slew_rate_alt(slew_rate.into()));
     }
 
     /// Get the Data In Disable setting of this port (not in Alternate Mode)
@@ -277,7 +278,7 @@ pub(crate) mod ports {
 
     /// Set the Data In Disable setting of this port (not in Alternate Mode)
     pub(crate) fn set_din_dis(port: PortId, din_dis: DataInCtrl) {
-        get(port).ctrl().modify(|_, w| match din_dis {
+        get(port).ctrl().modify(|w| match din_dis {
             DataInCtrl::Enabled => w.set_din_dis(false),
             DataInCtrl::Disabled => w.set_din_dis(true),
         });
@@ -285,7 +286,7 @@ pub(crate) mod ports {
 
     /// Set the Alternate Data In Disable setting of this port
     pub(crate) fn set_din_dis_alt(port: PortId, din_dis: DataInCtrl) {
-        get(port).ctrl().modify(|_, w| match din_dis {
+        get(port).ctrl().modify(|w| match din_dis {
             DataInCtrl::Enabled => w.set_din_dis_alt(false),
             DataInCtrl::Disabled => w.set_din_dis_alt(true),
         });

@@ -16,7 +16,10 @@ use crate::{
         },
         port::PortId,
     },
-    usart::{mmio, spi::dma::SpiDma, UsartId, UsartIndex},
+    usart::{mmio, spi::dma::SpiDma, UsartId},
+};
+use efm32pg1b_pac::usart::vals::{
+    Clkloc, Cshold, Cssetup, Databits, Parity, Rxloc, Stopbits, Txloc,
 };
 use core::cmp::max;
 use embedded_hal::{
@@ -86,37 +89,37 @@ impl Spi {
 
         usart_p.frame().write(|w| {
             // 8 data bits
-            w.databits().eight();
+            w.set_databits(Databits::Eight);
             // 1 stop bit
-            w.stopbits().one();
+            w.set_stopbits(Stopbits::One);
             // No parity
-            w.parity().none()
+            w.set_parity(Parity::None)
         });
 
         // Master enable
         usart_p.cmd().write(|w| w.set_masteren(true));
 
-        usart_p.ctrl().modify(|_, w| {
+        usart_p.ctrl().modify(|w| {
             // Auto CS: a `SpiBus` implementation must not control CS pin
             w.set_autocs(false);
             // No CS invert
             w.set_csinv(false)
         });
 
-        usart_p.timing().modify(|_, w| {
-            w.cshold().zero();
-            w.cssetup().zero()
+        usart_p.timing().modify(|w| {
+            w.set_cshold(Cshold::Zero);
+            w.set_cssetup(Cssetup::Zero)
         });
 
         // Set IO pin routing for Usart
-        usart_p.routeloc0().modify(|_, w| unsafe {
-            w.set_clkloc(pins.clk_loc);
-            w.set_txloc(pins.tx_loc);
-            w.set_rxloc(pins.rx_loc)
+        usart_p.routeloc0().modify(|w| {
+            w.set_clkloc(Clkloc::from_bits(pins.clk_loc));
+            w.set_txloc(Txloc::from_bits(pins.tx_loc));
+            w.set_rxloc(Rxloc::from_bits(pins.rx_loc))
         });
 
         // Enable IO pins for Usart
-        usart_p.routepen().modify(|_, w| {
+        usart_p.routepen().modify(|w| {
             w.set_clkpen(true);
             w.set_txpen(true);
             w.set_rxpen(true)
@@ -153,7 +156,7 @@ impl Spi {
     /// bit order, SPI mode, auto-TX, auto-CS, ...) is preserved.
     pub fn set_loopback(&mut self, enabled: bool) {
         let usart_p = mmio::usartx(self.id);
-        usart_p.ctrl().modify(|_, w| match enabled {
+        usart_p.ctrl().modify(|w| match enabled {
             true => w.set_loopbk(true),
             false => w.set_loopbk(false),
         });
@@ -187,11 +190,9 @@ impl Spi {
     pub fn set_mode(&mut self, mode: Mode) {
         let usart_p = mmio::usartx(self.id);
 
-        usart_p.ctrl().modify(|_, w| {
-            w.clkpol()
-                .bit(mode.polarity == Polarity::IdleHigh)
-                .clkpha()
-                .bit(mode.phase == Phase::CaptureOnSecondTransition)
+        usart_p.ctrl().modify(|w| {
+            w.set_clkpol(mode.polarity == Polarity::IdleHigh);
+            w.set_clkpha(mode.phase == Phase::CaptureOnSecondTransition)
         });
     }
 
@@ -200,7 +201,7 @@ impl Spi {
     /// See [Reference Manual - 16.5.1](../../../../../doc/efm32pg1-rm.pdf#page=494).
     pub fn set_bit_order(&mut self, bit_order: BitOrder) {
         let usart_p = mmio::usartx(self.id);
-        usart_p.ctrl().modify(|_, w| match bit_order {
+        usart_p.ctrl().modify(|w| match bit_order {
             BitOrder::LsbFirst => w.set_msbf(false),
             BitOrder::MsbFirst => w.set_msbf(true),
         });
@@ -213,7 +214,7 @@ impl Spi {
     /// [Reference Manual - 16.5.1](../../../../../doc/efm32pg1-rm.pdf#page=494).
     pub fn set_sms_delay(&mut self, enabled: bool) {
         let usart_p = mmio::usartx(self.id);
-        usart_p.ctrl().modify(|_, w| match enabled {
+        usart_p.ctrl().modify(|w| match enabled {
             true => w.set_smsdelay(true),
             false => w.set_smsdelay(false),
         });
@@ -259,7 +260,9 @@ impl Spi {
 
         // All flags for the IFC register fields
         const IFC_MASK: u32 = 0x0001FFF9;
-        usart_p.ifc().write(|w| unsafe { w.bits(IFC_MASK) });
+        usart_p
+            .ifc()
+            .write_value(efm32pg1b_pac::usart::regs::Ifs(IFC_MASK));
 
         usart_p.timing().write_value(Default::default());
         usart_p.routepen().write_value(Default::default());
@@ -294,16 +297,16 @@ impl Spi {
 
 /// The USART peripheral and CLK/TX/RX pins an [`Spi`] driver is built from.
 ///
-/// `SpiPins` is constructed generically via [`SpiPins::new`], which enforces at compile time
-/// that:
-///   - `USART` is a valid USART peripheral ([`UsartIndex`]),
+/// `SpiPins` is constructed via [`SpiPins::new`], which enforces at compile time that:
 ///   - `PCLK` is a pin usable as the SPI clock output ([`UsartClkPin`]),
 ///   - `PTX` is a pin usable as the SPI MOSI/TX output ([`UsartTxPin`]),
 ///   - `PRX` is a pin usable as the SPI MISO/RX input ([`UsartRxPin`]).
 ///
-/// `SpiPins::new` resolves the [`UsartId`] and erases the pins into [`DynamicPin`]s (extracting
-/// the routing locations first), so the resulting `SpiPins` is fully non-generic. `Spi::new`
-/// takes it with no trait bounds.
+/// The USART peripheral is selected at runtime via the [`UsartId`] passed to [`SpiPins::new`]
+/// (the chiptool-generated PAC exposes `USART0`/`USART1` as `pub const` instances of the same
+/// type, so they cannot be distinguished by type). `SpiPins::new` erases the pins into
+/// [`DynamicPin`]s (extracting the routing locations first), so the resulting `SpiPins` is fully
+/// non-generic. `Spi::new` takes it with no trait bounds.
 ///
 /// `SpiPins` only carries the peripheral and pin routing; the SPI operating mode, baudrate, bit
 /// order, loopback and sample delay are all configured via the [`Config`] passed to [`Spi::new`].
@@ -321,19 +324,18 @@ pub struct SpiPins {
 impl SpiPins {
     /// Collect the USART peripheral and its CLK/TX/RX pins for an [`Spi`] driver.
     ///
-    /// The trait bounds guarantee that only pin types valid for the chosen USART are accepted,
-    /// so the returned `SpiPins` always represents a valid pin/peripheral combination. The pins
-    /// are type-erased into [`DynamicPin`]s and the [`UsartId`] is resolved here, so the returned
-    /// `SpiPins` is non-generic. SPI operating parameters (mode, baudrate, ...) are supplied
-    /// separately via [`Config`] to [`Spi::new`].
-    pub fn new<USART, PCLK, PTX, PRX>(
-        _usart: USART,
+    /// The trait bounds guarantee that only pin types valid as SPI CLK/TX/RX are accepted, so the
+    /// returned `SpiPins` always represents a valid pin combination. The pins are type-erased into
+    /// [`DynamicPin`]s and the [`UsartId`] is taken here, so the returned `SpiPins` is non-generic.
+    /// SPI operating parameters (mode, baudrate, ...) are supplied separately via [`Config`] to
+    /// [`Spi::new`].
+    pub fn new<PCLK, PTX, PRX>(
+        id: UsartId,
         pin_clk: PCLK,
         pin_tx: PTX,
         pin_rx: PRX,
     ) -> Self
     where
-        USART: UsartIndex,
         PCLK: OutputPin + UsartClkPin + PinInfo,
         PTX: OutputPin + UsartTxPin + PinInfo,
         PRX: InputPin + UsartRxPin + PinInfo,
@@ -345,7 +347,7 @@ impl SpiPins {
         let rx_loc = pin_rx.loc();
 
         Self {
-            id: USART::index(),
+            id,
             pin_clk: DynamicPin::new(pin_clk.port(), pin_clk.pin(), pin_clk.mode()),
             pin_tx: DynamicPin::new(pin_tx.port(), pin_tx.pin(), pin_tx.mode()),
             pin_rx: DynamicPin::new(pin_rx.port(), pin_rx.pin(), pin_rx.mode()),
@@ -582,7 +584,7 @@ impl SpiBus<u8> for Spi {
 
             if let Some(b1) = words_iter.next() {
                 // We have 2 bytes to send, use the `txdouble` register
-                usart_p.txdouble().write(|w| unsafe {
+                usart_p.txdouble().write(|w| {
                     w.set_txdata0(*b0);
                     w.set_txdata1(*b1)
                 });
@@ -632,7 +634,7 @@ impl SpiBus<u8> for Spi {
         while let Some(b0) = words_iter.next() {
             if let Some(b1) = words_iter.next() {
                 // We have 2 bytes to send, use the `txdouble` register
-                usart_p.txdouble().write(|w| unsafe {
+                usart_p.txdouble().write(|w| {
                     w.set_txdata0(*b0);
                     w.set_txdata1(*b1)
                 });

@@ -128,7 +128,6 @@ pub mod pin;
 pub mod port;
 
 /// GPIO ports and their pins
-#[derive(Debug)]
 pub struct GPIO {
     /// Port `A` configs for the entire port
     pub port_a: Port<'A'>,
@@ -247,12 +246,18 @@ pub struct GPIO {
     pub exti15ctrl: ExtiCtrl<15>,
 
     /// GPIO PAC peripheral
-    gpio_p: crate::pac::GPIO,
+    gpio_p: crate::pac::gpio::Gpio,
+}
+
+impl core::fmt::Debug for GPIO {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.debug_struct("GPIO").finish_non_exhaustive()
+    }
 }
 
 impl GPIO {
     /// Create the GPIO HAL driver consuming the PAC peripheral
-    pub fn new(gpio_p: crate::pac::GPIO) -> Self {
+    pub fn new(gpio_p: crate::pac::gpio::Gpio) -> Self {
         let mut gpio = Self {
             port_a: Port::new(),
             port_b: Port::new(),
@@ -356,25 +361,20 @@ impl GPIO {
 
     /// Enable clock for GPIO peripheral
     fn enable_clock(&mut self) {
-        let cmu = unsafe { crate::pac::CMU::steal() };
-
         // Enable GPIO clock
-        cmu.hfbusclken0().modify(|_, w| w.set_gpio(true));
+        crate::pac::CMU.hfbusclken0().modify(|w| w.set_gpio(true));
     }
 
     /// Disable clock for GPIO peripheral
     fn disable_clock(&mut self) {
-        let cmu = unsafe { crate::pac::CMU::steal() };
-
         // Disable GPIO clock
-        cmu.hfbusclken0().modify(|_, w| w.set_gpio(false));
+        crate::pac::CMU.hfbusclken0().modify(|w| w.set_gpio(false));
     }
 }
 
 /// Check if the GPIO peripheral's clock is enabled
 pub(crate) fn is_enabled() -> bool {
-    let cmu = unsafe { crate::pac::CMU::steal() };
-    cmu.hfbusclken0().read().gpio() == true
+    crate::pac::CMU.hfbusclken0().read().gpio() == true
 }
 
 /// GPIO module errors

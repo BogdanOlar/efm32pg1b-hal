@@ -430,7 +430,6 @@ pub mod mmio {
             pin::PinId,
             port::PortId,
         },
-        pac::GPIO,
     };
 
     const SEL_GROUP_SIZE: u8 = 4;
@@ -449,14 +448,14 @@ pub mod mmio {
 
         if exti_is_low_reg(exti) {
             gpio.extipsell()
-                .modify(|r, w| unsafe { w.bits((r.bits() & !port_mask) | port_reg_val) });
+                .modify(|w| w.0 = (w.0 & !port_mask) | port_reg_val);
             gpio.extipinsell()
-                .modify(|r, w| unsafe { w.bits((r.bits() & !pin_mask) | pin_reg_val) });
+                .modify(|w| w.0 = (w.0 & !pin_mask) | pin_reg_val);
         } else {
             gpio.extipselh()
-                .modify(|r, w| unsafe { w.bits((r.bits() & !port_mask) | port_reg_val) });
+                .modify(|w| w.0 = (w.0 & !port_mask) | port_reg_val);
             gpio.extipinselh()
-                .modify(|r, w| unsafe { w.bits((r.bits() & !pin_mask) | pin_reg_val) });
+                .modify(|w| w.0 = (w.0 & !pin_mask) | pin_reg_val);
         }
     }
 
@@ -471,12 +470,12 @@ pub mod mmio {
 
         let (port_reg_val, pin_reg_val) = match exti_is_low_reg(exti) {
             true => (
-                gpio.extipsell().read().bits(),
-                gpio.extipinsell().read().bits(),
+                gpio.extipsell().read().0,
+                gpio.extipinsell().read().0,
             ),
             false => (
-                gpio.extipselh().read().bits(),
-                gpio.extipinselh().read().bits(),
+                gpio.extipselh().read().0,
+                gpio.extipinselh().read().0,
             ),
         };
         let port = ((port_reg_val & port_mask) >> offset) as u8;
@@ -492,24 +491,24 @@ pub mod mmio {
     pub fn exti_enable(exti: ExtiId) {
         gpio()
             .ien()
-            .modify(|r, w| unsafe { w.set_ext(r.ext().bits() | 1 << exti as u8) });
+            .modify(|w| w.set_ext(w.ext() | (1u16 << exti as u8)));
     }
 
     /// Check if external interrupt is enabled
     pub fn exti_is_enabled(exti: ExtiId) -> bool {
-        gpio().ien().read().ext() & 1 << exti as u8 != 0
+        gpio().ien().read().ext() & (1u16 << exti as u8) != 0
     }
 
     /// Disable given external interrupt
     pub fn exti_disable(exti: ExtiId) {
         gpio()
             .ien()
-            .modify(|r, w| unsafe { w.set_ext(r.ext().bits() & !(1 << exti as u8)) });
+            .modify(|w| w.set_ext(w.ext() & !(1u16 << exti as u8)));
     }
 
     /// Checl if the interrupt flag is raised for the given external interrupt
     pub fn exti_get(exti: ExtiId) -> bool {
-        (gpio().if_().read().ext() & (1 << (exti as u8))) != 0
+        (gpio().if_().read().ext() & (1u16 << exti as u8)) != 0
     }
 
     /// Iterator over all raised EVEN external interrupt flags
@@ -518,7 +517,7 @@ pub mod mmio {
 
         (ExtiId::Exti0 as u8..=ExtiId::Exti14 as u8)
             .step_by(2)
-            .filter(move |i| ((1 << *i) & exti_cached_flags) != 0)
+            .filter(move |i| ((1u16 << *i) & exti_cached_flags) != 0)
             .map(ExtiId::from_u8_unchecked)
     }
 
@@ -528,7 +527,7 @@ pub mod mmio {
 
         (ExtiId::Exti1 as u8..=ExtiId::Exti15 as u8)
             .step_by(2)
-            .filter(move |i| ((1 << *i) & exti_cached_flags) != 0)
+            .filter(move |i| ((1u16 << *i) & exti_cached_flags) != 0)
             .map(ExtiId::from_u8_unchecked)
     }
 
@@ -536,32 +535,32 @@ pub mod mmio {
     pub fn exti_clear(exti: ExtiId) {
         gpio()
             .ifc()
-            .write(|w| unsafe { w.set_ext(1 << (exti as u8)) });
+            .write(|w| w.set_ext(1u16 << exti as u8));
     }
 
     /// Select the edge which triggers the external interrupt
     pub fn exti_edge_select(exti: ExtiId, edge: ExtiEdge) {
         let gpio = gpio();
-        let exti_mask = 1 << exti as u8;
+        let exti_mask = 1u16 << exti as u8;
 
         match edge {
             ExtiEdge::Rising => {
                 gpio.extirise()
-                    .modify(|r, w| unsafe { w.bits(r.bits() | exti_mask) });
+                    .modify(|w| w.set_extirise(w.extirise() | exti_mask));
                 gpio.extifall()
-                    .modify(|r, w| unsafe { w.bits(r.bits() & !exti_mask) });
+                    .modify(|w| w.set_extifall(w.extifall() & !exti_mask));
             }
             ExtiEdge::Falling => {
                 gpio.extirise()
-                    .modify(|r, w| unsafe { w.bits(r.bits() & !exti_mask) });
+                    .modify(|w| w.set_extirise(w.extirise() & !exti_mask));
                 gpio.extifall()
-                    .modify(|r, w| unsafe { w.bits(r.bits() | exti_mask) });
+                    .modify(|w| w.set_extifall(w.extifall() | exti_mask));
             }
             ExtiEdge::Both => {
                 gpio.extirise()
-                    .modify(|r, w| unsafe { w.bits(r.bits() | exti_mask) });
+                    .modify(|w| w.set_extirise(w.extirise() | exti_mask));
                 gpio.extifall()
-                    .modify(|r, w| unsafe { w.bits(r.bits() | exti_mask) });
+                    .modify(|w| w.set_extifall(w.extifall() | exti_mask));
             }
         };
     }
@@ -569,10 +568,10 @@ pub mod mmio {
     /// Get the edge(s) which trigger the external interrupt
     pub fn exti_edge_get(exti: ExtiId) -> Option<ExtiEdge> {
         let gpio = gpio();
-        let exti_mask = 1 << exti as u8;
+        let exti_mask = 1u16 << exti as u8;
 
-        let rising = (gpio.extirise().read().bits() & exti_mask) != 0;
-        let falling = (gpio.extifall().read().bits() & exti_mask) != 0;
+        let rising = (gpio.extirise().read().extirise() & exti_mask) != 0;
+        let falling = (gpio.extifall().read().extifall() & exti_mask) != 0;
 
         if rising && falling {
             Some(ExtiEdge::Both)
@@ -588,16 +587,16 @@ pub mod mmio {
     /// Clear the edge(s) which trigger the external interrupt
     pub fn exti_edge_clear(exti: ExtiId, edge: ExtiEdge) {
         let gpio = gpio();
-        let exti_mask = !(1 << exti as u8);
+        let exti_mask = !(1u16 << exti as u8);
 
         if edge == ExtiEdge::Rising || edge == ExtiEdge::Both {
             gpio.extirise()
-                .modify(|r, w| unsafe { w.bits(r.bits() & exti_mask) });
+                .modify(|w| w.set_extirise(w.extirise() & exti_mask));
         }
 
         if edge == ExtiEdge::Falling || edge == ExtiEdge::Both {
             gpio.extifall()
-                .modify(|r, w| unsafe { w.bits(r.bits() & exti_mask) });
+                .modify(|w| w.set_extifall(w.extifall() & exti_mask));
         }
     }
 
@@ -605,7 +604,7 @@ pub mod mmio {
     pub fn exti_enable_em4wu(exti: ExtiId) {
         gpio()
             .ien()
-            .modify(|_, w| w.set_em4wu(1 << exti as u8));
+            .modify(|w| w.set_em4wu(1u16 << exti as u8));
     }
 
     /// Check if given Pin can be bound to given Exti
@@ -620,7 +619,7 @@ pub mod mmio {
     }
 
     #[inline(always)]
-    fn gpio() -> GPIO {
-        unsafe { crate::pac::GPIO::steal() }
+    fn gpio() -> crate::pac::gpio::Gpio {
+        crate::pac::GPIO
     }
 }

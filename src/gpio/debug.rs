@@ -60,7 +60,7 @@ impl DebugPinsEnabled {
         _tdi: Pin<'F', 2, Disabled>,
         _tdo: Pin<'F', 3, Disabled>,
     ) -> Self {
-        let gpio = unsafe { crate::pac::GPIO::steal() };
+        let gpio = crate::pac::GPIO;
 
         // Make sure Data In Disable is clear for port `F`
         ports::set_din_dis(PortId::F, DataInCtrl::Enabled);
@@ -107,20 +107,15 @@ impl TryFrom<DebugPinsEnabled> for DebugPinsDisabled {
     type Error = GpioError;
 
     fn try_from(_pins: DebugPinsEnabled) -> Result<Self, Self::Error> {
-        let gpio = unsafe { crate::pac::GPIO::steal() };
+        let gpio = crate::pac::GPIO;
 
         // Try to disable debug pins function
         gpio.routepen().write(|w| {
-            w.swclktckpen()
-                .clear_bit()
-                .swdiotmspen()
-                .clear_bit()
-                .swvpen()
-                .clear_bit()
-                .tdipen()
-                .clear_bit()
-                .tdopen()
-                .clear_bit()
+            w.set_swclktckpen(false);
+            w.set_swdiotmspen(false);
+            w.set_swvpen(false);
+            w.set_tdipen(false);
+            w.set_tdopen(false)
         });
 
         // If the debugger is still attached, then the write above will have had no effect
@@ -133,7 +128,7 @@ impl TryFrom<DebugPinsEnabled> for DebugPinsDisabled {
 
 /// Check if debug pins are enabled (pf0, pf1, pf2, pf3)
 pub fn debug_pins_enabled() -> bool {
-    let gpio = unsafe { crate::pac::GPIO::steal() };
+    let gpio = crate::pac::GPIO;
 
     gpio.routepen().read().swclktckpen() == true
         || gpio.routepen().read().swdiotmspen() == true

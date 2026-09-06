@@ -7,12 +7,11 @@ mod tests {
 
     use defmt::info;
     use defmt_rtt as _;
-    use efm32pg1b_hal::{crc::CrcDriver, pac::Peripherals};
+    use efm32pg1b_hal::crc::CrcDriver;
 
     #[init]
     fn init() -> CrcDriver {
-        let p = Peripherals::take().unwrap();
-        CrcDriver::new(p.gpcrc)
+        CrcDriver::new(efm32pg1b_hal::pac::GPCRC)
     }
 
     /// Test the HAL CRC-16 algos against the `crc` crate algos

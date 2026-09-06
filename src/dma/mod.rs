@@ -22,7 +22,7 @@ use crate::{
         irq::set_handler,
         transfer::{ChannelTransfer, MemoryTransferParams, TransferParams},
     },
-    pac::{Interrupt, LDMA},
+    pac::{ldma::Ldma, Interrupt},
 };
 #[cfg(feature = "debug-spi-dma-defmt-info")]
 use defmt::info;
@@ -57,10 +57,9 @@ pub struct Dma {
 
 impl Dma {
     /// Initialize DMA
-    pub fn init(_dma_p: LDMA) -> Self {
+    pub fn init(_dma_p: Ldma) -> Self {
         // Enable DMA clock
-        let cmu = unsafe { crate::pac::CMU::steal() };
-        cmu.hfbusclken0().modify(|_, w| w.set_ldma(true));
+        crate::pac::CMU.hfbusclken0().modify(|w| w.set_ldma(true));
 
         unsafe {
             cortex_m::peripheral::NVIC::unmask(Interrupt::LDMA);
@@ -195,7 +194,7 @@ impl DmaChannel {
     /// The channel arbiter will ignore single requests (SREQ) and only respond to multiple requests (REQ) when this bit
     /// is set.
     pub fn set_ignore_single_req(&self, is_ignored: bool) {
-        mmio::dma().ch(self.id as usize).ctrl().modify(|_, w| {
+        mmio::ch(self.id).ctrl().modify(|w| {
             if is_ignored {
                 w.set_ignoresreq(true)
             } else {
